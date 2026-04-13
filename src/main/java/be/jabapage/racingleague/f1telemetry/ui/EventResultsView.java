@@ -13,6 +13,7 @@ import com.vaadin.flow.router.HasUrlParameter;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -40,11 +41,11 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
 
     @Override
     public void setParameter(BeforeEvent event, Long parameter) {
-        Event e = eventRepository.findById(parameter).orElseThrow();
+        Event e = eventRepository.findByIdWithResults(parameter).orElseThrow();
         eventHeader.setText("Event: " + e.getEventName());
         resultsLayout.removeAll();
 
-        List<SessionResult> sessions = e.getSessionResults();
+        List<SessionResult> sessions = new ArrayList<>(e.getSessionResults());
         // Sort sessions by type (Qualifying then Race)
         sessions.sort(Comparator.comparingInt(SessionResult::getSessionType));
 

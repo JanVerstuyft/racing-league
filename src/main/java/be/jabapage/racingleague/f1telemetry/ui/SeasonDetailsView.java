@@ -4,8 +4,10 @@ import be.jabapage.racingleague.f1telemetry.entity.DriverStanding;
 import be.jabapage.racingleague.f1telemetry.entity.Event;
 import be.jabapage.racingleague.f1telemetry.entity.League;
 import be.jabapage.racingleague.f1telemetry.entity.TeamStanding;
+import be.jabapage.racingleague.f1telemetry.repository.DriverStandingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.EventRepository;
 import be.jabapage.racingleague.f1telemetry.repository.LeagueRepository;
+import be.jabapage.racingleague.f1telemetry.repository.TeamStandingRepository;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
@@ -23,6 +25,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
     private final LeagueRepository leagueRepository;
     private final EventRepository eventRepository;
+    private final DriverStandingRepository driverStandingRepository;
+    private final TeamStandingRepository teamStandingRepository;
     private League league;
 
     private final H2 seasonName = new H2();
@@ -33,9 +37,13 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final VerticalLayout eventsLayout = new VerticalLayout();
     private final VerticalLayout standingsLayout = new VerticalLayout();
 
-    public SeasonDetailsView(LeagueRepository leagueRepository, EventRepository eventRepository) {
+    public SeasonDetailsView(LeagueRepository leagueRepository, EventRepository eventRepository,
+                             DriverStandingRepository driverStandingRepository,
+                             TeamStandingRepository teamStandingRepository) {
         this.leagueRepository = leagueRepository;
         this.eventRepository = eventRepository;
+        this.driverStandingRepository = driverStandingRepository;
+        this.teamStandingRepository = teamStandingRepository;
 
         setSizeFull();
         configureGrids();
@@ -76,10 +84,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
     private void updateData() {
         eventGrid.setItems(eventRepository.findByLeague(league));
-        driverGrid.setItems(league.getDriverStandings().stream()
+        driverGrid.setItems(driverStandingRepository.findByLeague(league).stream()
                 .sorted(Comparator.comparingInt(DriverStanding::getPoints).reversed())
                 .collect(java.util.stream.Collectors.toList()));
-        teamGrid.setItems(league.getTeamStandings().stream()
+        teamGrid.setItems(teamStandingRepository.findByLeague(league).stream()
                 .sorted(Comparator.comparingInt(TeamStanding::getPoints).reversed())
                 .collect(java.util.stream.Collectors.toList()));
     }

@@ -2,14 +2,18 @@ package be.jabapage.racingleague.f1telemetry.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
-import java.util.ArrayList;
-import java.util.List;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Data
 @Entity
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class Event {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include
     private Long id;
 
     @ManyToOne
@@ -20,5 +24,6 @@ public class Event {
     private String eventName; // e.g., "British Grand Prix"
 
     @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<SessionResult> sessionResults = new ArrayList<>();
+    @ToString.Exclude
+    private Set<SessionResult> sessionResults = new LinkedHashSet<>();
 }
