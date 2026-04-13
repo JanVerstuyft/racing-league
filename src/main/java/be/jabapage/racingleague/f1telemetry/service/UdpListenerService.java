@@ -57,9 +57,6 @@ public class UdpListenerService {
 
     @PreDestroy
     public void stop() {
-
-    @PreDestroy
-    public void stop() {
         running = false;
         if (socket != null && !socket.isClosed()) {
             socket.close();

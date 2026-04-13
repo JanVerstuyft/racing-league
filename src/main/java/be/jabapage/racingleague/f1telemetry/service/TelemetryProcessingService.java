@@ -9,8 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -40,6 +39,12 @@ public class TelemetryProcessingService {
             0, "Mercedes", 1, "Ferrari", 2, "Red Bull Racing", 3, "Williams",
             4, "Aston Martin", 5, "Alpine", 6, "RB", 7, "Haas",
             8, "McLaren", 9, "Sauber"
+    );
+
+    // Track ID to Name mapping (simplified)
+    private static final Map<Integer, String> TRACK_NAMES = Map.of(
+            0, "Melbourne", 1, "Paul Ricard", 2, "Shanghai", 3, "Sakhir",
+            4, "Catalunya", 5, "Monaco", 6, "Montreal", 7, "Silverstone"
     );
 
     // Tyre Compound ID to Name mapping

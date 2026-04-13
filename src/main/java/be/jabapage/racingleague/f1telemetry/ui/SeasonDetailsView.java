@@ -77,8 +77,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private void updateData() {
         eventGrid.setItems(eventRepository.findByLeague(league));
         driverGrid.setItems(league.getDriverStandings().stream()
-                .sorted(Comparator.comparingInt(DriverStanding::getPoints).reversed()));
+                .sorted(Comparator.comparingInt(DriverStanding::getPoints).reversed())
+                .collect(java.util.stream.Collectors.toList()));
         teamGrid.setItems(league.getTeamStandings().stream()
-                .sorted(Comparator.comparingInt(TeamStanding::getPoints).reversed()));
+                .sorted(Comparator.comparingInt(TeamStanding::getPoints).reversed())
+                .collect(java.util.stream.Collectors.toList()));
     }
 }

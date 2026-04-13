@@ -61,7 +61,8 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             grid.addColumn(DriverResult::getPointsAwarded).setHeader("Points");
             
             grid.setItems(session.getDriverResults().stream()
-                    .sorted(Comparator.comparingInt(DriverResult::getPosition)));
+                    .sorted(Comparator.comparingInt(DriverResult::getPosition))
+                    .collect(Collectors.toList()));
             grid.setAllRowsVisible(true);
             
             resultsLayout.add(grid);
