@@ -14,8 +14,9 @@ public class DriverStanding {
     @JoinColumn(name = "league_id")
     private League league;
 
+    @Column(name = "driver_name")
     private String driverName;
-    private int points;
-    private int wins;
-    private int podiums;
+    private Integer points;
+    private Integer wins;
+    private Integer podiums;
 }

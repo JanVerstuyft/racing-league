@@ -30,7 +30,6 @@ public class MainLayout extends AppLayout {
     private void createDrawer() {
         addToDrawer(new VerticalLayout(
                 new RouterLink("Seasons", SeasonListView.class),
-                new RouterLink("Live Dashboard", DashboardView.class),
                 new RouterLink("Live Leaderboard", LeaderboardView.class)
         ));
     }

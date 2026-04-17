@@ -77,12 +77,6 @@ public class TelemetryProcessingService {
             case 4: // Participants
                 this.currentParticipants = PacketParticipantsData.fromByteBuffer(buffer, header);
                 break;
-            case 6: // Car Telemetry
-                PacketCarTelemetryData telemetry = PacketCarTelemetryData.fromByteBuffer(buffer, header);
-                if (header.getPlayerCarIndex() < telemetry.getCarTelemetryData().size()) {
-                    broadcaster.broadcastTelemetry(telemetry.getCarTelemetryData().get(header.getPlayerCarIndex()));
-                }
-                break;
             case 7: // Car Status
                 this.currentCarStatus = PacketCarStatusData.fromByteBuffer(buffer, header);
                 broadcastLeaderboard();
@@ -90,12 +84,6 @@ public class TelemetryProcessingService {
             case 8: // Final Classification
                 PacketFinalClassificationData classification = PacketFinalClassificationData.fromByteBuffer(buffer, header);
                 handleFinalClassification(classification);
-                break;
-            case 10: // Car Damage
-                PacketCarDamageData damage = PacketCarDamageData.fromByteBuffer(buffer, header);
-                if (header.getPlayerCarIndex() < damage.getCarDamageData().size()) {
-                    broadcaster.broadcastDamage(damage.getCarDamageData().get(header.getPlayerCarIndex()));
-                }
                 break;
             default:
                 break;
@@ -187,6 +175,7 @@ public class TelemetryProcessingService {
             driverResult.setPointsAwarded(data.getPoints());
             driverResult.setGridPosition(data.getGridPosition());
             driverResult.setBestLapTime(data.getBestLapTimeInMS() / 1000.0f);
+            driverResult.setResultStatus(data.getResultStatus());
             
             sessionResult.getDriverResults().add(driverResult);
             
@@ -209,9 +198,9 @@ public class TelemetryProcessingService {
                     newDs.setDriverName(result.getDriverName());
                     return newDs;
                 });
-        ds.setPoints(ds.getPoints() + result.getPointsAwarded());
-        if (result.getPosition() == 1) ds.setWins(ds.getWins() + 1);
-        if (result.getPosition() <= 3) ds.setPodiums(ds.getPodiums() + 1);
+        ds.setPoints((ds.getPoints() != null ? ds.getPoints() : 0) + result.getPointsAwarded());
+        if (result.getPosition() != null && result.getPosition() == 1) ds.setWins((ds.getWins() != null ? ds.getWins() : 0) + 1);
+        if (result.getPosition() != null && result.getPosition() <= 3) ds.setPodiums((ds.getPodiums() != null ? ds.getPodiums() : 0) + 1);
         driverStandingRepository.save(ds);
 
         // Update Team Standings
@@ -222,7 +211,7 @@ public class TelemetryProcessingService {
                     newTs.setTeamName(result.getTeamName());
                     return newTs;
                 });
-        ts.setPoints(ts.getPoints() + result.getPointsAwarded());
+        ts.setPoints((ts.getPoints() != null ? ts.getPoints() : 0) + result.getPointsAwarded());
         teamStandingRepository.save(ts);
     }
 }

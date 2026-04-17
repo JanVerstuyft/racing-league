@@ -14,6 +14,7 @@ public class TeamStanding {
     @JoinColumn(name = "league_id")
     private League league;
 
+    @Column(name = "team_name")
     private String teamName;
-    private int points;
+    private Integer points;
 }

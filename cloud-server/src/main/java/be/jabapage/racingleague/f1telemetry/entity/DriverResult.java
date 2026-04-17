@@ -14,10 +14,18 @@ public class DriverResult {
     @JoinColumn(name = "session_result_id")
     private SessionResult sessionResult;
 
+    @Column(name = "driver_name")
     private String driverName;
+    @Column(name = "team_name")
     private String teamName;
-    private int position;
-    private int pointsAwarded;
-    private int gridPosition;
-    private float bestLapTime;
+    private Integer position;
+    @Column(name = "points_awarded")
+    private Integer pointsAwarded;
+    @Column(name = "grid_position")
+    private Integer gridPosition;
+    @Column(name = "best_lap_time")
+    private Float bestLapTime;
+
+    @Column(name = "result_status", nullable = false, columnDefinition = "int default 0")
+    private Integer resultStatus;
 }

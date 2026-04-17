@@ -53,20 +53,56 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             String sessionName = SESSION_TYPE_NAMES.getOrDefault(session.getSessionType(), "Session " + session.getSessionType());
             resultsLayout.add(new H3(sessionName));
             
+            List<DriverResult> driverResults = session.getDriverResults().stream()
+                    .sorted(Comparator.comparingInt(DriverResult::getPosition))
+                    .collect(Collectors.toList());
+
+            float fastestLap = driverResults.stream()
+                    .map(dr -> dr.getBestLapTime() != null ? dr.getBestLapTime() : 0.0f)
+                    .filter(t -> t > 0)
+                    .min(Float::compare)
+                    .orElse(0.0f);
+
             Grid<DriverResult> grid = new Grid<>(DriverResult.class, false);
-            grid.addColumn(DriverResult::getPosition).setHeader("Pos").setWidth("60px").setFlexGrow(0);
-            grid.addColumn(DriverResult::getDriverName).setHeader("Driver");
+            grid.addColumn(dr -> dr.getPosition() != null ? dr.getPosition() : "-").setHeader("Pos").setWidth("60px").setFlexGrow(0);
+            grid.addColumn(dr -> {
+                String name = dr.getDriverName();
+                Integer status = dr.getResultStatus();
+                if (status != null) {
+                    if (status == 4) name += " (DNF)";
+                    else if (status == 5) name += " (DSQ)";
+                    else if (status == 6) name += " (NC)";
+                    else if (status == 7) name += " (RET)";
+                }
+                return name;
+            }).setHeader("Driver");
             grid.addColumn(DriverResult::getTeamName).setHeader("Team");
-            grid.addColumn(DriverResult::getGridPosition).setHeader("Grid");
-            grid.addColumn(DriverResult::getBestLapTime).setHeader("Best Lap");
+            grid.addColumn(dr -> dr.getGridPosition() != null ? dr.getGridPosition() : "-").setHeader("Grid");
+            grid.addColumn(dr -> {
+                Float lapTime = dr.getBestLapTime();
+                return formatLapTime(lapTime != null ? lapTime : 0.0f);
+            })
+                    .setHeader("Best Lap")
+                    .setPartNameGenerator(dr -> {
+                        Float lapTime = dr.getBestLapTime();
+                        if (lapTime != null && fastestLap > 0 && lapTime == fastestLap) {
+                            return "fastest-lap";
+                        }
+                        return null;
+                    });
             grid.addColumn(DriverResult::getPointsAwarded).setHeader("Points");
             
-            grid.setItems(session.getDriverResults().stream()
-                    .sorted(Comparator.comparingInt(DriverResult::getPosition))
-                    .collect(Collectors.toList()));
+            grid.setItems(driverResults);
             grid.setAllRowsVisible(true);
             
             resultsLayout.add(grid);
         }
+    }
+
+    private String formatLapTime(float seconds) {
+        if (seconds <= 0) return "-";
+        int minutes = (int) (seconds / 60);
+        float remainingSeconds = seconds % 60;
+        return String.format("%d:%06.3f", minutes, remainingSeconds);
     }
 }

@@ -68,11 +68,11 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         eventGrid.addComponentColumn(event -> new RouterLink("Results", EventResultsView.class, event.getId())).setHeader("Results");
 
         driverGrid.addColumn(DriverStanding::getDriverName).setHeader("Driver");
-        driverGrid.addColumn(DriverStanding::getPoints).setHeader("Points").setSortable(true);
-        driverGrid.addColumn(DriverStanding::getWins).setHeader("Wins");
+        driverGrid.addColumn(ds -> ds.getPoints() != null ? ds.getPoints() : 0).setHeader("Points").setSortable(true);
+        driverGrid.addColumn(ds -> ds.getWins() != null ? ds.getWins() : 0).setHeader("Wins");
 
         teamGrid.addColumn(TeamStanding::getTeamName).setHeader("Team");
-        teamGrid.addColumn(TeamStanding::getPoints).setHeader("Points").setSortable(true);
+        teamGrid.addColumn(ts -> ts.getPoints() != null ? ts.getPoints() : 0).setHeader("Points").setSortable(true);
     }
 
     @Override
@@ -85,10 +85,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private void updateData() {
         eventGrid.setItems(eventRepository.findByLeague(league));
         driverGrid.setItems(driverStandingRepository.findByLeague(league).stream()
-                .sorted(Comparator.comparingInt(DriverStanding::getPoints).reversed())
+                .sorted(Comparator.comparing((DriverStanding ds) -> ds.getPoints() != null ? ds.getPoints() : 0).reversed())
                 .collect(java.util.stream.Collectors.toList()));
         teamGrid.setItems(teamStandingRepository.findByLeague(league).stream()
-                .sorted(Comparator.comparingInt(TeamStanding::getPoints).reversed())
+                .sorted(Comparator.comparing((TeamStanding ts) -> ts.getPoints() != null ? ts.getPoints() : 0).reversed())
                 .collect(java.util.stream.Collectors.toList()));
     }
 }

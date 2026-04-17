@@ -24,9 +24,12 @@ public class SessionResult {
     @JoinColumn(name = "event_id")
     private Event event;
 
+    @Column(name = "track_id")
     private String trackId;
-    private long sessionUID;
-    private int sessionType;
+    @Column(name = "session_uid")
+    private Long sessionUID;
+    @Column(name = "session_type")
+    private Integer sessionType;
 
     @OneToMany(mappedBy = "sessionResult", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @ToString.Exclude
