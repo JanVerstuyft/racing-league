@@ -42,15 +42,23 @@ public class TelemetryProcessingService {
     );
 
     // Track ID to Name mapping (simplified)
-    private static final Map<Integer, String> TRACK_NAMES = Map.of(
-            0, "Melbourne", 1, "Paul Ricard", 2, "Shanghai", 3, "Sakhir",
-            4, "Catalunya", 5, "Monaco", 6, "Montreal", 7, "Silverstone"
+    private static final Map<Integer, String> TRACK_NAMES = Map.ofEntries(
+            Map.entry(0, "Melbourne"), Map.entry(1, "Paul Ricard"), Map.entry(2, "Shanghai"), Map.entry(3, "Sakhir"),
+            Map.entry(4, "Catalunya"), Map.entry(5, "Monaco"), Map.entry(6, "Montreal"), Map.entry(7, "Silverstone"),
+            Map.entry(8, "Hockenheim"), Map.entry(9, "Hungaroring"), Map.entry(10, "Spa"), Map.entry(11, "Monza"),
+            Map.entry(12, "Singapore"), Map.entry(13, "Suzuka"), Map.entry(14, "Abu Dhabi"), Map.entry(15, "Texas"),
+            Map.entry(16, "Brazil"), Map.entry(17, "Austria"), Map.entry(18, "Sochi"), Map.entry(19, "Mexico"),
+            Map.entry(20, "Baku"), Map.entry(21, "Sakhir Short"), Map.entry(22, "Silverstone Short"), Map.entry(23, "Texas Short"),
+            Map.entry(24, "Suzuka Short"), Map.entry(25, "Hanoi"), Map.entry(26, "Zandvoort"), Map.entry(27, "Imola"),
+            Map.entry(28, "Portimao"), Map.entry(29, "Jeddah"), Map.entry(30, "Miami"), Map.entry(31, "Las Vegas"),
+            Map.entry(32, "Losail"), Map.entry(33, "Imola (Classic)"), Map.entry(34, "Estoril (Classic)"), Map.entry(35, "Jerez (Classic)"),
+            Map.entry(36, "Adelaide (Classic)"), Map.entry(37, "Kyalami (Classic)"), Map.entry(38, "Brands Hatch (Classic)"), Map.entry(39, "Silverstone (Reverse)"),
+            Map.entry(40, "Austria (Reverse)"), Map.entry(41, "Brazil (Reverse)")
     );
 
     // Tyre Compound ID to Name mapping
     private static final Map<Integer, String> TYRE_COMPOUNDS = Map.of(
-            16, "Soft", 17, "Medium", 18, "Hard", 19, "Inter", 20, "Wet",
-            7, "Inter", 8, "Wet" // Visual IDs
+            16, "Soft", 17, "Medium", 18, "Hard", 7, "Inter", 8, "Wet"
     );
 
     public void setActiveLeague(Long leagueId) {
@@ -99,6 +107,10 @@ public class TelemetryProcessingService {
 
         List<DriverBoardState> board = new ArrayList<>();
         for (int i = 0; i < 22; i++) {
+            if (i >= currentParticipants.getParticipants().size() || 
+                i >= currentLapData.getLapData().size() || 
+                i >= currentCarStatus.getCarStatusData().size()) break;
+
             ParticipantData p = currentParticipants.getParticipants().get(i);
             if (p.getName() == null || p.getName().isEmpty()) continue;
 
@@ -121,7 +133,7 @@ public class TelemetryProcessingService {
         broadcaster.broadcastLeaderboard(board);
     }
 
-    private String formatTime(int ms) {
+    private String formatTime(long ms) {
         if (ms == 0) return "-";
         return String.format("+%.3fs", ms / 1000.0f);
     }

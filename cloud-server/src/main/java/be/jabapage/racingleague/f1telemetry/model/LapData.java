@@ -7,10 +7,14 @@ import java.nio.ByteBuffer;
 public class LapData {
     private long lastLapTimeInMS;        // uint32
     private long currentLapTimeInMS;     // uint32
-    private int sector1TimeInMS;        // uint16
-    private int sector2TimeInMS;        // uint16
-    private int deltaToCarInFrontInMS;   // uint16
-    private int deltaToRaceLeaderInMS;   // uint16
+    private int sector1TimeMSPart;       // uint16
+    private int sector1TimeMinutesPart;  // uint8
+    private int sector2TimeMSPart;       // uint16
+    private int sector2TimeMinutesPart;  // uint8
+    private int deltaToCarInFrontMSPart; // uint16
+    private int deltaToCarInFrontMinutesPart; // uint8
+    private int deltaToRaceLeaderMSPart; // uint16
+    private int deltaToRaceLeaderMinutesPart; // uint8
     private float lapDistance;           // float
     private float totalDistance;         // float
     private float safetyCarDelta;        // float
@@ -32,15 +36,37 @@ public class LapData {
     private int pitLaneTimeInLaneInMS;   // uint16
     private int pitStopTimerInMS;        // uint16
     private int pitStopShouldServePen;   // uint8
+    private float speedTrapFastestSpeed; // float
+    private int speedTrapFastestLap;     // uint8
+
+    public long getSector1TimeInMS() {
+        return sector1TimeMinutesPart * 60000L + sector1TimeMSPart;
+    }
+
+    public long getSector2TimeInMS() {
+        return sector2TimeMinutesPart * 60000L + sector2TimeMSPart;
+    }
+
+    public long getDeltaToCarInFrontInMS() {
+        return deltaToCarInFrontMinutesPart * 60000L + deltaToCarInFrontMSPart;
+    }
+
+    public long getDeltaToRaceLeaderInMS() {
+        return deltaToRaceLeaderMinutesPart * 60000L + deltaToRaceLeaderMSPart;
+    }
 
     public static LapData fromByteBuffer(ByteBuffer buffer) {
         LapData data = new LapData();
         data.setLastLapTimeInMS(buffer.getInt() & 0xFFFFFFFFL);
         data.setCurrentLapTimeInMS(buffer.getInt() & 0xFFFFFFFFL);
-        data.setSector1TimeInMS(buffer.getShort() & 0xFFFF);
-        data.setSector2TimeInMS(buffer.getShort() & 0xFFFF);
-        data.setDeltaToCarInFrontInMS(buffer.getShort() & 0xFFFF);
-        data.setDeltaToRaceLeaderInMS(buffer.getShort() & 0xFFFF);
+        data.setSector1TimeMSPart(buffer.getShort() & 0xFFFF);
+        data.setSector1TimeMinutesPart(buffer.get() & 0xFF);
+        data.setSector2TimeMSPart(buffer.getShort() & 0xFFFF);
+        data.setSector2TimeMinutesPart(buffer.get() & 0xFF);
+        data.setDeltaToCarInFrontMSPart(buffer.getShort() & 0xFFFF);
+        data.setDeltaToCarInFrontMinutesPart(buffer.get() & 0xFF);
+        data.setDeltaToRaceLeaderMSPart(buffer.getShort() & 0xFFFF);
+        data.setDeltaToRaceLeaderMinutesPart(buffer.get() & 0xFF);
         data.setLapDistance(buffer.getFloat());
         data.setTotalDistance(buffer.getFloat());
         data.setSafetyCarDelta(buffer.getFloat());
@@ -62,6 +88,8 @@ public class LapData {
         data.setPitLaneTimeInLaneInMS(buffer.getShort() & 0xFFFF);
         data.setPitStopTimerInMS(buffer.getShort() & 0xFFFF);
         data.setPitStopShouldServePen(buffer.get() & 0xFF);
+        data.setSpeedTrapFastestSpeed(buffer.getFloat());
+        data.setSpeedTrapFastestLap(buffer.get() & 0xFF);
         return data;
     }
 }

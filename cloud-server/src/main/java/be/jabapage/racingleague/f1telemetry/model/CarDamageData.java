@@ -8,44 +8,50 @@ public class CarDamageData {
     private float[] tyresWear = new float[4];           // float[4]
     private int[] tyresDamage = new int[4];            // uint8[4]
     private int[] brakesDamage = new int[4];           // uint8[4]
+    private int[] tyreBlisters = new int[4];           // uint8[4]
     private int frontLeftWingDamage;                   // uint8
     private int frontRightWingDamage;                  // uint8
     private int rearWingDamage;                        // uint8
+    private int floorDamage;                           // uint8
+    private int diffuserDamage;                        // uint8
+    private int sidepodDamage;                         // uint8
     private int drsFault;                              // uint8
     private int ersFault;                              // uint8
     private int gearBoxDamage;                         // uint8
     private int engineDamage;                          // uint8
-    private int engineMGUHDamage;                      // uint8
-    private int engineESDamage;                        // uint8
-    private int engineCEControlElectronicsDamage;      // uint8
-    private int engineICEInternalCombustionEngineDamage; // uint8
-    private int engineMGUKDamage;                      // uint8
-    private int engineTCStoreDamage;                   // uint8
-    private int engineTCTurboDamage;                   // uint8
-    private int engineControlUnitDamage;               // uint8
-    private int[] tyreBlisterPercentage = new int[4];  // uint8[4]
+    private int engineMGUHWear;                        // uint8
+    private int engineESWear;                          // uint8
+    private int engineCEWear;                          // uint8
+    private int engineICEWear;                         // uint8
+    private int engineMGUKWear;                        // uint8
+    private int engineTCWear;                          // uint8
+    private int engineBlown;                           // uint8
+    private int engineSeized;                          // uint8
 
     public static CarDamageData fromByteBuffer(ByteBuffer buffer) {
         CarDamageData data = new CarDamageData();
         for (int i = 0; i < 4; i++) data.tyresWear[i] = buffer.getFloat();
         for (int i = 0; i < 4; i++) data.tyresDamage[i] = buffer.get() & 0xFF;
         for (int i = 0; i < 4; i++) data.brakesDamage[i] = buffer.get() & 0xFF;
+        for (int i = 0; i < 4; i++) data.tyreBlisters[i] = buffer.get() & 0xFF;
         data.setFrontLeftWingDamage(buffer.get() & 0xFF);
         data.setFrontRightWingDamage(buffer.get() & 0xFF);
         data.setRearWingDamage(buffer.get() & 0xFF);
+        data.setFloorDamage(buffer.get() & 0xFF);
+        data.setDiffuserDamage(buffer.get() & 0xFF);
+        data.setSidepodDamage(buffer.get() & 0xFF);
         data.setDrsFault(buffer.get() & 0xFF);
         data.setErsFault(buffer.get() & 0xFF);
         data.setGearBoxDamage(buffer.get() & 0xFF);
         data.setEngineDamage(buffer.get() & 0xFF);
-        data.setEngineMGUHDamage(buffer.get() & 0xFF);
-        data.setEngineESDamage(buffer.get() & 0xFF);
-        data.setEngineCEControlElectronicsDamage(buffer.get() & 0xFF);
-        data.setEngineICEInternalCombustionEngineDamage(buffer.get() & 0xFF);
-        data.setEngineMGUKDamage(buffer.get() & 0xFF);
-        data.setEngineTCStoreDamage(buffer.get() & 0xFF);
-        data.setEngineTCTurboDamage(buffer.get() & 0xFF);
-        data.setEngineControlUnitDamage(buffer.get() & 0xFF);
-        for (int i = 0; i < 4; i++) data.tyreBlisterPercentage[i] = buffer.get() & 0xFF;
+        data.setEngineMGUHWear(buffer.get() & 0xFF);
+        data.setEngineESWear(buffer.get() & 0xFF);
+        data.setEngineCEWear(buffer.get() & 0xFF);
+        data.setEngineICEWear(buffer.get() & 0xFF);
+        data.setEngineMGUKWear(buffer.get() & 0xFF);
+        data.setEngineTCWear(buffer.get() & 0xFF);
+        data.setEngineBlown(buffer.get() & 0xFF);
+        data.setEngineSeized(buffer.get() & 0xFF);
         return data;
     }
 }

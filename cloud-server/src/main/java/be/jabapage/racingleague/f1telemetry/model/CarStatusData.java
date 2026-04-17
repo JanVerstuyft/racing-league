@@ -22,6 +22,8 @@ public class CarStatusData {
     private int visualTyreCompound;       // uint8
     private int tyresAgeLaps;             // uint8
     private int vehicleFiaFlags;          // int8
+    private float enginePowerICE;         // float
+    private float enginePowerMGUK;        // float
     private float ersStoreEnergy;         // float
     private int ersDeployMode;            // uint8
     private float ersHarvestedThisLapMGUK; // float
@@ -48,6 +50,8 @@ public class CarStatusData {
         data.setVisualTyreCompound(buffer.get() & 0xFF);
         data.setTyresAgeLaps(buffer.get() & 0xFF);
         data.setVehicleFiaFlags(buffer.get());
+        data.setEnginePowerICE(buffer.getFloat());
+        data.setEnginePowerMGUK(buffer.getFloat());
         data.setErsStoreEnergy(buffer.getFloat());
         data.setErsDeployMode(buffer.get() & 0xFF);
         data.setErsHarvestedThisLapMGUK(buffer.getFloat());

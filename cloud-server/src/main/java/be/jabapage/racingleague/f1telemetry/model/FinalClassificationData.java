@@ -5,17 +5,18 @@ import java.nio.ByteBuffer;
 
 @Data
 public class FinalClassificationData {
-    private int position;          // uint8
-    private int numLaps;           // uint8
-    private int gridPosition;      // uint8
-    private int points;            // uint8
-    private int numPitStops;       // uint8
-    private int resultStatus;      // uint8
-    private long bestLapTimeInMS;  // uint32
-    private double totalRaceTime;  // double
-    private int penaltiesTime;     // uint8
-    private int numPenalties;      // uint8
-    private int numTyreStints;     // uint8
+    private int position;               // uint8
+    private int numLaps;                // uint8
+    private int gridPosition;           // uint8
+    private int points;                 // uint8
+    private int numPitStops;            // uint8
+    private int resultStatus;           // uint8
+    private int resultReason;           // uint8
+    private long bestLapTimeInMS;       // uint32
+    private double totalRaceTime;       // double
+    private int penaltiesTime;          // uint8
+    private int numPenalties;           // uint8
+    private int numTyreStints;          // uint8
     private int[] tyreStintsActual = new int[8]; // uint8[8]
     private int[] tyreStintsVisual = new int[8]; // uint8[8]
     private int[] tyreStintsEndLaps = new int[8]; // uint8[8]
@@ -28,6 +29,7 @@ public class FinalClassificationData {
         data.setPoints(buffer.get() & 0xFF);
         data.setNumPitStops(buffer.get() & 0xFF);
         data.setResultStatus(buffer.get() & 0xFF);
+        data.setResultReason(buffer.get() & 0xFF);
         data.setBestLapTimeInMS(buffer.getInt() & 0xFFFFFFFFL);
         data.setTotalRaceTime(buffer.getDouble());
         data.setPenaltiesTime(buffer.get() & 0xFF);

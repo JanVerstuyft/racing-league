@@ -41,8 +41,10 @@ class CarState:
         self.brake = 0.0
         self.steer = 0.0
         self.tyre_wear = [0.0] * 4
+        self.tyre_damage = [0] * 4
         self.brake_temp = [100] * 4
-        self.tyre_temp = [90] * 4
+        self.tyre_temp_surface = [90] * 4
+        self.tyre_temp_inner = [85] * 4
         self.fuel = 10.0
         self.position = index + 1
         self.session_time = 0.0
@@ -96,6 +98,7 @@ class CarState:
             self.last_lap_time = int(self.session_time * 1000)
 
 def create_header(packet_id, session_uid=12345678, frame_id=1, session_time=0.0, car_index=0):
+    # uint16, uint8 x 6, uint64, float, uint32, uint32, uint8, uint8
     return struct.pack("<HBBBBBQfIIBB", 2025, 25, 1, 0, 1, packet_id, session_uid, session_time, frame_id, frame_id, car_index, 255)
 
 def pack_participants(cars):
@@ -105,14 +108,36 @@ def pack_participants(cars):
         if i < len(cars):
             car = cars[i]
             name = car.name.encode("utf-8").ljust(32, b"\x00")
-            data += struct.pack("<BBBBBBB32sBBB", 0, i, i, car.team_id, 0, car.index+1, 1, name, 1, 1, 1)
+            # ParticipantData: uint8 x 7, 32s, uint8 x 2, uint16, uint8 x 2, LiveryColour[4](uint8 x 3)
+            # LiveryColour x 4 = 12 bytes
+            data += struct.pack("<BBBBBBB32sBBHBB 12B", 
+                                0, i, i, car.team_id, 0, car.index+1, 1, name, 1, 1, 100, 1, 4, 
+                                *([255, 0, 0] * 4)) # 4 colors
         else:
-            data += struct.pack("<BBBBBBB32sBBB", 0, 255, 255, 255, 0, 0, 0, b"".ljust(32, b"\x00"), 0, 0, 0)
+            data += struct.pack("<BBBBBBB32sBBHBB 12B", 
+                                0, 255, 255, 255, 0, 0, 0, b"".ljust(32, b"\x00"), 0, 0, 0, 0, 0, 
+                                *([0, 0, 0] * 4))
     return data
 
 def pack_session(cars):
     header = create_header(1, session_time=cars[0].session_time)
-    return header + struct.pack("<BbbBHBb", 0, 30, 25, 50, int(TRACK_LENGTH), 10, 3)
+    # PacketSessionData: uint8, int8, int8, uint8, uint16, uint8, int8, uint8, uint16, uint16, uint8, uint8, uint8, uint8, uint8, uint8
+    # trackId is the 7th field (index 6 in pack)
+    data = header + struct.pack("<BbbBHBbBHHBBBBBB", 0, 30, 25, 50, int(TRACK_LENGTH), 10, 17, 0, 1800, 3600, 80, 0, 0, 0, 0, 0)
+    # Skip MarshalZones (105 bytes)
+    data += b"\x00" * 105
+    # uint8, uint8, uint8
+    data += struct.pack("<BBB", 0, 0, 0)
+    # Skip WeatherForecastSamples (512 bytes)
+    data += b"\x00" * 512
+    # uint8, uint8, uint32, uint32, uint32, uint8, uint8, uint8, uint8 x 11, uint32, uint8 x 35, uint8, 12B, float, float
+    # We'll just pad the rest to keep it simple but correct enough for buffer size if needed
+    data += struct.pack("<BBIII BBB BBBBBBBBBBB I B BBBBB BBBBB BBBBB BBBBB BBBBB BBBBB BBBBB B 12B ff",
+                        0, 50, 123, 456, 789, 0, 0, 0, 
+                        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 
+                        1000, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
+                        *([0]*12), 2000.0, 4000.0)
+    return data
 
 def pack_lap_data(cars, frame_id):
     header = create_header(2, frame_id=frame_id, session_time=cars[0].session_time)
@@ -126,12 +151,17 @@ def pack_lap_data(cars, frame_id):
     for i in range(22):
         if i < len(cars):
             c = cars[i]
-            data += struct.pack("<IIHHHHfffBBBBBBBBBBBBBBBHHB", 
-                                c.last_lap_time, 0, 0, 0, 0, 0, c.lap_distance, c.total_distance, 0.0, 
-                                c.position, c.current_lap, 0, c.pit_stops, 1, 0, 0, 0, 0, 0, 0, c.position, 4, 3, 0, 0, 0, 0)
+            # LapData: uint32 x 2, (uint16, uint8) x 4, float x 3, uint8 x 14, uint16 x 2, uint8, float, uint8
+            # Total lap times/deltas split into MS part and Minute part
+            data += struct.pack("<II HBHB HBHB fff BBBBBBBBBBBBBB HH B f B", 
+                                c.last_lap_time % 60000, c.last_lap_time // 60000, # Incorrect but filler
+                                0, 0, 0, 0, 0, 0, 0, 0, 
+                                c.lap_distance, c.total_distance, 0.0, 
+                                c.position, c.current_lap, 0, c.pit_stops, 1, 0, 0, 0, 0, 0, 0, c.position, 4, 3, 
+                                0, 0, 0, 0.0, 0)
         else:
-            data += struct.pack("<IIHHHHfffBBBBBBBBBBBBBBBHHB", 
-                                0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            data += struct.pack("<II HBHB HBHB fff BBBBBBBBBBBBBB HH B f B", 
+                                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0)
     data += struct.pack("<BB", 255, 255)
     return data
 
@@ -141,12 +171,13 @@ def pack_car_telemetry(cars, frame_id):
     for i in range(22):
         if i < len(cars):
             c = cars[i]
+            # CarTelemetryData: uint16, float x 3, uint8, int8, uint16, uint8, uint8, uint16, uint16 x 4, uint8 x 4, uint8 x 4, uint16, float x 4, uint8 x 4
             data += struct.pack("<HfffBbHBBH 4H 4B 4B H 4f 4B",
                                 int(c.speed_kmh), c.throttle, c.steer, c.brake, 0, c.gear, c.rpm, 1, 80, 0,
-                                *[int(t) for t in c.brake_temp], *[int(t) for t in c.tyre_temp], *[int(t) for t in c.tyre_temp], 
-                                105, 2.1, 2.1, 2.1, 2.1, 0, 0, 0, 0)
+                                *c.brake_temp, *c.tyre_temp_surface, *c.tyre_temp_inner, 105, 
+                                2.1, 2.1, 2.1, 2.1, 0, 0, 0, 0)
         else:
-            data += struct.pack("<HfffBbHBBH 4H 4B 4B H 4f 4B", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            data += struct.pack("<HfffBbHBBH 4H 4B 4B H 4f 4B", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
     data += struct.pack("<BBb", 255, 255, 0)
     return data
 
@@ -156,12 +187,12 @@ def pack_car_damage(cars, frame_id):
     for i in range(22):
         if i < len(cars):
             c = cars[i]
-            data += struct.pack("<4f 4B 4B 15B 4B",
-                                *c.tyre_wear, 0, 0, 0, 0, 0, 0, 0, 0, 
-                                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                0, 0, 0, 0)
+            # CarDamageData: float x 4, uint8 x 4, uint8 x 4, uint8 x 4, uint8 x 18
+            data += struct.pack("<4f 4B 4B 4B 18B",
+                                *c.tyre_wear, *c.tyre_damage, 0, 0, 0, 0, 0, 0, 0, 0,
+                                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
         else:
-            data += struct.pack("<4f 4B 4B 15B 4B", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            data += struct.pack("<4f 4B 4B 4B 18B", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
     return data
 
 def pack_car_status(cars, frame_id):
@@ -170,12 +201,15 @@ def pack_car_status(cars, frame_id):
     for i in range(22):
         if i < len(cars):
             c = cars[i]
+            # CarStatusData: uint8 x 5, float x 3, uint16 x 2, uint8 x 2, uint16, uint8 x 3, int8, float x 2, float, uint8, float x 4, uint8
             # visualTyreCompound 16=Soft, 17=Medium, 18=Hard
             tyre = 16 + (c.index % 3)
-            data += struct.pack("<BBBBBfffHHBBHBBBbfBfffB",
-                                1, 1, 1, 58, 0, c.fuel, 10.0, 5.0, 15000, 4000, 8, 1, 0, tyre+1, tyre, 2, 0, 4000000.0, 1, 0.0, 0.0, 0.0, 0)
+            data += struct.pack("<BBBBBfffHHBBHBBBbff f B ffff B",
+                                1, 1, 1, 58, 0, c.fuel, 10.0, 5.0, 15000, 4000, 8, 1, 0, tyre+1, tyre, 2, 0, 
+                                600000.0, 200000.0, # enginePowerICE, MGUK
+                                4000000.0, 1, 0.0, 0.0, 0.0, 0)
         else:
-            data += struct.pack("<BBBBBfffHHBBHBBBbfBfffB", 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0, 0.0, 0.0, 0.0, 0)
+            data += struct.pack("<BBBBBfffHHBBHBBBbff f B ffff B", 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0, 0.0, 0.0, 0.0, 0)
     return data
 
 def main():

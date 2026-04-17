@@ -5,6 +5,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.net.DatagramPacket;
@@ -15,6 +16,7 @@ import java.util.concurrent.Executors;
 
 @Slf4j
 @Service
+@ConditionalOnProperty(name = "telemetry.udp.enabled", havingValue = "true", matchIfMissing = true)
 public class UdpListenerService {
 
     private static final int PORT = 20777;
