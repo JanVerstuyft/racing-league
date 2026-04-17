@@ -18,13 +18,14 @@ public class LeaderboardView extends VerticalLayout {
 
     private final Broadcaster broadcaster;
     private final Grid<DriverBoardState> grid = new Grid<>(DriverBoardState.class, false);
+    private final H2 title = new H2("LIVE LEADERBOARD");
 
     public LeaderboardView(Broadcaster broadcaster) {
         this.broadcaster = broadcaster;
         setSizeFull();
 
         configureGrid();
-        add(new H2("LIVE LEADERBOARD"), grid);
+        add(title, grid);
     }
 
     private void configureGrid() {
@@ -45,9 +46,14 @@ public class LeaderboardView extends VerticalLayout {
     protected void onAttach(AttachEvent attachEvent) {
         UI ui = attachEvent.getUI();
         broadcaster.registerLeaderboard(data -> ui.access(() -> updateLeaderboard(data)));
+        broadcaster.registerSessionType(type -> ui.access(() -> updateTitle(type)));
     }
 
     private void updateLeaderboard(List<DriverBoardState> data) {
         grid.setItems(data);
+    }
+
+    private void updateTitle(String sessionType) {
+        title.setText("LIVE LEADERBOARD - " + sessionType.toUpperCase());
     }
 }

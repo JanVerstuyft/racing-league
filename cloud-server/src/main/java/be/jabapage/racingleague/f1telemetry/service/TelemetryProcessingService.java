@@ -1,6 +1,7 @@
 package be.jabapage.racingleague.f1telemetry.service;
 
 import be.jabapage.racingleague.f1telemetry.entity.*;
+import be.jabapage.racingleague.f1telemetry.entity.TyreStint;
 import be.jabapage.racingleague.f1telemetry.model.*;
 import be.jabapage.racingleague.f1telemetry.repository.*;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -57,18 +59,32 @@ public class TelemetryProcessingService {
     );
 
     // Tyre Compound ID to Name mapping
-    private static final Map<Integer, String> TYRE_COMPOUNDS = Map.of(
+    public static final Map<Integer, String> TYRE_COMPOUNDS = Map.of(
             16, "Soft", 17, "Medium", 18, "Hard", 7, "Inter", 8, "Wet"
+    );
+
+    public static final Map<Integer, String> SESSION_TYPE_NAMES = Map.ofEntries(
+            Map.entry(0, "Unknown"),
+            Map.entry(1, "Practice 1"), Map.entry(2, "Practice 2"), Map.entry(3, "Practice 3"), Map.entry(4, "Short Practice"),
+            Map.entry(5, "Qualifying 1"), Map.entry(6, "Qualifying 2"), Map.entry(7, "Qualifying 3"), Map.entry(8, "Short Qualifying"), Map.entry(9, "One-Shot Qualifying"),
+            Map.entry(10, "Sprint Shootout 1"), Map.entry(11, "Sprint Shootout 2"), Map.entry(12, "Sprint Shootout 3"), Map.entry(13, "Short Sprint Shootout"), Map.entry(14, "One-Shot Sprint Shootout"),
+            Map.entry(15, "Race"), Map.entry(16, "Race 2"), Map.entry(17, "Race 3"),
+            Map.entry(18, "Time Trial")
     );
 
     public void setActiveLeague(Long leagueId) {
         this.activeLeagueId = leagueId;
     }
 
+    public Long getActiveLeagueId() {
+        return activeLeagueId;
+    }
+
     public void processPacket(PacketHeader header, ByteBuffer buffer) {
         switch (header.getPacketId()) {
             case 1: // Session
                 this.currentSession = PacketSessionData.fromByteBuffer(buffer, header);
+                broadcastSessionType();
                 break;
             case 2: // Lap Data
                 this.currentLapData = PacketLapData.fromByteBuffer(buffer, header);
@@ -90,8 +106,17 @@ public class TelemetryProcessingService {
         }
     }
 
+    private void broadcastSessionType() {
+        if (currentSession != null) {
+            String sessionName = SESSION_TYPE_NAMES.getOrDefault(currentSession.getSessionType(), "Unknown (" + currentSession.getSessionType() + ")");
+            broadcaster.broadcastSessionType(sessionName);
+        }
+    }
+
     private void broadcastLeaderboard() {
         if (currentParticipants == null || currentLapData == null || currentCarStatus == null) return;
+        
+        broadcastSessionType(); // Ensure session type is also up to date
 
         List<DriverBoardState> board = new ArrayList<>();
         for (int i = 0; i < 22; i++) {
@@ -159,7 +184,7 @@ public class TelemetryProcessingService {
         sessionResult.setSessionType(currentSession.getSessionType());
         sessionResult.setTrackId(trackIdStr);
 
-        boolean isRace = currentSession.getSessionType() >= 10 && currentSession.getSessionType() <= 12;
+        boolean isRace = currentSession.getSessionType() >= 15 && currentSession.getSessionType() <= 17;
 
         for (int i = 0; i < classification.getNumCars(); i++) {
             FinalClassificationData data = classification.getClassificationData().get(i);
@@ -176,6 +201,19 @@ public class TelemetryProcessingService {
             driverResult.setGridPosition(data.getGridPosition());
             driverResult.setBestLapTime(data.getBestLapTimeInMS() / 1000.0f);
             driverResult.setResultStatus(data.getResultStatus());
+
+            // Process Tyre Stints
+            int lastEndLap = 0;
+            for (int j = 0; j < data.getNumTyreStints(); j++) {
+                TyreStint stint = new TyreStint();
+                stint.setDriverResult(driverResult);
+                stint.setStintOrder(j);
+                stint.setTyreCompound(data.getTyreStintsVisual()[j]);
+                stint.setEndLap(data.getTyreStintsEndLaps()[j]);
+                stint.setLaps(stint.getEndLap() - lastEndLap);
+                lastEndLap = stint.getEndLap();
+                driverResult.getTyreStints().add(stint);
+            }
             
             sessionResult.getDriverResults().add(driverResult);
             
@@ -189,6 +227,29 @@ public class TelemetryProcessingService {
                 isRace ? "Race" : "Qualifying", sessionResult.getSessionUID(), event.getEventName());
     }
 
+    @Transactional
+    public void recalculateStandings(Long leagueId) {
+        League league = leagueRepository.findByIdWithEvents(leagueId).orElse(null);
+        if (league == null) return;
+
+        // Clear existing standings
+        driverStandingRepository.deleteAll(driverStandingRepository.findByLeague(league));
+        teamStandingRepository.deleteAll(teamStandingRepository.findByLeague(league));
+
+        // Get all race sessions from events
+        List<SessionResult> raceSessions = league.getEvents().stream()
+                .flatMap(e -> e.getSessionResults().stream())
+                .filter(s -> s.getSessionType() >= 15 && s.getSessionType() <= 17)
+                .collect(Collectors.toList());
+
+        for (SessionResult session : raceSessions) {
+            for (DriverResult result : session.getDriverResults()) {
+                updateStandings(league, result);
+            }
+        }
+        log.info("Recalculated standings for league: {}", league.getName());
+    }
+
     private void updateStandings(League league, DriverResult result) {
         // Update Driver Standings
         DriverStanding ds = driverStandingRepository.findByLeagueAndDriverName(league, result.getDriverName())
@@ -196,8 +257,12 @@ public class TelemetryProcessingService {
                     DriverStanding newDs = new DriverStanding();
                     newDs.setLeague(league);
                     newDs.setDriverName(result.getDriverName());
+                    newDs.setPoints(0);
+                    newDs.setWins(0);
+                    newDs.setPodiums(0);
                     return newDs;
                 });
+        ds.setTeamName(result.getTeamName());
         ds.setPoints((ds.getPoints() != null ? ds.getPoints() : 0) + result.getPointsAwarded());
         if (result.getPosition() != null && result.getPosition() == 1) ds.setWins((ds.getWins() != null ? ds.getWins() : 0) + 1);
         if (result.getPosition() != null && result.getPosition() <= 3) ds.setPodiums((ds.getPodiums() != null ? ds.getPodiums() : 0) + 1);
@@ -209,6 +274,7 @@ public class TelemetryProcessingService {
                     TeamStanding newTs = new TeamStanding();
                     newTs.setLeague(league);
                     newTs.setTeamName(result.getTeamName());
+                    newTs.setPoints(0);
                     return newTs;
                 });
         ts.setPoints((ts.getPoints() != null ? ts.getPoints() : 0) + result.getPointsAwarded());

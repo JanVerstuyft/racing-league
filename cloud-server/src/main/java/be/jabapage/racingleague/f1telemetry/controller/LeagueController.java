@@ -39,6 +39,11 @@ public class LeagueController {
         telemetryProcessingService.setActiveLeague(id);
     }
 
+    @PostMapping("/{id}/recalculate")
+    public void recalculateStandings(@PathVariable Long id) {
+        telemetryProcessingService.recalculateStandings(id);
+    }
+
     @GetMapping("/{id}/standings/drivers")
     public List<DriverStanding> getDriverStandings(@PathVariable Long id) {
         return leagueRepository.findById(id)

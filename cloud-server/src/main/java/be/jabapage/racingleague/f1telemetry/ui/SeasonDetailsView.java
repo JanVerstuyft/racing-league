@@ -8,9 +8,16 @@ import be.jabapage.racingleague.f1telemetry.repository.DriverStandingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.EventRepository;
 import be.jabapage.racingleague.f1telemetry.repository.LeagueRepository;
 import be.jabapage.racingleague.f1telemetry.repository.TeamStandingRepository;
+import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
+import be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService;
+import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
+import com.vaadin.flow.component.notification.Notification;
+import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.tabs.Tab;
@@ -18,6 +25,7 @@ import com.vaadin.flow.component.tabs.Tabs;
 import com.vaadin.flow.router.*;
 
 import java.util.Comparator;
+import java.util.stream.Collectors;
 
 @PageTitle("Season Details | F1 Telemetry")
 @Route(value = "season", layout = MainLayout.class)
@@ -36,14 +44,17 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
     private final VerticalLayout eventsLayout = new VerticalLayout();
     private final VerticalLayout standingsLayout = new VerticalLayout();
+    private final TelemetryProcessingService telemetryProcessingService;
 
     public SeasonDetailsView(LeagueRepository leagueRepository, EventRepository eventRepository,
                              DriverStandingRepository driverStandingRepository,
-                             TeamStandingRepository teamStandingRepository) {
+                             TeamStandingRepository teamStandingRepository,
+                             TelemetryProcessingService telemetryProcessingService) {
         this.leagueRepository = leagueRepository;
         this.eventRepository = eventRepository;
         this.driverStandingRepository = driverStandingRepository;
         this.teamStandingRepository = teamStandingRepository;
+        this.telemetryProcessingService = telemetryProcessingService;
 
         setSizeFull();
         configureGrids();
@@ -56,7 +67,16 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         });
 
         eventsLayout.add(new H3("Race Weekends"), eventGrid);
-        standingsLayout.add(new H3("Driver Standings"), driverGrid, new H3("Team Standings"), teamGrid);
+        
+        Button recalculateBtn = new Button("Recalculate Standings", e -> {
+            if (league != null) {
+                telemetryProcessingService.recalculateStandings(league.getId());
+                updateData();
+                Notification.show("Standings recalculated!");
+            }
+        });
+        standingsLayout.add(new HorizontalLayout(new H3("Driver Standings"), recalculateBtn), 
+                driverGrid, new H3("Team Standings"), teamGrid);
         standingsLayout.setVisible(false);
 
         add(seasonName, tabs, eventsLayout, standingsLayout);
@@ -64,10 +84,42 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
     private void configureGrids() {
         eventGrid.addColumn(Event::getEventName).setHeader("Event");
-        eventGrid.addColumn(Event::getTrackId).setHeader("Track ID");
-        eventGrid.addComponentColumn(event -> new RouterLink("Results", EventResultsView.class, event.getId())).setHeader("Results");
+        eventGrid.addColumn(event -> {
+            return event.getSessionResults().stream()
+                    .map(SessionResult::getSessionType)
+                    .map(type -> TelemetryProcessingService.SESSION_TYPE_NAMES.getOrDefault(type, "S" + type))
+                    .distinct()
+                    .collect(Collectors.joining(", "));
+        }).setHeader("Sessions");
+
+        eventGrid.addComponentColumn(event -> {
+            HorizontalLayout actions = new HorizontalLayout();
+
+            RouterLink resultsLink = new RouterLink("Results", EventResultsView.class, event.getId());
+
+            Button deleteBtn = new Button("Delete", e -> {
+                ConfirmDialog dialog = new ConfirmDialog();
+                dialog.setHeader("Delete Weekend?");
+                dialog.setText("Are you sure you want to delete the weekend '" + event.getEventName() + "'? Standings will NOT be automatically updated, you should recalculate them after deleting.");
+                dialog.setCancelable(true);
+                dialog.setConfirmText("Delete");
+                dialog.setConfirmButtonTheme("error primary");
+                dialog.addConfirmListener(ev -> {
+                    eventRepository.delete(event);
+                    updateData();
+                    Notification.show("Weekend deleted");
+                });
+                dialog.open();
+            });
+            deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
+
+            actions.add(resultsLink, deleteBtn);
+            actions.setAlignItems(FlexComponent.Alignment.CENTER);
+            return actions;
+        }).setHeader("Actions");
 
         driverGrid.addColumn(DriverStanding::getDriverName).setHeader("Driver");
+        driverGrid.addColumn(DriverStanding::getTeamName).setHeader("Team");
         driverGrid.addColumn(ds -> ds.getPoints() != null ? ds.getPoints() : 0).setHeader("Points").setSortable(true);
         driverGrid.addColumn(ds -> ds.getWins() != null ? ds.getWins() : 0).setHeader("Wins");
 

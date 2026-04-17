@@ -23,7 +23,7 @@ public class Event {
     private String trackId;
     private String eventName; // e.g., "British Grand Prix"
 
-    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     @ToString.Exclude
     private Set<SessionResult> sessionResults = new LinkedHashSet<>();
 }

@@ -22,4 +22,7 @@ public class League {
 
     @OneToMany(mappedBy = "league", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<SessionResult> sessionResults = new ArrayList<>();
+
+    @OneToMany(mappedBy = "league", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<Event> events = new ArrayList<>();
 }

@@ -4,7 +4,10 @@ import be.jabapage.racingleague.f1telemetry.entity.League;
 import be.jabapage.racingleague.f1telemetry.repository.LeagueRepository;
 import be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService;
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.grid.Grid;
+import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -38,14 +41,49 @@ public class SeasonListView extends VerticalLayout {
     private void configureGrid() {
         grid.setSizeFull();
         grid.addColumn(League::getName).setHeader("Season Name");
-        grid.addComponentColumn(league -> new RouterLink("Details", SeasonDetailsView.class, league.getId())).setHeader("Actions");
+        
         grid.addComponentColumn(league -> {
-            Button activateBtn = new Button("Activate", e -> {
-                telemetryProcessingService.setActiveLeague(league.getId());
-                Notification.show("Season " + league.getName() + " activated for telemetry!");
+            boolean isActive = league.getId().equals(telemetryProcessingService.getActiveLeagueId());
+            if (isActive) {
+                Span activeBadge = new Span("ACTIVE");
+                activeBadge.getElement().getThemeList().add("badge success");
+                return activeBadge;
+            } else {
+                Button activateBtn = new Button("Activate", e -> {
+                    telemetryProcessingService.setActiveLeague(league.getId());
+                    grid.getDataProvider().refreshAll();
+                    Notification.show("Season " + league.getName() + " activated for telemetry!");
+                });
+                activateBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+                return activateBtn;
+            }
+        }).setHeader("Status");
+
+        grid.addComponentColumn(league -> {
+            HorizontalLayout actions = new HorizontalLayout();
+            
+            RouterLink detailsLink = new RouterLink("Details", SeasonDetailsView.class, league.getId());
+            
+            Button deleteBtn = new Button("Delete", e -> {
+                ConfirmDialog dialog = new ConfirmDialog();
+                dialog.setHeader("Delete Season?");
+                dialog.setText("Are you sure you want to delete '" + league.getName() + "'? All results and standings will be lost.");
+                dialog.setCancelable(true);
+                dialog.setConfirmText("Delete");
+                dialog.setConfirmButtonTheme("error primary");
+                dialog.addConfirmListener(event -> {
+                    leagueRepository.delete(league);
+                    updateList();
+                    Notification.show("Season deleted");
+                });
+                dialog.open();
             });
-            return activateBtn;
-        });
+            deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
+            
+            actions.add(detailsLink, deleteBtn);
+            actions.setAlignItems(Alignment.CENTER);
+            return actions;
+        }).setHeader("Actions");
     }
 
     private HorizontalLayout createToolbar() {
