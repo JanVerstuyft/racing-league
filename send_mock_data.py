@@ -98,8 +98,11 @@ class CarState:
             self.last_lap_time = int(self.session_time * 1000)
 
 def create_header(packet_id, session_uid=12345678, frame_id=1, session_time=0.0, car_index=0):
-    # uint16, uint8 x 6, uint64, float, uint32, uint32, uint8, uint8
-    return struct.pack("<HBBBBBQfIIBB", 2025, 25, 1, 0, 1, packet_id, session_uid, session_time, frame_id, frame_id, car_index, 255)
+    # F1 25 Header:
+    # uint16 (packetFormat), uint8 x 5 (gameYear, major, minor, version, packetId)
+    # uint64 (sessionUID), float (sessionTime), uint32 (frameIdentifier)
+    # uint64 (overallFrameIdentifier), uint8 (playerCarIndex), uint8 (secondary)
+    return struct.pack("<HBBBBBQfI QBB", 2025, 25, 1, 0, 1, packet_id, session_uid, session_time, frame_id, frame_id, car_index, 255)
 
 def pack_participants(cars):
     header = create_header(4, car_index=0)
@@ -212,6 +215,22 @@ def pack_car_status(cars, frame_id):
             data += struct.pack("<BBBBBfffHHBBHBBBbff f B ffff B", 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0, 0.0, 0.0, 0.0, 0)
     return data
 
+def pack_final_classification(cars, frame_id):
+    header = create_header(8, frame_id=frame_id, session_time=cars[0].session_time)
+    data = header + struct.pack("<B", len(cars))
+    for i in range(22):
+        if i < len(cars):
+            # resultStatus 3 = Finished
+            data += struct.pack("<BBBBBBB I d BBB 8B 8B 8B",
+                                i+1, 10, i+1, 25-i if i < 10 else 0, 1, 3, 0, 
+                                75000, 1200.0, 0, 0, 1,
+                                *([16] + [0]*7), # visual tyre
+                                *([16] + [0]*7), # actual tyre
+                                *([10] + [0]*7)) # end lap
+        else:
+            data += struct.pack("<BBBBBBB I d BBB 8B 8B 8B", 0,0,0,0,0,0,0, 0, 0.0, 0, 0, 0, *([0]*24))
+    return data
+
 def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     cars = [CarState(i, DRIVERS_CONFIG[i][0], DRIVERS_CONFIG[i][1]) for i in range(NUM_CARS)]
@@ -234,6 +253,11 @@ def main():
             sock.sendto(pack_car_status(cars, frame_id), (IP, PORT))
             sock.sendto(pack_car_telemetry(cars, frame_id), (IP, PORT))
             sock.sendto(pack_car_damage(cars, frame_id), (IP, PORT))
+            
+            # Trigger Final Classification after 10 frames (5 seconds) to test storage
+            if frame_id == 10:
+                print("Sending Final Classification packet...")
+                sock.sendto(pack_final_classification(cars, frame_id), (IP, PORT))
             
             if frame_id % 10 == 0:
                 p1 = sorted(cars, key=lambda c: c.total_distance, reverse=True)[0]

@@ -28,4 +28,10 @@ public class DriverResult {
 
     @Column(name = "result_status", nullable = false, columnDefinition = "int default 0")
     private Integer resultStatus;
+
+    @OneToMany(mappedBy = "driverResult", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    private java.util.List<TyreStint> tyreStints = new java.util.ArrayList<>();
+
+    @OneToMany(mappedBy = "driverResult", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    private java.util.List<LapResult> lapResults = new java.util.ArrayList<>();
 }

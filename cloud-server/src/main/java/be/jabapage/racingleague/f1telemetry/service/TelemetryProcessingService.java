@@ -28,6 +28,8 @@ public class TelemetryProcessingService {
     @Autowired
     private EventRepository eventRepository;
     @Autowired
+    private LapResultRepository lapResultRepository;
+    @Autowired
     private Broadcaster broadcaster;
 
     private Long activeLeagueId;
@@ -35,6 +37,21 @@ public class TelemetryProcessingService {
     private PacketParticipantsData currentParticipants;
     private PacketLapData currentLapData;
     private PacketCarStatusData currentCarStatus;
+
+    private final int[] lastLapNum = new int[22];
+    private final long[] lastS1 = new long[22];
+    private final long[] lastS2 = new long[22];
+    private final boolean[] lapInvalid = new boolean[22];
+
+    private final long[] driverBestLap = new long[22];
+    private final long[] driverBestS1 = new long[22];
+    private final long[] driverBestS2 = new long[22];
+    private final long[] driverBestS3 = new long[22];
+
+    private long sessionBestS1 = Long.MAX_VALUE;
+    private long sessionBestS2 = Long.MAX_VALUE;
+    private long sessionBestS3 = Long.MAX_VALUE;
+    private long sessionBestLap = Long.MAX_VALUE;
     
     // Team ID to Name mapping (simplified)
     private static final Map<Integer, String> TEAM_NAMES = Map.of(
@@ -87,7 +104,9 @@ public class TelemetryProcessingService {
                 broadcastSessionType();
                 break;
             case 2: // Lap Data
-                this.currentLapData = PacketLapData.fromByteBuffer(buffer, header);
+                PacketLapData newLapData = PacketLapData.fromByteBuffer(buffer, header);
+                processLapData(newLapData);
+                this.currentLapData = newLapData;
                 broadcastLeaderboard();
                 break;
             case 4: // Participants
@@ -106,6 +125,77 @@ public class TelemetryProcessingService {
         }
     }
 
+    private void processLapData(PacketLapData packet) {
+        for (int i = 0; i < packet.getLapData().size(); i++) {
+            LapData ld = packet.getLapData().get(i);
+            int carIndex = i;
+
+            // Update sector times if they are valid in current lap
+            if (ld.getSector() == 1 && ld.getSector1TimeInMS() > 0) {
+                long s1 = ld.getSector1TimeInMS();
+                lastS1[carIndex] = s1;
+                if (ld.getCurrentLapInvalid() == 0) {
+                    if (s1 < driverBestS1[carIndex] || driverBestS1[carIndex] == 0) driverBestS1[carIndex] = s1;
+                    if (s1 < sessionBestS1) sessionBestS1 = s1;
+                }
+            } else if (ld.getSector() == 2 && ld.getSector2TimeInMS() > 0) {
+                long s2 = ld.getSector2TimeInMS();
+                lastS2[carIndex] = s2;
+                if (ld.getCurrentLapInvalid() == 0) {
+                    if (s2 < driverBestS2[carIndex] || driverBestS2[carIndex] == 0) driverBestS2[carIndex] = s2;
+                    if (s2 < sessionBestS2) sessionBestS2 = s2;
+                }
+            }
+
+            // Track if current lap becomes invalid
+            if (ld.getCurrentLapInvalid() == 1) {
+                lapInvalid[carIndex] = true;
+            }
+
+            // Detect lap completion
+            if (lastLapNum[carIndex] > 0 && ld.getCurrentLapNum() > lastLapNum[carIndex]) {
+                long lastLapTime = ld.getLastLapTimeInMS();
+                long s1 = lastS1[carIndex];
+                long s2 = lastS2[carIndex];
+                long s3 = lastLapTime - s1 - s2;
+
+                // Update best lap and S3
+                if (!lapInvalid[carIndex] && lastLapTime > 0) {
+                    if (lastLapTime < driverBestLap[carIndex] || driverBestLap[carIndex] == 0) driverBestLap[carIndex] = lastLapTime;
+                    if (lastLapTime < sessionBestLap) sessionBestLap = lastLapTime;
+                    
+                    if (s3 > 0) {
+                        if (s3 < driverBestS3[carIndex] || driverBestS3[carIndex] == 0) driverBestS3[carIndex] = s3;
+                        if (s3 < sessionBestS3) sessionBestS3 = s3;
+                    }
+                }
+
+                // Last lap is completed
+                LapResult result = new LapResult();
+                result.setSessionUID(packet.getHeader().getSessionUID());
+                result.setCarIndex(carIndex);
+                result.setLapNumber(lastLapNum[carIndex]);
+                result.setLapTimeInMS(lastLapTime);
+                result.setS1InMS(s1);
+                result.setS2InMS(s2);
+                result.setS3InMS(s3);
+                result.setIsValid(!lapInvalid[carIndex]);
+                
+                if (currentCarStatus != null && carIndex < currentCarStatus.getCarStatusData().size()) {
+                    result.setTyreCompound(currentCarStatus.getCarStatusData().get(carIndex).getVisualTyreCompound());
+                }
+
+                lapResultRepository.save(result);
+            }
+
+            // Update state
+            lastLapNum[carIndex] = ld.getCurrentLapNum();
+            if (ld.getSector() == 0) { // New lap started
+                lapInvalid[carIndex] = false;
+            }
+        }
+    }
+
     private void broadcastSessionType() {
         if (currentSession != null) {
             String sessionName = SESSION_TYPE_NAMES.getOrDefault(currentSession.getSessionType(), "Unknown (" + currentSession.getSessionType() + ")");
@@ -114,9 +204,11 @@ public class TelemetryProcessingService {
     }
 
     private void broadcastLeaderboard() {
-        if (currentParticipants == null || currentLapData == null || currentCarStatus == null) return;
+        if (currentParticipants == null || currentLapData == null || currentCarStatus == null || currentSession == null) return;
         
         broadcastSessionType(); // Ensure session type is also up to date
+
+        boolean isQualifying = currentSession.getSessionType() >= 5 && currentSession.getSessionType() <= 14;
 
         List<DriverBoardState> board = new ArrayList<>();
         for (int i = 0; i < 22; i++) {
@@ -137,8 +229,26 @@ public class TelemetryProcessingService {
             state.setTyreCompound(TYRE_COMPOUNDS.getOrDefault(csd.getVisualTyreCompound(), "Unknown"));
             state.setTyreAge(csd.getTyresAgeLaps());
             state.setPitStops(ld.getNumPitStops());
-            state.setGapToLeader(formatTime(ld.getDeltaToRaceLeaderInMS()));
-            state.setGapToFront(formatTime(ld.getDeltaToCarInFrontInMS()));
+            state.setQualifying(isQualifying);
+
+            if (isQualifying) {
+                state.setBestLapTime(formatLapTimeFull(driverBestLap[i]));
+                state.setS1Time(formatLapTimeFull(driverBestS1[i]));
+                state.setS2Time(formatLapTimeFull(driverBestS2[i]));
+                state.setS3Time(formatLapTimeFull(driverBestS3[i]));
+                state.setBestS1(driverBestS1[i] > 0 && driverBestS1[i] == sessionBestS1);
+                state.setBestS2(driverBestS2[i] > 0 && driverBestS2[i] == sessionBestS2);
+                state.setBestS3(driverBestS3[i] > 0 && driverBestS3[i] == sessionBestS3);
+                
+                if (driverBestLap[i] > 0 && sessionBestLap > 0) {
+                    state.setGapToLeaderBest(formatTime(driverBestLap[i] - sessionBestLap));
+                } else {
+                    state.setGapToLeaderBest("-");
+                }
+            } else {
+                state.setGapToLeader(formatTime(ld.getDeltaToRaceLeaderInMS()));
+                state.setGapToFront(formatTime(ld.getDeltaToCarInFrontInMS()));
+            }
             
             board.add(state);
         }
@@ -147,19 +257,135 @@ public class TelemetryProcessingService {
     }
 
     private String formatTime(long ms) {
-        if (ms == 0) return "-";
+        if (ms <= 0) return "-";
         return String.format("+%.3fs", ms / 1000.0f);
+    }
+
+    private String formatLapTimeFull(long ms) {
+        if (ms <= 0) return "-";
+        int minutes = (int) (ms / 60000);
+        float seconds = (ms % 60000) / 1000.0f;
+        return String.format("%d:%06.3f", minutes, seconds);
+    }
+
+    public List<RacePaceStats> calculatePureRacePace(Long eventId) {
+        Event event = eventRepository.findByIdWithResults(eventId).orElse(null);
+        if (event == null) return Collections.emptyList();
+
+        // Find the main race session
+        SessionResult raceSession = event.getSessionResults().stream()
+                .filter(s -> s.getSessionType() >= 15 && s.getSessionType() <= 17)
+                .findFirst().orElse(null);
+        if (raceSession == null) return Collections.emptyList();
+
+        // Calculate total race distance (max laps driven)
+        int maxLaps = raceSession.getDriverResults().stream()
+                .flatMap(dr -> dr.getLapResults().stream())
+                .mapToInt(LapResult::getLapNumber)
+                .max().orElse(0);
+
+        List<RacePaceStats> statsList = new ArrayList<>();
+        for (DriverResult dr : raceSession.getDriverResults()) {
+            List<LapResult> validLaps = dr.getLapResults().stream()
+                    .filter(LapResult::getIsValid)
+                    .collect(Collectors.toList());
+
+            // Only drivers who driven at least 50%
+            if (dr.getLapResults().size() < maxLaps * 0.5) continue;
+
+            RacePaceStats stats = new RacePaceStats();
+            stats.setDriverName(dr.getDriverName());
+            stats.setTeamName(dr.getTeamName());
+
+            double s1 = calculateWeightedSector(validLaps.stream().mapToLong(LapResult::getS1InMS).toArray());
+            double s2 = calculateWeightedSector(validLaps.stream().mapToLong(LapResult::getS2InMS).toArray());
+            double s3 = calculateWeightedSector(validLaps.stream().mapToLong(LapResult::getS3InMS).toArray());
+
+            stats.setS1Pace(s1 / 1000.0);
+            stats.setS2Pace(s2 / 1000.0);
+            stats.setS3Pace(s3 / 1000.0);
+            stats.setPureRacePace((s1 + s2 + s3) / 1000.0);
+
+            // Tyre usage (percentage of tyres in top 60% sectors - simplified to valid laps here)
+            Map<String, Long> compoundCounts = validLaps.stream()
+                    .collect(Collectors.groupingBy(l -> TYRE_COMPOUNDS.getOrDefault(l.getTyreCompound(), "U"), Collectors.counting()));
+            long totalValid = validLaps.size();
+            Map<String, Double> tyreUsage = new HashMap<>();
+            compoundCounts.forEach((k, v) -> tyreUsage.put(k, (double) v / totalValid * 100.0));
+            stats.setTyreUsage(tyreUsage);
+
+            statsList.add(stats);
+        }
+
+        // Sector performance calculation
+        if (!statsList.isEmpty()) {
+            double bestPace = statsList.stream().mapToDouble(RacePaceStats::getPureRacePace).min().orElse(0);
+            double avgPace = statsList.stream().mapToDouble(RacePaceStats::getPureRacePace).average().orElse(0);
+            
+            for (RacePaceStats s : statsList) {
+                if (avgPace == bestPace) {
+                    s.setSectorPerformance(10.0);
+                } else {
+                    double perf = 10.0 - 5.0 * (s.getPureRacePace() - bestPace) / (avgPace - bestPace);
+                    s.setSectorPerformance(Math.max(0, Math.min(10.0, perf)));
+                }
+            }
+        }
+
+        return statsList.stream()
+                .sorted(Comparator.comparingDouble(RacePaceStats::getPureRacePace))
+                .collect(Collectors.toList());
+    }
+
+    private double calculateWeightedSector(long[] times) {
+        if (times.length == 0) return 0;
+        Arrays.sort(times);
+        
+        int n = times.length;
+        double n30 = n * 0.3;
+        double totalWeight = 0;
+        double weightedSum = 0;
+
+        for (int i = 0; i < n; i++) {
+            double weight = 0;
+            int rank = i + 1; // 1-based index
+
+            if (rank <= n30) {
+                weight = 1.0;
+            } else if (rank <= 2 * n30) {
+                weight = 1.0 - (rank - n30) / n30;
+            } else {
+                weight = 0;
+            }
+
+            if (weight > 0) {
+                weightedSum += times[i] * weight;
+                totalWeight += weight;
+            }
+        }
+
+        return totalWeight > 0 ? weightedSum / totalWeight : times[0];
     }
 
     @Transactional
     public void handleFinalClassification(PacketFinalClassificationData classification) {
-        if (activeLeagueId == null || currentSession == null || currentParticipants == null) {
-            log.warn("Cannot save results: League, Session or Participants data missing.");
+        log.info("Received Final Classification packet (packet 8) for session UID: {}", classification.getHeader().getSessionUID());
+        if (activeLeagueId == null) {
+            log.warn("Cannot save results: No league activated.");
+            return;
+        }
+        if (currentSession == null || currentParticipants == null) {
+            log.warn("Cannot save results: Session or Participants data missing. (Session: {}, Participants: {})", 
+                currentSession != null ? "OK" : "MISSING", 
+                currentParticipants != null ? "OK" : "MISSING");
             return;
         }
 
-        League league = leagueRepository.findById(activeLeagueId).orElse(null);
-        if (league == null) return;
+        League league = leagueRepository.findByIdWithEvents(activeLeagueId).orElse(null);
+        if (league == null) {
+            log.warn("Cannot save results: Activated league ID {} not found in database.", activeLeagueId);
+            return;
+        }
 
         // Check if session already recorded
         if (sessionResultRepository.findBySessionUID(classification.getHeader().getSessionUID()).isPresent()) {
@@ -202,6 +428,13 @@ public class TelemetryProcessingService {
             driverResult.setBestLapTime(data.getBestLapTimeInMS() / 1000.0f);
             driverResult.setResultStatus(data.getResultStatus());
 
+            // Link stored lap results
+            List<LapResult> laps = lapResultRepository.findBySessionUIDAndCarIndex(classification.getHeader().getSessionUID(), i);
+            for (LapResult lap : laps) {
+                lap.setDriverResult(driverResult);
+                driverResult.getLapResults().add(lap);
+            }
+
             // Process Tyre Stints
             int lastEndLap = 0;
             for (int j = 0; j < data.getNumTyreStints(); j++) {
@@ -209,20 +442,31 @@ public class TelemetryProcessingService {
                 stint.setDriverResult(driverResult);
                 stint.setStintOrder(j);
                 stint.setTyreCompound(data.getTyreStintsVisual()[j]);
-                stint.setEndLap(data.getTyreStintsEndLaps()[j]);
-                stint.setLaps(stint.getEndLap() - lastEndLap);
-                lastEndLap = stint.getEndLap();
+                
+                int endLap = data.getTyreStintsEndLaps()[j];
+                if (endLap == 255) {
+                    endLap = data.getNumLaps();
+                }
+                
+                stint.setEndLap(endLap);
+                stint.setLaps(endLap - lastEndLap);
+                lastEndLap = endLap;
                 driverResult.getTyreStints().add(stint);
             }
             
             sessionResult.getDriverResults().add(driverResult);
-            
-            if (isRace) {
+        }
+
+        // Save everything first to ensure IDs are generated and relations are persisted
+        sessionResultRepository.saveAndFlush(sessionResult);
+
+        // Then update standings if it's a race
+        if (isRace) {
+            for (DriverResult driverResult : sessionResult.getDriverResults()) {
                 updateStandings(league, driverResult);
             }
         }
 
-        sessionResultRepository.save(sessionResult);
         log.info("Saved {} results for session UID: {} in event: {}", 
                 isRace ? "Race" : "Qualifying", sessionResult.getSessionUID(), event.getEventName());
     }

@@ -12,4 +12,15 @@ public class DriverBoardState {
     private int pitStops;
     private String gapToLeader;
     private String gapToFront;
+    
+    // Qualifying fields
+    private boolean qualifying;
+    private String bestLapTime;
+    private String gapToLeaderBest;
+    private String s1Time;
+    private String s2Time;
+    private String s3Time;
+    private boolean bestS1;
+    private boolean bestS2;
+    private boolean bestS3;
 }

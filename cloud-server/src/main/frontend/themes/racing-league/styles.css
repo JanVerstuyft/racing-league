@@ -2,3 +2,42 @@ vaadin-grid::part(fastest-lap) {
     color: #b339f4;
     font-weight: bold;
 }
+
+vaadin-grid::part(best-sector) {
+    color: #b339f4;
+    font-weight: bold;
+}
+
+.tyre-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: bold;
+    margin-right: 4px;
+    border: 2px solid #333;
+    color: black;
+}
+
+.tyre-soft { background-color: #ff3333; color: white; }
+.tyre-medium { background-color: #ffff33; }
+.tyre-hard { background-color: #ffffff; }
+.tyre-inter { background-color: #33ff33; }
+.tyre-wet { background-color: #3333ff; color: white; }
+.tyre-unknown { background-color: #888888; color: white; }
+
+.stint-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.stint-info {
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+}

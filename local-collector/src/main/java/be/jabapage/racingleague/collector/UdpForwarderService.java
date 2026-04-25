@@ -23,6 +23,12 @@ public class UdpForwarderService {
     @Value("${telemetry.cloud.url:http://localhost:8080/api/telemetry}")
     private String cloudUrl;
 
+    @Value("${telemetry.recording.enabled:false}")
+    private boolean recordingEnabled;
+
+    @Value("${telemetry.recording.path:data/recorded_session.bin}")
+    private String recordingPath;
+
     private DatagramSocket socket;
     private boolean running;
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
@@ -36,10 +42,18 @@ public class UdpForwarderService {
         executorService.submit(this::listen);
         log.info("UDP Forwarder Service started on port {}", port);
         log.info("Forwarding telemetry to {}", cloudUrl);
+        if (recordingEnabled) {
+            log.info("Recording telemetry to {}", recordingPath);
+            // Ensure directory exists
+            java.io.File file = new java.io.File(recordingPath);
+            if (file.getParentFile() != null) {
+                file.getParentFile().mkdirs();
+            }
+        }
     }
 
     private void listen() {
-        try {
+        try (java.io.FileOutputStream fos = recordingEnabled ? new java.io.FileOutputStream(recordingPath) : null) {
             socket = new DatagramSocket(port);
             byte[] buffer = new byte[2048];
 
@@ -51,6 +65,14 @@ public class UdpForwarderService {
                 System.arraycopy(packet.getData(), 0, data, 0, packet.getLength());
 
                 log.debug("Received UDP packet: {} bytes, Data(hex): {}", data.length, bytesToHex(data, 32));
+
+                if (fos != null) {
+                    // Write length (short) then data
+                    fos.write((data.length >> 8) & 0xFF);
+                    fos.write(data.length & 0xFF);
+                    fos.write(data);
+                    fos.flush(); // Ensure it's written to disk immediately
+                }
 
                 try {
                     restTemplate.postForObject(cloudUrl, data, Void.class);
