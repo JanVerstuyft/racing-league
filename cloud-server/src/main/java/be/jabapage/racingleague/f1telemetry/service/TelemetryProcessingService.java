@@ -97,7 +97,42 @@ public class TelemetryProcessingService {
         return activeLeagueId;
     }
 
+    private long currentSessionUID = 0;
+    private long lastPacketTime = 0;
+
+    private void resetSessionState() {
+        Arrays.fill(lastLapNum, 0);
+        Arrays.fill(lastS1, 0);
+        Arrays.fill(lastS2, 0);
+        Arrays.fill(lapInvalid, false);
+        Arrays.fill(driverBestLap, 0);
+        Arrays.fill(driverBestS1, 0);
+        Arrays.fill(driverBestS2, 0);
+        Arrays.fill(driverBestS3, 0);
+        sessionBestS1 = Long.MAX_VALUE;
+        sessionBestS2 = Long.MAX_VALUE;
+        sessionBestS3 = Long.MAX_VALUE;
+        sessionBestLap = Long.MAX_VALUE;
+        currentSession = null;
+        currentParticipants = null;
+        currentLapData = null;
+        currentCarStatus = null;
+        
+        // Clear the live UI
+        broadcaster.broadcastLeaderboard(Collections.emptyList());
+    }
+
     public void processPacket(PacketHeader header, ByteBuffer buffer) {
+        long now = System.currentTimeMillis();
+        // Reset session-specific state if session UID changed OR if there was a long gap (new replay start)
+        if (header.getSessionUID() != currentSessionUID || (now - lastPacketTime > 5000 && lastPacketTime > 0)) {
+            log.info("Session change or timeout detected, resetting live tracking state. (UID: {}, Gap: {}ms)", 
+                header.getSessionUID(), (now - lastPacketTime));
+            resetSessionState();
+            currentSessionUID = header.getSessionUID();
+        }
+        lastPacketTime = now;
+
         switch (header.getPacketId()) {
             case 1: // Session
                 this.currentSession = PacketSessionData.fromByteBuffer(buffer, header);
