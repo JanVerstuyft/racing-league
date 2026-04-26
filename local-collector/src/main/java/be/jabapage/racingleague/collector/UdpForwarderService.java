@@ -10,6 +10,10 @@ import org.springframework.web.client.RestTemplate;
 
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.UnknownHostException;
+import java.util.Enumeration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -29,9 +33,20 @@ public class UdpForwarderService {
     @Value("${telemetry.recording.path:data/recorded_session.bin}")
     private String recordingPath;
 
+    @Value("${telemetry.udp.forward.enabled:false}")
+    private boolean forwardEnabled;
+
+    @Value("${telemetry.udp.forward.host:localhost}")
+    private String forwardHost;
+
+    @Value("${telemetry.udp.forward.port:20778}")
+    private int forwardPort;
+
     private DatagramSocket socket;
+    private DatagramSocket forwardSocket;
     private boolean running;
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
+    private InetAddress forwardAddress;
 
     @Autowired
     private RestTemplate restTemplate;
@@ -39,6 +54,17 @@ public class UdpForwarderService {
     @PostConstruct
     public void start() {
         running = true;
+        logLocalIpAddresses();
+        if (forwardEnabled) {
+            try {
+                forwardAddress = InetAddress.getByName(forwardHost);
+                forwardSocket = new DatagramSocket();
+                log.info("UDP Forwarding enabled to {}:{}", forwardHost, forwardPort);
+            } catch (Exception e) {
+                log.error("Failed to initialize UDP forwarding to {}: {}", forwardHost, e.getMessage());
+                forwardEnabled = false;
+            }
+        }
         executorService.submit(this::listen);
         log.info("UDP Forwarder Service started on port {}", port);
         log.info("Forwarding telemetry to {}", cloudUrl);
@@ -52,6 +78,27 @@ public class UdpForwarderService {
         }
     }
 
+    private void logLocalIpAddresses() {
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface networkInterface = interfaces.nextElement();
+                if (networkInterface.isLoopback() || !networkInterface.isUp()) {
+                    continue;
+                }
+                Enumeration<InetAddress> addresses = networkInterface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress addr = addresses.nextElement();
+                    if (addr instanceof java.net.Inet4Address) {
+                        log.info("Local IP Address ({}): {}", networkInterface.getDisplayName(), addr.getHostAddress());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not determine local IP addresses: {}", e.getMessage());
+        }
+    }
+
     private void listen() {
         try (java.io.FileOutputStream fos = recordingEnabled ? new java.io.FileOutputStream(recordingPath) : null) {
             socket = new DatagramSocket(port);
@@ -59,7 +106,14 @@ public class UdpForwarderService {
 
             while (running) {
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                socket.receive(packet);
+                try {
+                    socket.receive(packet);
+                } catch (Exception e) {
+                    if (running) {
+                        log.error("Error receiving UDP packet: {}", e.getMessage());
+                    }
+                    continue;
+                }
 
                 byte[] data = new byte[packet.getLength()];
                 System.arraycopy(packet.getData(), 0, data, 0, packet.getLength());
@@ -74,6 +128,16 @@ public class UdpForwarderService {
                     fos.flush(); // Ensure it's written to disk immediately
                 }
 
+                if (forwardEnabled && forwardAddress != null && forwardSocket != null) {
+                    try {
+                        DatagramPacket forwardPacket = new DatagramPacket(data, data.length, forwardAddress, forwardPort);
+                        forwardSocket.send(forwardPacket);
+                        log.debug("Forwarded UDP packet to {}:{}", forwardAddress, forwardPort);
+                    } catch (Exception e) {
+                        log.warn("Failed to forward UDP packet (destination may be unreachable): {}", e.getMessage());
+                    }
+                }
+
                 try {
                     restTemplate.postForObject(cloudUrl, data, Void.class);
                     log.debug("Forwarded {} bytes to cloud", data.length);
@@ -83,7 +147,7 @@ public class UdpForwarderService {
             }
         } catch (Exception e) {
             if (running) {
-                log.error("Error in UDP Forwarder", e);
+                log.error("Fatal error in UDP Forwarder listener loop", e);
             }
         }
     }
@@ -102,6 +166,9 @@ public class UdpForwarderService {
         running = false;
         if (socket != null && !socket.isClosed()) {
             socket.close();
+        }
+        if (forwardSocket != null && !forwardSocket.isClosed()) {
+            forwardSocket.close();
         }
         executorService.shutdown();
         log.info("UDP Forwarder Service stopped.");
