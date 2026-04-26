@@ -6,6 +6,7 @@ import com.vaadin.flow.component.AttachEvent;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
+import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
@@ -35,7 +36,24 @@ public class LeaderboardView extends VerticalLayout {
         grid.addColumn(DriverBoardState::getTeam).setHeader("Team");
         
         // Race columns
-        Grid.Column<DriverBoardState> tyreCol = grid.addColumn(DriverBoardState::getTyreCompound).setHeader("Tyre");
+        Grid.Column<DriverBoardState> tyreCol = grid.addComponentColumn(state -> {
+            Span badge = new Span();
+            badge.addClassName("tyre-badge");
+            String compound = state.getTyreCompound();
+            if (compound == null) compound = "Unknown";
+            badge.setText(compound.substring(0, 1));
+            
+            switch (compound) {
+                case "Soft" -> badge.addClassName("tyre-soft");
+                case "Medium" -> badge.addClassName("tyre-medium");
+                case "Hard" -> badge.addClassName("tyre-hard");
+                case "Inter" -> badge.addClassName("tyre-inter");
+                case "Wet" -> badge.addClassName("tyre-wet");
+                default -> badge.addClassName("tyre-unknown");
+            }
+            return badge;
+        }).setHeader("Tyre");
+        
         Grid.Column<DriverBoardState> ageCol = grid.addColumn(DriverBoardState::getTyreAge).setHeader("Age");
         Grid.Column<DriverBoardState> pitsCol = grid.addColumn(DriverBoardState::getPitStops).setHeader("Pits");
         Grid.Column<DriverBoardState> gapLdrCol = grid.addColumn(DriverBoardState::getGapToLeader).setHeader("Gap Leader");
