@@ -41,6 +41,7 @@ public class TelemetryProcessingService {
     private final int[] lastLapNum = new int[22];
     private final long[] lastS1 = new long[22];
     private final long[] lastS2 = new long[22];
+    private final int[] lastTyre = new int[22];
     private final boolean[] lapInvalid = new boolean[22];
 
     private final long[] driverBestLap = new long[22];
@@ -97,13 +98,14 @@ public class TelemetryProcessingService {
         return activeLeagueId;
     }
 
-    private long currentSessionUID = 0;
+    private long currentSessionUID = -1;
     private long lastPacketTime = 0;
 
     private void resetSessionState() {
         Arrays.fill(lastLapNum, 0);
         Arrays.fill(lastS1, 0);
         Arrays.fill(lastS2, 0);
+        Arrays.fill(lastTyre, 0);
         Arrays.fill(lapInvalid, false);
         Arrays.fill(driverBestLap, 0);
         Arrays.fill(driverBestS1, 0);
@@ -126,15 +128,18 @@ public class TelemetryProcessingService {
         long now = System.currentTimeMillis();
         long packetSessionUID = header.getSessionUID();
 
-        // Reset session-specific state if session UID changed OR if there was a long gap (new replay start)
-        // We ignore UID 0 for session changes because it's often sent during transitions 
-        // and would cause unnecessary resets of valid session state.
+        if (header.getPacketId() == 8) {
+            log.info("Incoming Packet 8 (Final Classification) for UID: {}", packetSessionUID);
+        }
+
+        // Reset session-specific state if session UID changed OR if there was a long gap
+        // We only trigger a reset if the NEW UID is non-zero.
         boolean sessionChanged = (packetSessionUID != 0 && packetSessionUID != currentSessionUID);
         boolean timeout = (now - lastPacketTime > 5000 && lastPacketTime > 0);
 
         if (sessionChanged || timeout) {
-            log.info("{} detected, resetting live tracking state. (Packet UID: {}, Current UID: {}, Gap: {}ms)",
-                sessionChanged ? "Session change" : "Timeout",
+            log.info("{} detected, resetting live tracking state. (New UID: {}, Old UID: {}, Gap: {}ms)",
+                timeout ? "Timeout" : "Session change",
                 packetSessionUID, currentSessionUID, (now - lastPacketTime));
             resetSessionState();
             currentSessionUID = packetSessionUID;
@@ -142,26 +147,34 @@ public class TelemetryProcessingService {
         lastPacketTime = now;
 
         // Skip packets that don't match the session we are currently tracking.
-        // We specifically ignore UID 0 packets if we have a valid session active.
-        if (currentSessionUID != 0 && packetSessionUID == 0) {
+        // We ignore UID 0 packets if we have a valid session active.
+        if (currentSessionUID != -1 && currentSessionUID != 0 && packetSessionUID == 0) {
             return;
         }
-        // If the packet belongs to a different non-zero session, it should have triggered a reset above.
-        // This check is a safety measure to ensure we don't process intermixed packets from old sessions.
-        if (currentSessionUID != 0 && packetSessionUID != currentSessionUID) {
+        
+        // Safety check to ensure we don't intermix packets from different sessions
+        if (currentSessionUID != -1 && packetSessionUID != 0 && packetSessionUID != currentSessionUID) {
             return;
         }
 
         switch (header.getPacketId()) {
             case 1: // Session
                 this.currentSession = PacketSessionData.fromByteBuffer(buffer, header);
-                broadcastSessionType();
+                broadcastSessionInfo();
                 break;
             case 2: // Lap Data
                 PacketLapData newLapData = PacketLapData.fromByteBuffer(buffer, header);
                 processLapData(newLapData);
                 this.currentLapData = newLapData;
                 broadcastLeaderboard();
+                broadcastSessionInfo(); // Update lap progress
+                break;
+            case 3: // Event
+                PacketEventData eventData = PacketEventData.fromByteBuffer(buffer, header);
+                if ("SEND".equals(eventData.getEventStringCode())) {
+                    log.info("Session Ended event (SEND) received for UID: {}. Triggering result save.", header.getSessionUID());
+                    saveResultsFromLiveState(header.getSessionUID());
+                }
                 break;
             case 4: // Participants
                 this.currentParticipants = PacketParticipantsData.fromByteBuffer(buffer, header);
@@ -234,34 +247,49 @@ public class TelemetryProcessingService {
                 result.setS2InMS(s2);
                 result.setS3InMS(s3);
                 result.setIsValid(!lapInvalid[carIndex]);
-                
-                if (currentCarStatus != null && carIndex < currentCarStatus.getCarStatusData().size()) {
-                    result.setTyreCompound(currentCarStatus.getCarStatusData().get(carIndex).getVisualTyreCompound());
-                }
+                result.setTyreCompound(lastTyre[carIndex]);
+                result.setPitStopCount(ld.getNumPitStops());
 
                 lapResultRepository.save(result);
             }
 
             // Update state
             lastLapNum[carIndex] = ld.getCurrentLapNum();
+            if (currentCarStatus != null && carIndex < currentCarStatus.getCarStatusData().size()) {
+                lastTyre[carIndex] = currentCarStatus.getCarStatusData().get(carIndex).getVisualTyreCompound();
+            }
             if (ld.getSector() == 0) { // New lap started
                 lapInvalid[carIndex] = false;
             }
         }
     }
 
-    private void broadcastSessionType() {
+    private void broadcastSessionInfo() {
         if (currentSession != null) {
             String sessionName = SESSION_TYPE_NAMES.getOrDefault(currentSession.getSessionType(), "Unknown (" + currentSession.getSessionType() + ")");
-            broadcaster.broadcastSessionType(sessionName);
+            int playerCarIndex = currentSession.getHeader().getPlayerCarIndex();
+            int currentLap = 0;
+            if (currentLapData != null && playerCarIndex < currentLapData.getLapData().size()) {
+                currentLap = currentLapData.getLapData().get(playerCarIndex).getCurrentLapNum();
+            }
+
+            boolean isRace = currentSession.getSessionType() >= 15 && currentSession.getSessionType() <= 17;
+
+            SessionInfo info = SessionInfo.builder()
+                    .sessionType(sessionName)
+                    .currentLap(currentLap)
+                    .totalLaps(currentSession.getTotalLaps())
+                    .timeLeftSeconds(currentSession.getSessionTimeLeft())
+                    .isRace(isRace)
+                    .build();
+            
+            broadcaster.broadcastSessionInfo(info);
         }
     }
 
     private void broadcastLeaderboard() {
         if (currentParticipants == null || currentLapData == null || currentCarStatus == null || currentSession == null) return;
         
-        broadcastSessionType(); // Ensure session type is also up to date
-
         boolean isQualifying = currentSession.getSessionType() >= 5 && currentSession.getSessionType() <= 14;
 
         List<DriverBoardState> board = new ArrayList<>();
@@ -283,6 +311,8 @@ public class TelemetryProcessingService {
             state.setTyreCompound(TYRE_COMPOUNDS.getOrDefault(csd.getVisualTyreCompound(), "Unknown"));
             state.setTyreAge(csd.getTyresAgeLaps());
             state.setPitStops(ld.getNumPitStops());
+            state.setPenalties(ld.getPenalties());
+            state.setResultStatus(ld.getResultStatus());
             state.setQualifying(isQualifying);
 
             if (isQualifying) {
@@ -423,13 +453,16 @@ public class TelemetryProcessingService {
 
     @Transactional
     public void handleFinalClassification(PacketFinalClassificationData classification) {
-        log.info("Received Final Classification packet (packet 8) for session UID: {}", classification.getHeader().getSessionUID());
+        long sessionUID = classification.getHeader().getSessionUID();
+        log.info("Received Final Classification packet (packet 8) for session UID: {}", sessionUID);
+        
         if (activeLeagueId == null) {
             log.warn("Cannot save results: No league activated.");
             return;
         }
         if (currentSession == null || currentParticipants == null) {
-            log.warn("Cannot save results: Session or Participants data missing. (Session: {}, Participants: {})", 
+            log.warn("Cannot save results: Session or Participants data missing for UID: {}. (Session: {}, Participants: {})", 
+                sessionUID,
                 currentSession != null ? "OK" : "MISSING", 
                 currentParticipants != null ? "OK" : "MISSING");
             return;
@@ -442,7 +475,12 @@ public class TelemetryProcessingService {
         }
 
         // Check if session already recorded
-        if (sessionResultRepository.findBySessionUID(classification.getHeader().getSessionUID()).isPresent()) {
+        int sessionType = currentSession.getSessionType();
+        Optional<SessionResult> existing = sessionResultRepository.findBySessionUIDAndSessionType(sessionUID, sessionType);
+        if (existing.isPresent()) {
+            SessionResult sr = existing.get();
+            log.info("Session UID: {} with Type: {} already recorded as ID: {}. Skipping.", 
+                sessionUID, sessionType, sr.getId());
             return;
         }
 
@@ -454,8 +492,12 @@ public class TelemetryProcessingService {
                     newEvent.setLeague(league);
                     newEvent.setTrackId(trackIdStr);
                     newEvent.setEventName(TRACK_NAMES.getOrDefault(currentSession.getTrackId(), "Track " + trackIdStr));
+                    log.info("Creating new event: {} for track: {}", newEvent.getEventName(), trackIdStr);
                     return eventRepository.save(newEvent);
                 });
+
+        log.info("Processing {} results for session UID: {} (Type: {})", 
+            classification.getNumCars(), sessionUID, currentSession.getSessionType());
 
         SessionResult sessionResult = new SessionResult();
         sessionResult.setLeague(league);
@@ -481,6 +523,7 @@ public class TelemetryProcessingService {
             driverResult.setGridPosition(data.getGridPosition());
             driverResult.setBestLapTime(data.getBestLapTimeInMS() / 1000.0f);
             driverResult.setResultStatus(data.getResultStatus());
+            driverResult.setPenalties(data.getPenaltiesTime());
 
             // Link stored lap results
             List<LapResult> laps = lapResultRepository.findBySessionUIDAndCarIndex(classification.getHeader().getSessionUID(), i);
@@ -523,6 +566,140 @@ public class TelemetryProcessingService {
 
         log.info("Saved {} results for session UID: {} in event: {}", 
                 isRace ? "Race" : "Qualifying", sessionResult.getSessionUID(), event.getEventName());
+    }
+
+    @Transactional
+    public void saveResultsFromLiveState(long sessionUID) {
+        if (activeLeagueId == null || currentSession == null || currentParticipants == null || currentLapData == null) {
+            log.warn("Cannot save live results: Missing critical context (League, Session, Participants or LapData)");
+            return;
+        }
+
+        // Check if session already recorded
+        int sessionType = currentSession.getSessionType();
+        Optional<SessionResult> existing = sessionResultRepository.findBySessionUIDAndSessionType(sessionUID, sessionType);
+        if (existing.isPresent()) {
+            return; // Already saved (maybe by Packet 8 that arrived just before SEND)
+        }
+
+        League league = leagueRepository.findByIdWithEvents(activeLeagueId).orElse(null);
+        if (league == null) return;
+
+        String trackIdStr = String.valueOf(currentSession.getTrackId());
+        Event event = eventRepository.findByLeagueAndTrackId(league, trackIdStr)
+                .orElseGet(() -> {
+                    Event newEvent = new Event();
+                    newEvent.setLeague(league);
+                    newEvent.setTrackId(trackIdStr);
+                    newEvent.setEventName(TRACK_NAMES.getOrDefault(currentSession.getTrackId(), "Track " + trackIdStr));
+                    return eventRepository.save(newEvent);
+                });
+
+        SessionResult sessionResult = new SessionResult();
+        sessionResult.setLeague(league);
+        sessionResult.setEvent(event);
+        sessionResult.setSessionUID(sessionUID);
+        sessionResult.setSessionType(sessionType);
+        sessionResult.setTrackId(trackIdStr);
+
+        boolean isRace = sessionType >= 15 && sessionType <= 17;
+
+        for (int i = 0; i < currentParticipants.getParticipants().size(); i++) {
+            ParticipantData participant = currentParticipants.getParticipants().get(i);
+            if (participant.getName() == null || participant.getName().isEmpty()) continue;
+
+            if (i >= currentLapData.getLapData().size()) break;
+            LapData ld = currentLapData.getLapData().get(i);
+            
+            // Skip inactive drivers
+            if (ld.getResultStatus() == 0 || ld.getResultStatus() == 1) continue;
+
+            DriverResult driverResult = new DriverResult();
+            driverResult.setSessionResult(sessionResult);
+            driverResult.setDriverName(participant.getName());
+            driverResult.setTeamName(TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
+            driverResult.setPosition(ld.getCarPosition());
+            driverResult.setGridPosition(ld.getGridPosition());
+            driverResult.setBestLapTime(driverBestLap[i] / 1000.0f);
+            driverResult.setResultStatus(ld.getResultStatus());
+            driverResult.setPenalties(ld.getPenalties());
+            
+            // Assign points for Race sessions based on standard F1 system
+            if (isRace && ld.getCarPosition() >= 1 && ld.getCarPosition() <= 10) {
+                int[] pointsMap = {0, 25, 18, 15, 12, 10, 8, 6, 4, 2, 1};
+                driverResult.setPointsAwarded(pointsMap[ld.getCarPosition()]);
+            } else {
+                driverResult.setPointsAwarded(0);
+            }
+
+            // Link stored lap results
+            List<LapResult> laps = lapResultRepository.findBySessionUIDAndCarIndex(sessionUID, i);
+            for (LapResult lap : laps) {
+                lap.setDriverResult(driverResult);
+                driverResult.getLapResults().add(lap);
+            }
+
+            // Derive Tyre Stints from Lap Results
+            if (!laps.isEmpty()) {
+                laps.sort(Comparator.comparingInt(LapResult::getLapNumber));
+                int stintOrder = 0;
+                int currentCompound = -1;
+                int currentPitCount = -1;
+                int startLap = laps.get(0).getLapNumber();
+                int lastLap = -1;
+                
+                for (int j = 0; j < laps.size(); j++) {
+                    LapResult lap = laps.get(j);
+                    
+                    // Detect stint change: 
+                    // 1. Compound changed
+                    // 2. Pit stop count increased (even if compound is same)
+                    // 3. Large gap in laps (fallback)
+                    boolean compoundChanged = (currentCompound != -1 && lap.getTyreCompound() != null && lap.getTyreCompound() != currentCompound);
+                    boolean pitStopOccurred = (currentPitCount != -1 && lap.getPitStopCount() != null && lap.getPitStopCount() > currentPitCount);
+                    boolean gapDetected = (lastLap != -1 && lap.getLapNumber() > lastLap + 1);
+
+                    if (compoundChanged || pitStopOccurred || gapDetected) {
+                        TyreStint stint = new TyreStint();
+                        stint.setDriverResult(driverResult);
+                        stint.setStintOrder(stintOrder++);
+                        stint.setTyreCompound(currentCompound);
+                        stint.setEndLap(lastLap);
+                        stint.setLaps(stint.getEndLap() - startLap + 1);
+                        driverResult.getTyreStints().add(stint);
+                        
+                        startLap = lap.getLapNumber();
+                    }
+                    
+                    currentCompound = (lap.getTyreCompound() != null) ? lap.getTyreCompound() : currentCompound;
+                    currentPitCount = (lap.getPitStopCount() != null) ? lap.getPitStopCount() : currentPitCount;
+                    lastLap = lap.getLapNumber();
+                    
+                    if (j == laps.size() - 1) { // Final stint
+                        TyreStint stint = new TyreStint();
+                        stint.setDriverResult(driverResult);
+                        stint.setStintOrder(stintOrder++);
+                        stint.setTyreCompound(currentCompound);
+                        stint.setEndLap(lastLap);
+                        stint.setLaps(stint.getEndLap() - startLap + 1);
+                        driverResult.getTyreStints().add(stint);
+                    }
+                }
+            }
+            
+            sessionResult.getDriverResults().add(driverResult);
+        }
+
+        sessionResultRepository.saveAndFlush(sessionResult);
+
+        if (isRace) {
+            for (DriverResult driverResult : sessionResult.getDriverResults()) {
+                updateStandings(league, driverResult);
+            }
+        }
+
+        log.info("Saved Fallback {} results (from live state) for session UID: {} in event: {}", 
+                isRace ? "Race" : "Qualifying", sessionUID, event.getEventName());
     }
 
     @Transactional

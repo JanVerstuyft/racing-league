@@ -100,14 +100,15 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             Button deleteBtn = new Button("Delete", e -> {
                 ConfirmDialog dialog = new ConfirmDialog();
                 dialog.setHeader("Delete Weekend?");
-                dialog.setText("Are you sure you want to delete the weekend '" + event.getEventName() + "'? Standings will NOT be automatically updated, you should recalculate them after deleting.");
+                dialog.setText("Are you sure you want to delete the weekend '" + event.getEventName() + "'? Standings will be automatically recalculated.");
                 dialog.setCancelable(true);
                 dialog.setConfirmText("Delete");
                 dialog.setConfirmButtonTheme("error primary");
                 dialog.addConfirmListener(ev -> {
                     eventRepository.delete(event);
+                    telemetryProcessingService.recalculateStandings(league.getId());
                     updateData();
-                    Notification.show("Weekend deleted");
+                    Notification.show("Weekend deleted and standings recalculated");
                 });
                 dialog.open();
             });

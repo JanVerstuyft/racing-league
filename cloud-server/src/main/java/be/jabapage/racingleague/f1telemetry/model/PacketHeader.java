@@ -21,6 +21,7 @@ public class PacketHeader {
     private int secondaryPlayerCarIndex; // uint8
 
     public static PacketHeader fromByteBuffer(ByteBuffer buffer) {
+        int originalPosition = buffer.position();
         buffer.order(ByteOrder.LITTLE_ENDIAN);
         PacketHeader header = new PacketHeader();
         header.setPacketFormat(buffer.getShort() & 0xFFFF);
@@ -35,6 +36,12 @@ public class PacketHeader {
         header.setOverallFrameIdentifier(buffer.getInt() & 0xFFFFFFFFL);
         header.setPlayerCarIndex(buffer.get() & 0xFF);
         header.setSecondaryPlayerCarIndex(buffer.get() & 0xFF);
+        
+        // Return to start so subsequent consumers can read the whole packet if needed, 
+        // OR we just ensure we know it's 29 bytes.
+        // Actually, most fromByteBuffer methods expect the buffer to be at the start of THEIR data.
+        // PacketSessionData.fromByteBuffer(buffer, header) expects buffer to be at byte 29.
+        // So we should stay at position + 29.
         return header;
     }
 }

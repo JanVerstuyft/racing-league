@@ -26,4 +26,5 @@ public class LapResult {
     private Long s3InMS;
     private Integer tyreCompound;
     private Boolean isValid;
+    private Integer pitStopCount;
 }

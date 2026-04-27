@@ -235,6 +235,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             }).setHeader("Tyres").setAutoWidth(true);
 
             grid.addColumn(DriverResult::getPointsAwarded).setHeader("Points");
+            grid.addColumn(dr -> dr.getPenalties() != null && dr.getPenalties() > 0 ? dr.getPenalties() + "s" : "-").setHeader("Pen");
         }
         
         grid.setItems(driverResults);

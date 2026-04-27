@@ -1,6 +1,7 @@
 package be.jabapage.racingleague.f1telemetry.service;
 
 import be.jabapage.racingleague.f1telemetry.model.DriverBoardState;
+import be.jabapage.racingleague.f1telemetry.model.SessionInfo;
 import com.vaadin.flow.shared.Registration;
 import org.springframework.stereotype.Service;
 
@@ -14,7 +15,7 @@ import java.util.function.Consumer;
 public class Broadcaster {
     private static final Executor EXECUTOR = Executors.newSingleThreadExecutor();
     private final List<Consumer<List<DriverBoardState>>> leaderboardListeners = new LinkedList<>();
-    private final List<Consumer<String>> sessionTypeListeners = new LinkedList<>();
+    private final List<Consumer<SessionInfo>> sessionInfoListeners = new LinkedList<>();
 
     public synchronized Registration registerLeaderboard(Consumer<List<DriverBoardState>> listener) {
         leaderboardListeners.add(listener);
@@ -25,11 +26,11 @@ public class Broadcaster {
         };
     }
 
-    public synchronized Registration registerSessionType(Consumer<String> listener) {
-        sessionTypeListeners.add(listener);
+    public synchronized Registration registerSessionInfo(Consumer<SessionInfo> listener) {
+        sessionInfoListeners.add(listener);
         return () -> {
             synchronized (Broadcaster.this) {
-                sessionTypeListeners.remove(listener);
+                sessionInfoListeners.remove(listener);
             }
         };
     }
@@ -40,9 +41,9 @@ public class Broadcaster {
         }
     }
 
-    public synchronized void broadcastSessionType(String sessionType) {
-        for (Consumer<String> listener : sessionTypeListeners) {
-            EXECUTOR.execute(() -> listener.accept(sessionType));
+    public synchronized void broadcastSessionInfo(SessionInfo info) {
+        for (Consumer<SessionInfo> listener : sessionInfoListeners) {
+            EXECUTOR.execute(() -> listener.accept(info));
         }
     }
 }

@@ -10,6 +10,7 @@ import java.util.Optional;
 
 @Repository
 public interface SessionResultRepository extends JpaRepository<SessionResult, Long> {
+    Optional<SessionResult> findBySessionUIDAndSessionType(long sessionUID, int sessionType);
     Optional<SessionResult> findBySessionUID(long sessionUID);
     List<SessionResult> findByLeague(League league);
 }

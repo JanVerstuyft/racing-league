@@ -1,6 +1,7 @@
 package be.jabapage.racingleague.f1telemetry.ui;
 
 import be.jabapage.racingleague.f1telemetry.model.DriverBoardState;
+import be.jabapage.racingleague.f1telemetry.model.SessionInfo;
 import be.jabapage.racingleague.f1telemetry.service.Broadcaster;
 import com.vaadin.flow.component.AttachEvent;
 import com.vaadin.flow.component.DetachEvent;
@@ -23,7 +24,7 @@ public class LeaderboardView extends VerticalLayout {
     private final Grid<DriverBoardState> grid = new Grid<>(DriverBoardState.class, false);
     private final H2 title = new H2("LIVE LEADERBOARD");
     private Registration leaderboardRegistration;
-    private Registration sessionTypeRegistration;
+    private Registration sessionInfoRegistration;
 
     public LeaderboardView(Broadcaster broadcaster) {
         this.broadcaster = broadcaster;
@@ -35,7 +36,14 @@ public class LeaderboardView extends VerticalLayout {
 
     private void configureGrid() {
         grid.setSizeFull();
-        grid.addColumn(DriverBoardState::getPosition).setHeader("Pos").setWidth("60px").setFlexGrow(0);
+        grid.addColumn(state -> {
+            int status = state.getResultStatus();
+            if (status == 4) return "DNF";
+            if (status == 5) return "DSQ";
+            if (status == 6) return "NC";
+            if (status == 7) return "RET";
+            return state.getPosition();
+        }).setHeader("Pos").setWidth("70px").setFlexGrow(0);
         grid.addColumn(DriverBoardState::getName).setHeader("Driver");
         grid.addColumn(DriverBoardState::getTeam).setHeader("Team");
         
@@ -60,6 +68,7 @@ public class LeaderboardView extends VerticalLayout {
         
         Grid.Column<DriverBoardState> ageCol = grid.addColumn(DriverBoardState::getTyreAge).setHeader("Age");
         Grid.Column<DriverBoardState> pitsCol = grid.addColumn(DriverBoardState::getPitStops).setHeader("Pits");
+        Grid.Column<DriverBoardState> penCol = grid.addColumn(state -> state.getPenalties() > 0 ? state.getPenalties() + "s" : "-").setHeader("Pen");
         Grid.Column<DriverBoardState> gapLdrCol = grid.addColumn(DriverBoardState::getGapToLeader).setHeader("Gap Leader");
         Grid.Column<DriverBoardState> intervalCol = grid.addColumn(DriverBoardState::getGapToFront).setHeader("Interval");
 
@@ -75,13 +84,13 @@ public class LeaderboardView extends VerticalLayout {
         s3Col.setPartNameGenerator(state -> state.isBestS3() ? "best-sector" : null);
 
         grid.setPartNameGenerator(state -> {
-            // This is a workaround to hide/show columns dynamically based on the first item
-            // Better approach is to rebuild columns, but for live updates this is smoother if we use CSS to hide
+            int status = state.getResultStatus();
+            if (status >= 4) return "status-retired";
             return null;
         });
 
         // Store columns for easy toggling
-        this.raceColumns = List.of(tyreCol, ageCol, pitsCol, gapLdrCol, intervalCol);
+        this.raceColumns = List.of(tyreCol, ageCol, pitsCol, penCol, gapLdrCol, intervalCol);
         this.qualiColumns = List.of(bestLapCol, gapBestCol, s1Col, s2Col, s3Col);
         
         grid.getStyle().set("font-family", "monospace");
@@ -98,9 +107,9 @@ public class LeaderboardView extends VerticalLayout {
                 ui.access(() -> updateLeaderboard(data));
             }
         });
-        sessionTypeRegistration = broadcaster.registerSessionType(type -> {
+        sessionInfoRegistration = broadcaster.registerSessionInfo(info -> {
             if (ui.isAttached()) {
-                ui.access(() -> updateTitle(type));
+                ui.access(() -> updateSessionInfo(info));
             }
         });
     }
@@ -111,9 +120,9 @@ public class LeaderboardView extends VerticalLayout {
             leaderboardRegistration.remove();
             leaderboardRegistration = null;
         }
-        if (sessionTypeRegistration != null) {
-            sessionTypeRegistration.remove();
-            sessionTypeRegistration = null;
+        if (sessionInfoRegistration != null) {
+            sessionInfoRegistration.remove();
+            sessionInfoRegistration = null;
         }
     }
 
@@ -126,7 +135,19 @@ public class LeaderboardView extends VerticalLayout {
         grid.setItems(data);
     }
 
-    private void updateTitle(String sessionType) {
-        title.setText("LIVE LEADERBOARD - " + sessionType.toUpperCase());
+    private void updateSessionInfo(SessionInfo info) {
+        String titleText = "LIVE LEADERBOARD - " + info.getSessionType().toUpperCase();
+        if (info.isRace()) {
+            titleText += " | LAP " + info.getCurrentLap() + " / " + info.getTotalLaps();
+        } else if (info.getTimeLeftSeconds() > 0) {
+            titleText += " | TIME REMAINING: " + formatTime(info.getTimeLeftSeconds());
+        }
+        title.setText(titleText);
+    }
+
+    private String formatTime(int totalSeconds) {
+        int minutes = totalSeconds / 60;
+        int seconds = totalSeconds % 60;
+        return String.format("%02d:%02d", minutes, seconds);
     }
 }

@@ -10,6 +10,9 @@ import java.util.Set;
 @Data
 @Entity
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
+@Table(name = "session_result", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"session_uid", "session_type"})
+})
 public class SessionResult {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

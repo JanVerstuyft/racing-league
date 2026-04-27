@@ -12,6 +12,8 @@ public class DriverBoardState {
     private int pitStops;
     private String gapToLeader;
     private String gapToFront;
+    private int penalties;
+    private int resultStatus;
     
     // Qualifying fields
     private boolean qualifying;
