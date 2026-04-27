@@ -3,6 +3,7 @@ package be.jabapage.racingleague.f1telemetry.ui;
 import be.jabapage.racingleague.f1telemetry.model.DriverBoardState;
 import be.jabapage.racingleague.f1telemetry.service.Broadcaster;
 import com.vaadin.flow.component.AttachEvent;
+import com.vaadin.flow.component.DetachEvent;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
@@ -10,6 +11,7 @@ import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.shared.Registration;
 
 import java.util.List;
 
@@ -20,6 +22,8 @@ public class LeaderboardView extends VerticalLayout {
     private final Broadcaster broadcaster;
     private final Grid<DriverBoardState> grid = new Grid<>(DriverBoardState.class, false);
     private final H2 title = new H2("LIVE LEADERBOARD");
+    private Registration leaderboardRegistration;
+    private Registration sessionTypeRegistration;
 
     public LeaderboardView(Broadcaster broadcaster) {
         this.broadcaster = broadcaster;
@@ -89,8 +93,28 @@ public class LeaderboardView extends VerticalLayout {
     @Override
     protected void onAttach(AttachEvent attachEvent) {
         UI ui = attachEvent.getUI();
-        broadcaster.registerLeaderboard(data -> ui.access(() -> updateLeaderboard(data)));
-        broadcaster.registerSessionType(type -> ui.access(() -> updateTitle(type)));
+        leaderboardRegistration = broadcaster.registerLeaderboard(data -> {
+            if (ui.isAttached()) {
+                ui.access(() -> updateLeaderboard(data));
+            }
+        });
+        sessionTypeRegistration = broadcaster.registerSessionType(type -> {
+            if (ui.isAttached()) {
+                ui.access(() -> updateTitle(type));
+            }
+        });
+    }
+
+    @Override
+    protected void onDetach(DetachEvent detachEvent) {
+        if (leaderboardRegistration != null) {
+            leaderboardRegistration.remove();
+            leaderboardRegistration = null;
+        }
+        if (sessionTypeRegistration != null) {
+            sessionTypeRegistration.remove();
+            sessionTypeRegistration = null;
+        }
     }
 
     private void updateLeaderboard(List<DriverBoardState> data) {

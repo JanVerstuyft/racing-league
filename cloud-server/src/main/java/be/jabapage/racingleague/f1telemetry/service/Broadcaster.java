@@ -1,6 +1,7 @@
 package be.jabapage.racingleague.f1telemetry.service;
 
 import be.jabapage.racingleague.f1telemetry.model.DriverBoardState;
+import com.vaadin.flow.shared.Registration;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedList;
@@ -15,12 +16,22 @@ public class Broadcaster {
     private final List<Consumer<List<DriverBoardState>>> leaderboardListeners = new LinkedList<>();
     private final List<Consumer<String>> sessionTypeListeners = new LinkedList<>();
 
-    public synchronized void registerLeaderboard(Consumer<List<DriverBoardState>> listener) {
+    public synchronized Registration registerLeaderboard(Consumer<List<DriverBoardState>> listener) {
         leaderboardListeners.add(listener);
+        return () -> {
+            synchronized (Broadcaster.this) {
+                leaderboardListeners.remove(listener);
+            }
+        };
     }
 
-    public synchronized void registerSessionType(Consumer<String> listener) {
+    public synchronized Registration registerSessionType(Consumer<String> listener) {
         sessionTypeListeners.add(listener);
+        return () -> {
+            synchronized (Broadcaster.this) {
+                sessionTypeListeners.remove(listener);
+            }
+        };
     }
 
     public synchronized void broadcastLeaderboard(List<DriverBoardState> data) {

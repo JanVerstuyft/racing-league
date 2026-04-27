@@ -122,16 +122,35 @@ public class TelemetryProcessingService {
         broadcaster.broadcastLeaderboard(Collections.emptyList());
     }
 
-    public void processPacket(PacketHeader header, ByteBuffer buffer) {
+    public synchronized void processPacket(PacketHeader header, ByteBuffer buffer) {
         long now = System.currentTimeMillis();
+        long packetSessionUID = header.getSessionUID();
+
         // Reset session-specific state if session UID changed OR if there was a long gap (new replay start)
-        if (header.getSessionUID() != currentSessionUID || (now - lastPacketTime > 5000 && lastPacketTime > 0)) {
-            log.info("Session change or timeout detected, resetting live tracking state. (UID: {}, Gap: {}ms)", 
-                header.getSessionUID(), (now - lastPacketTime));
+        // We ignore UID 0 for session changes because it's often sent during transitions 
+        // and would cause unnecessary resets of valid session state.
+        boolean sessionChanged = (packetSessionUID != 0 && packetSessionUID != currentSessionUID);
+        boolean timeout = (now - lastPacketTime > 5000 && lastPacketTime > 0);
+
+        if (sessionChanged || timeout) {
+            log.info("{} detected, resetting live tracking state. (Packet UID: {}, Current UID: {}, Gap: {}ms)",
+                sessionChanged ? "Session change" : "Timeout",
+                packetSessionUID, currentSessionUID, (now - lastPacketTime));
             resetSessionState();
-            currentSessionUID = header.getSessionUID();
+            currentSessionUID = packetSessionUID;
         }
         lastPacketTime = now;
+
+        // Skip packets that don't match the session we are currently tracking.
+        // We specifically ignore UID 0 packets if we have a valid session active.
+        if (currentSessionUID != 0 && packetSessionUID == 0) {
+            return;
+        }
+        // If the packet belongs to a different non-zero session, it should have triggered a reset above.
+        // This check is a safety measure to ensure we don't process intermixed packets from old sessions.
+        if (currentSessionUID != 0 && packetSessionUID != currentSessionUID) {
+            return;
+        }
 
         switch (header.getPacketId()) {
             case 1: // Session

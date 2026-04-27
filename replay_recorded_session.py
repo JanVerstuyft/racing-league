@@ -54,6 +54,6 @@ def replay_session(file_path, target_url):
     print(f"Finished! Sent total of {packet_count} packets.")
 
 if __name__ == "__main__":
-    RECORDING_FILE = "data/recorded_race_test.bin"
+    RECORDING_FILE = "data/exa_austria.bin"
     CLOUD_URL = "http://localhost:8080/api/telemetry"
     replay_session(RECORDING_FILE, CLOUD_URL)
