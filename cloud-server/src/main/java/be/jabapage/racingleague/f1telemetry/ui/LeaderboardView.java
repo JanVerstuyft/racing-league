@@ -9,6 +9,7 @@ import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
@@ -23,6 +24,7 @@ public class LeaderboardView extends VerticalLayout {
     private final Broadcaster broadcaster;
     private final Grid<DriverBoardState> grid = new Grid<>(DriverBoardState.class, false);
     private final H2 title = new H2("LIVE LEADERBOARD");
+    private final Span scStatus = new Span();
     private Registration leaderboardRegistration;
     private Registration sessionInfoRegistration;
 
@@ -31,8 +33,14 @@ public class LeaderboardView extends VerticalLayout {
         setSizeFull();
 
         configureGrid();
-        add(title, grid);
+
+        HorizontalLayout header = new HorizontalLayout(title, scStatus);
+        header.setAlignItems(Alignment.BASELINE);
+        header.setSpacing(true);
+
+        add(header, grid);
     }
+
 
     private void configureGrid() {
         grid.setSizeFull();
@@ -143,6 +151,19 @@ public class LeaderboardView extends VerticalLayout {
             titleText += " | TIME REMAINING: " + formatTime(info.getTimeLeftSeconds());
         }
         title.setText(titleText);
+
+        // Update SC status
+        scStatus.setText("");
+        scStatus.removeClassName("sc-active");
+        scStatus.removeClassName("vsc-active");
+
+        if (info.getSafetyCarStatus() == 1) {
+            scStatus.setText(" | SAFETY CAR");
+            scStatus.addClassName("sc-active");
+        } else if (info.getSafetyCarStatus() == 2) {
+            scStatus.setText(" | VIRTUAL SAFETY CAR");
+            scStatus.addClassName("vsc-active");
+        }
     }
 
     private String formatTime(int totalSeconds) {

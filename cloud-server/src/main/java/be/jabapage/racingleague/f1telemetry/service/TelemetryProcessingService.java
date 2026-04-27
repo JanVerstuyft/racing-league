@@ -281,6 +281,7 @@ public class TelemetryProcessingService {
                     .totalLaps(currentSession.getTotalLaps())
                     .timeLeftSeconds(currentSession.getSessionTimeLeft())
                     .isRace(isRace)
+                    .safetyCarStatus(currentSession.getSafetyCarStatus())
                     .build();
             
             broadcaster.broadcastSessionInfo(info);

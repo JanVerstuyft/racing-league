@@ -41,3 +41,18 @@ vaadin-grid::part(best-sector) {
     align-items: center;
     font-size: 13px;
 }
+
+vaadin-grid::part(status-retired) {
+    color: #888;
+    background-color: #f8f8f8;
+}
+
+.sc-active {
+    color: #ffcc00;
+    font-weight: bold;
+}
+
+.vsc-active {
+    color: #ff9900;
+    font-weight: bold;
+}
