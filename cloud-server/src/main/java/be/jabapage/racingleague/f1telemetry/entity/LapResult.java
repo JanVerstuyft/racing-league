@@ -1,16 +1,17 @@
 package be.jabapage.racingleague.f1telemetry.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.Setter;
 
-@Data
+import java.util.Objects;
+
+@Getter
+@Setter
 @Entity
-@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class LapResult {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @EqualsAndHashCode.Include
     private Long id;
 
     @ManyToOne
@@ -27,4 +28,16 @@ public class LapResult {
     private Integer tyreCompound;
     private Boolean isValid;
     private Integer pitStopCount;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof LapResult that)) return false;
+        return id != null && Objects.equals(id, that.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
 }

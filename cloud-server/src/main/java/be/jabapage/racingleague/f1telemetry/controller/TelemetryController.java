@@ -14,10 +14,10 @@ public class TelemetryController {
     @Autowired
     private TelemetryProcessingService telemetryProcessingService;
 
-    @PostMapping
-    public void receiveTelemetry(@RequestBody byte[] payload) {
+    @PostMapping("/{token}")
+    public void receiveTelemetry(@PathVariable String token, @RequestBody byte[] payload) {
         ByteBuffer byteBuffer = ByteBuffer.wrap(payload);
         PacketHeader header = PacketHeader.fromByteBuffer(byteBuffer);
-        telemetryProcessingService.processPacket(header, byteBuffer);
+        telemetryProcessingService.processPacket(token, header, byteBuffer);
     }
 }

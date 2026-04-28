@@ -22,6 +22,9 @@ public class UdpListenerService {
     private static final int PORT = 20777;
     private static final int BUFFER_SIZE = 2048;
 
+    @org.springframework.beans.factory.annotation.Value("${telemetry.udp.token:default}")
+    private String udpToken;
+
     private DatagramSocket socket;
     private boolean running;
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
@@ -33,7 +36,7 @@ public class UdpListenerService {
     public void start() {
         running = true;
         executorService.submit(this::listen);
-        log.info("UDP Listener Service started on port {}", PORT);
+        log.info("UDP Listener Service started on port {} with token {}", PORT, udpToken);
     }
 
     private void listen() {
@@ -48,7 +51,7 @@ public class UdpListenerService {
                 ByteBuffer byteBuffer = ByteBuffer.wrap(packet.getData(), 0, packet.getLength());
                 PacketHeader header = PacketHeader.fromByteBuffer(byteBuffer);
 
-                telemetryProcessingService.processPacket(header, byteBuffer);
+                telemetryProcessingService.processPacket(udpToken, header, byteBuffer);
             }
         } catch (Exception e) {
             if (running) {

@@ -34,11 +34,6 @@ public class LeagueController {
         return leagueRepository.findAll();
     }
 
-    @PostMapping("/{id}/activate")
-    public void activateLeague(@PathVariable Long id) {
-        telemetryProcessingService.setActiveLeague(id);
-    }
-
     @PostMapping("/{id}/recalculate")
     public void recalculateStandings(@PathVariable Long id) {
         telemetryProcessingService.recalculateStandings(id);

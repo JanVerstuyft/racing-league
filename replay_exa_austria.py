@@ -55,5 +55,5 @@ def replay_session(file_path, target_url):
 
 if __name__ == "__main__":
     RECORDING_FILE = "data/exa_austria.bin"
-    CLOUD_URL = "http://localhost:8080/api/telemetry"
+    CLOUD_URL = "http://localhost:8080/api/telemetry/cd8481f2-cc0a-41f6-b955-4061563b113d"
     replay_session(RECORDING_FILE, CLOUD_URL)

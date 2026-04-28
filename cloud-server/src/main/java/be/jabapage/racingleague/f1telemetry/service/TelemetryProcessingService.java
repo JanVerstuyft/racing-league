@@ -1,7 +1,6 @@
 package be.jabapage.racingleague.f1telemetry.service;
 
 import be.jabapage.racingleague.f1telemetry.entity.*;
-import be.jabapage.racingleague.f1telemetry.entity.TyreStint;
 import be.jabapage.racingleague.f1telemetry.model.*;
 import be.jabapage.racingleague.f1telemetry.repository.*;
 import lombok.extern.slf4j.Slf4j;
@@ -32,28 +31,21 @@ public class TelemetryProcessingService {
     @Autowired
     private Broadcaster broadcaster;
 
-    private Long activeLeagueId;
-    private PacketSessionData currentSession;
-    private PacketParticipantsData currentParticipants;
-    private PacketLapData currentLapData;
-    private PacketCarStatusData currentCarStatus;
+    private final Map<String, LeagueSessionState> leagueStates = new java.util.concurrent.ConcurrentHashMap<>();
 
-    private final int[] lastLapNum = new int[22];
-    private final long[] lastS1 = new long[22];
-    private final long[] lastS2 = new long[22];
-    private final int[] lastTyre = new int[22];
-    private final boolean[] lapInvalid = new boolean[22];
+    private LeagueSessionState getOrCreateState(String token) {
+        return leagueStates.computeIfAbsent(token, t -> {
+            Optional<League> league = leagueRepository.findByToken(t);
+            if (league.isPresent()) {
+                return new LeagueSessionState(league.get().getId());
+            } else if ("default".equals(t)) {
+                // Fallback for default token if no league found
+                return new LeagueSessionState(-1L);
+            }
+            return null;
+        });
+    }
 
-    private final long[] driverBestLap = new long[22];
-    private final long[] driverBestS1 = new long[22];
-    private final long[] driverBestS2 = new long[22];
-    private final long[] driverBestS3 = new long[22];
-
-    private long sessionBestS1 = Long.MAX_VALUE;
-    private long sessionBestS2 = Long.MAX_VALUE;
-    private long sessionBestS3 = Long.MAX_VALUE;
-    private long sessionBestLap = Long.MAX_VALUE;
-    
     // Team ID to Name mapping (simplified)
     private static final Map<Integer, String> TEAM_NAMES = Map.of(
             0, "Mercedes", 1, "Ferrari", 2, "Red Bull Racing", 3, "Williams",
@@ -90,109 +82,81 @@ public class TelemetryProcessingService {
             Map.entry(18, "Time Trial")
     );
 
-    public void setActiveLeague(Long leagueId) {
-        this.activeLeagueId = leagueId;
-    }
+    public synchronized void processPacket(String token, PacketHeader header, ByteBuffer buffer) {
+        LeagueSessionState state = getOrCreateState(token);
+        if (state == null) {
+            log.warn("Received packet for unknown token: {}", token);
+            return;
+        }
 
-    public Long getActiveLeagueId() {
-        return activeLeagueId;
-    }
-
-    private long currentSessionUID = -1;
-    private long lastPacketTime = 0;
-
-    private void resetSessionState() {
-        Arrays.fill(lastLapNum, 0);
-        Arrays.fill(lastS1, 0);
-        Arrays.fill(lastS2, 0);
-        Arrays.fill(lastTyre, 0);
-        Arrays.fill(lapInvalid, false);
-        Arrays.fill(driverBestLap, 0);
-        Arrays.fill(driverBestS1, 0);
-        Arrays.fill(driverBestS2, 0);
-        Arrays.fill(driverBestS3, 0);
-        sessionBestS1 = Long.MAX_VALUE;
-        sessionBestS2 = Long.MAX_VALUE;
-        sessionBestS3 = Long.MAX_VALUE;
-        sessionBestLap = Long.MAX_VALUE;
-        currentSession = null;
-        currentParticipants = null;
-        currentLapData = null;
-        currentCarStatus = null;
-        
-        // Clear the live UI
-        broadcaster.broadcastLeaderboard(Collections.emptyList());
-    }
-
-    public synchronized void processPacket(PacketHeader header, ByteBuffer buffer) {
         long now = System.currentTimeMillis();
         long packetSessionUID = header.getSessionUID();
 
         if (header.getPacketId() == 8) {
-            log.info("Incoming Packet 8 (Final Classification) for UID: {}", packetSessionUID);
+            log.info("Incoming Packet 8 (Final Classification) for UID: {} (League: {})", packetSessionUID, state.getLeagueId());
         }
 
         // Reset session-specific state if session UID changed OR if there was a long gap
-        // We only trigger a reset if the NEW UID is non-zero.
-        boolean sessionChanged = (packetSessionUID != 0 && packetSessionUID != currentSessionUID);
-        boolean timeout = (now - lastPacketTime > 5000 && lastPacketTime > 0);
+        boolean sessionChanged = (packetSessionUID != 0 && packetSessionUID != state.getCurrentSessionUID());
+        boolean timeout = (now - state.getLastPacketTime() > 5000 && state.getLastPacketTime() > 0);
 
         if (sessionChanged || timeout) {
-            log.info("{} detected, resetting live tracking state. (New UID: {}, Old UID: {}, Gap: {}ms)",
+            log.info("{} detected for league {}, resetting live tracking state. (New UID: {}, Old UID: {}, Gap: {}ms)",
                 timeout ? "Timeout" : "Session change",
-                packetSessionUID, currentSessionUID, (now - lastPacketTime));
-            resetSessionState();
-            currentSessionUID = packetSessionUID;
+                state.getLeagueId(),
+                packetSessionUID, state.getCurrentSessionUID(), (now - state.getLastPacketTime()));
+            state.reset();
+            state.setCurrentSessionUID(packetSessionUID);
+            // Clear the live UI
+            broadcaster.broadcastLeaderboard(state.getLeagueId(), Collections.emptyList());
         }
-        lastPacketTime = now;
+        state.setLastPacketTime(now);
 
         // Skip packets that don't match the session we are currently tracking.
-        // We ignore UID 0 packets if we have a valid session active.
-        if (currentSessionUID != -1 && currentSessionUID != 0 && packetSessionUID == 0) {
+        if (state.getCurrentSessionUID() != -1 && state.getCurrentSessionUID() != 0 && packetSessionUID == 0) {
             return;
         }
         
-        // Safety check to ensure we don't intermix packets from different sessions
-        if (currentSessionUID != -1 && packetSessionUID != 0 && packetSessionUID != currentSessionUID) {
+        if (state.getCurrentSessionUID() != -1 && packetSessionUID != 0 && packetSessionUID != state.getCurrentSessionUID()) {
             return;
         }
 
         switch (header.getPacketId()) {
             case 1: // Session
-                this.currentSession = PacketSessionData.fromByteBuffer(buffer, header);
-                broadcastSessionInfo();
+                state.setCurrentSession(PacketSessionData.fromByteBuffer(buffer, header));
+                broadcastSessionInfo(state);
                 break;
             case 2: // Lap Data
                 PacketLapData newLapData = PacketLapData.fromByteBuffer(buffer, header);
-                processLapData(newLapData);
-                this.currentLapData = newLapData;
-                broadcastLeaderboard();
-                broadcastSessionInfo(); // Update lap progress
+                processLapData(state, newLapData);
+                state.setCurrentLapData(newLapData);
+                broadcastLeaderboard(state);
+                broadcastSessionInfo(state); // Update lap progress
                 break;
             case 3: // Event
                 PacketEventData eventData = PacketEventData.fromByteBuffer(buffer, header);
                 if ("SEND".equals(eventData.getEventStringCode())) {
                     log.info("Session Ended event (SEND) received for UID: {}. Triggering result save.", header.getSessionUID());
-                    saveResultsFromLiveState(header.getSessionUID());
+                    saveResultsFromLiveState(state, header.getSessionUID());
                 }
                 break;
             case 4: // Participants
-                this.currentParticipants = PacketParticipantsData.fromByteBuffer(buffer, header);
+                state.setCurrentParticipants(PacketParticipantsData.fromByteBuffer(buffer, header));
                 break;
             case 7: // Car Status
-                this.currentCarStatus = PacketCarStatusData.fromByteBuffer(buffer, header);
-                broadcastLeaderboard();
+                state.setCurrentCarStatus(PacketCarStatusData.fromByteBuffer(buffer, header));
+                broadcastLeaderboard(state);
                 break;
             case 8: // Final Classification
                 PacketFinalClassificationData classification = PacketFinalClassificationData.fromByteBuffer(buffer, header);
-                handleFinalClassification(classification);
+                handleFinalClassification(state, classification);
                 break;
             default:
                 break;
         }
     }
 
-    private void processLapData(PacketLapData packet) {
+    private void processLapData(LeagueSessionState state, PacketLapData packet) {
         for (int i = 0; i < packet.getLapData().size(); i++) {
             LapData ld = packet.getLapData().get(i);
             int carIndex = i;
@@ -200,40 +164,40 @@ public class TelemetryProcessingService {
             // Update sector times if they are valid in current lap
             if (ld.getSector() == 1 && ld.getSector1TimeInMS() > 0) {
                 long s1 = ld.getSector1TimeInMS();
-                lastS1[carIndex] = s1;
+                state.getLastS1()[carIndex] = s1;
                 if (ld.getCurrentLapInvalid() == 0) {
-                    if (s1 < driverBestS1[carIndex] || driverBestS1[carIndex] == 0) driverBestS1[carIndex] = s1;
-                    if (s1 < sessionBestS1) sessionBestS1 = s1;
+                    if (s1 < state.getDriverBestS1()[carIndex] || state.getDriverBestS1()[carIndex] == 0) state.getDriverBestS1()[carIndex] = s1;
+                    if (s1 < state.getSessionBestS1()) state.setSessionBestS1(s1);
                 }
             } else if (ld.getSector() == 2 && ld.getSector2TimeInMS() > 0) {
                 long s2 = ld.getSector2TimeInMS();
-                lastS2[carIndex] = s2;
+                state.getLastS2()[carIndex] = s2;
                 if (ld.getCurrentLapInvalid() == 0) {
-                    if (s2 < driverBestS2[carIndex] || driverBestS2[carIndex] == 0) driverBestS2[carIndex] = s2;
-                    if (s2 < sessionBestS2) sessionBestS2 = s2;
+                    if (s2 < state.getDriverBestS2()[carIndex] || state.getDriverBestS2()[carIndex] == 0) state.getDriverBestS2()[carIndex] = s2;
+                    if (s2 < state.getSessionBestS2()) state.setSessionBestS2(s2);
                 }
             }
 
             // Track if current lap becomes invalid
             if (ld.getCurrentLapInvalid() == 1) {
-                lapInvalid[carIndex] = true;
+                state.getLapInvalid()[carIndex] = true;
             }
 
             // Detect lap completion
-            if (lastLapNum[carIndex] > 0 && ld.getCurrentLapNum() > lastLapNum[carIndex]) {
+            if (state.getLastLapNum()[carIndex] > 0 && ld.getCurrentLapNum() > state.getLastLapNum()[carIndex]) {
                 long lastLapTime = ld.getLastLapTimeInMS();
-                long s1 = lastS1[carIndex];
-                long s2 = lastS2[carIndex];
+                long s1 = state.getLastS1()[carIndex];
+                long s2 = state.getLastS2()[carIndex];
                 long s3 = lastLapTime - s1 - s2;
 
                 // Update best lap and S3
-                if (!lapInvalid[carIndex] && lastLapTime > 0) {
-                    if (lastLapTime < driverBestLap[carIndex] || driverBestLap[carIndex] == 0) driverBestLap[carIndex] = lastLapTime;
-                    if (lastLapTime < sessionBestLap) sessionBestLap = lastLapTime;
+                if (!state.getLapInvalid()[carIndex] && lastLapTime > 0) {
+                    if (lastLapTime < state.getDriverBestLap()[carIndex] || state.getDriverBestLap()[carIndex] == 0) state.getDriverBestLap()[carIndex] = lastLapTime;
+                    if (lastLapTime < state.getSessionBestLap()) state.setSessionBestLap(lastLapTime);
                     
                     if (s3 > 0) {
-                        if (s3 < driverBestS3[carIndex] || driverBestS3[carIndex] == 0) driverBestS3[carIndex] = s3;
-                        if (s3 < sessionBestS3) sessionBestS3 = s3;
+                        if (s3 < state.getDriverBestS3()[carIndex] || state.getDriverBestS3()[carIndex] == 0) state.getDriverBestS3()[carIndex] = s3;
+                        if (s3 < state.getSessionBestS3()) state.setSessionBestS3(s3);
                     }
                 }
 
@@ -241,104 +205,104 @@ public class TelemetryProcessingService {
                 LapResult result = new LapResult();
                 result.setSessionUID(packet.getHeader().getSessionUID());
                 result.setCarIndex(carIndex);
-                result.setLapNumber(lastLapNum[carIndex]);
+                result.setLapNumber(state.getLastLapNum()[carIndex]);
                 result.setLapTimeInMS(lastLapTime);
                 result.setS1InMS(s1);
                 result.setS2InMS(s2);
                 result.setS3InMS(s3);
-                result.setIsValid(!lapInvalid[carIndex]);
-                result.setTyreCompound(lastTyre[carIndex]);
+                result.setIsValid(!state.getLapInvalid()[carIndex]);
+                result.setTyreCompound(state.getLastTyre()[carIndex]);
                 result.setPitStopCount(ld.getNumPitStops());
 
                 lapResultRepository.save(result);
             }
 
             // Update state
-            lastLapNum[carIndex] = ld.getCurrentLapNum();
-            if (currentCarStatus != null && carIndex < currentCarStatus.getCarStatusData().size()) {
-                lastTyre[carIndex] = currentCarStatus.getCarStatusData().get(carIndex).getVisualTyreCompound();
+            state.getLastLapNum()[carIndex] = ld.getCurrentLapNum();
+            if (state.getCurrentCarStatus() != null && carIndex < state.getCurrentCarStatus().getCarStatusData().size()) {
+                state.getLastTyre()[carIndex] = state.getCurrentCarStatus().getCarStatusData().get(carIndex).getVisualTyreCompound();
             }
             if (ld.getSector() == 0) { // New lap started
-                lapInvalid[carIndex] = false;
+                state.getLapInvalid()[carIndex] = false;
             }
         }
     }
 
-    private void broadcastSessionInfo() {
-        if (currentSession != null) {
-            String sessionName = SESSION_TYPE_NAMES.getOrDefault(currentSession.getSessionType(), "Unknown (" + currentSession.getSessionType() + ")");
-            int playerCarIndex = currentSession.getHeader().getPlayerCarIndex();
+    private void broadcastSessionInfo(LeagueSessionState state) {
+        if (state.getCurrentSession() != null) {
+            String sessionName = SESSION_TYPE_NAMES.getOrDefault(state.getCurrentSession().getSessionType(), "Unknown (" + state.getCurrentSession().getSessionType() + ")");
+            int playerCarIndex = state.getCurrentSession().getHeader().getPlayerCarIndex();
             int currentLap = 0;
-            if (currentLapData != null && playerCarIndex < currentLapData.getLapData().size()) {
-                currentLap = currentLapData.getLapData().get(playerCarIndex).getCurrentLapNum();
+            if (state.getCurrentLapData() != null && playerCarIndex < state.getCurrentLapData().getLapData().size()) {
+                currentLap = state.getCurrentLapData().getLapData().get(playerCarIndex).getCurrentLapNum();
             }
 
-            boolean isRace = currentSession.getSessionType() >= 15 && currentSession.getSessionType() <= 17;
+            boolean isRace = state.getCurrentSession().getSessionType() >= 15 && state.getCurrentSession().getSessionType() <= 17;
 
             SessionInfo info = SessionInfo.builder()
                     .sessionType(sessionName)
                     .currentLap(currentLap)
-                    .totalLaps(currentSession.getTotalLaps())
-                    .timeLeftSeconds(currentSession.getSessionTimeLeft())
+                    .totalLaps(state.getCurrentSession().getTotalLaps())
+                    .timeLeftSeconds(state.getCurrentSession().getSessionTimeLeft())
                     .isRace(isRace)
-                    .safetyCarStatus(currentSession.getSafetyCarStatus())
+                    .safetyCarStatus(state.getCurrentSession().getSafetyCarStatus())
                     .build();
             
-            broadcaster.broadcastSessionInfo(info);
+            broadcaster.broadcastSessionInfo(state.getLeagueId(), info);
         }
     }
 
-    private void broadcastLeaderboard() {
-        if (currentParticipants == null || currentLapData == null || currentCarStatus == null || currentSession == null) return;
+    private void broadcastLeaderboard(LeagueSessionState state) {
+        if (state.getCurrentParticipants() == null || state.getCurrentLapData() == null || state.getCurrentCarStatus() == null || state.getCurrentSession() == null) return;
         
-        boolean isQualifying = currentSession.getSessionType() >= 5 && currentSession.getSessionType() <= 14;
+        boolean isQualifying = state.getCurrentSession().getSessionType() >= 5 && state.getCurrentSession().getSessionType() <= 14;
 
         List<DriverBoardState> board = new ArrayList<>();
         for (int i = 0; i < 22; i++) {
-            if (i >= currentParticipants.getParticipants().size() || 
-                i >= currentLapData.getLapData().size() || 
-                i >= currentCarStatus.getCarStatusData().size()) break;
+            if (i >= state.getCurrentParticipants().getParticipants().size() || 
+                i >= state.getCurrentLapData().getLapData().size() || 
+                i >= state.getCurrentCarStatus().getCarStatusData().size()) break;
 
-            ParticipantData p = currentParticipants.getParticipants().get(i);
+            ParticipantData p = state.getCurrentParticipants().getParticipants().get(i);
             if (p.getName() == null || p.getName().isEmpty()) continue;
 
-            LapData ld = currentLapData.getLapData().get(i);
-            CarStatusData csd = currentCarStatus.getCarStatusData().get(i);
+            LapData ld = state.getCurrentLapData().getLapData().get(i);
+            CarStatusData csd = state.getCurrentCarStatus().getCarStatusData().get(i);
 
-            DriverBoardState state = new DriverBoardState();
-            state.setPosition(ld.getCarPosition());
-            state.setName(p.getName());
-            state.setTeam(TEAM_NAMES.getOrDefault(p.getTeamId(), "Unknown"));
-            state.setTyreCompound(TYRE_COMPOUNDS.getOrDefault(csd.getVisualTyreCompound(), "Unknown"));
-            state.setTyreAge(csd.getTyresAgeLaps());
-            state.setPitStops(ld.getNumPitStops());
-            state.setPenalties(ld.getPenalties());
-            state.setResultStatus(ld.getResultStatus());
-            state.setQualifying(isQualifying);
+            DriverBoardState driverState = new DriverBoardState();
+            driverState.setPosition(ld.getCarPosition());
+            driverState.setName(p.getName());
+            driverState.setTeam(TEAM_NAMES.getOrDefault(p.getTeamId(), "Unknown"));
+            driverState.setTyreCompound(TYRE_COMPOUNDS.getOrDefault(csd.getVisualTyreCompound(), "Unknown"));
+            driverState.setTyreAge(csd.getTyresAgeLaps());
+            driverState.setPitStops(ld.getNumPitStops());
+            driverState.setPenalties(ld.getPenalties());
+            driverState.setResultStatus(ld.getResultStatus());
+            driverState.setQualifying(isQualifying);
 
             if (isQualifying) {
-                state.setBestLapTime(formatLapTimeFull(driverBestLap[i]));
-                state.setS1Time(formatLapTimeFull(driverBestS1[i]));
-                state.setS2Time(formatLapTimeFull(driverBestS2[i]));
-                state.setS3Time(formatLapTimeFull(driverBestS3[i]));
-                state.setBestS1(driverBestS1[i] > 0 && driverBestS1[i] == sessionBestS1);
-                state.setBestS2(driverBestS2[i] > 0 && driverBestS2[i] == sessionBestS2);
-                state.setBestS3(driverBestS3[i] > 0 && driverBestS3[i] == sessionBestS3);
+                driverState.setBestLapTime(formatLapTimeFull(state.getDriverBestLap()[i]));
+                driverState.setS1Time(formatLapTimeFull(state.getDriverBestS1()[i]));
+                driverState.setS2Time(formatLapTimeFull(state.getDriverBestS2()[i]));
+                driverState.setS3Time(formatLapTimeFull(state.getDriverBestS3()[i]));
+                driverState.setBestS1(state.getDriverBestS1()[i] > 0 && state.getDriverBestS1()[i] == state.getSessionBestS1());
+                driverState.setBestS2(state.getDriverBestS2()[i] > 0 && state.getDriverBestS2()[i] == state.getSessionBestS2());
+                driverState.setBestS3(state.getDriverBestS3()[i] > 0 && state.getDriverBestS3()[i] == state.getSessionBestS3());
                 
-                if (driverBestLap[i] > 0 && sessionBestLap > 0) {
-                    state.setGapToLeaderBest(formatTime(driverBestLap[i] - sessionBestLap));
+                if (state.getDriverBestLap()[i] > 0 && state.getSessionBestLap() > 0) {
+                    driverState.setGapToLeaderBest(formatTime(state.getDriverBestLap()[i] - state.getSessionBestLap()));
                 } else {
-                    state.setGapToLeaderBest("-");
+                    driverState.setGapToLeaderBest("-");
                 }
             } else {
-                state.setGapToLeader(formatTime(ld.getDeltaToRaceLeaderInMS()));
-                state.setGapToFront(formatTime(ld.getDeltaToCarInFrontInMS()));
+                driverState.setGapToLeader(formatTime(ld.getDeltaToRaceLeaderInMS()));
+                driverState.setGapToFront(formatTime(ld.getDeltaToCarInFrontInMS()));
             }
             
-            board.add(state);
+            board.add(driverState);
         }
         board.sort(Comparator.comparingInt(DriverBoardState::getPosition));
-        broadcaster.broadcastLeaderboard(board);
+        broadcaster.broadcastLeaderboard(state.getLeagueId(), board);
     }
 
     private String formatTime(long ms) {
@@ -453,30 +417,30 @@ public class TelemetryProcessingService {
     }
 
     @Transactional
-    public void handleFinalClassification(PacketFinalClassificationData classification) {
+    public void handleFinalClassification(LeagueSessionState state, PacketFinalClassificationData classification) {
         long sessionUID = classification.getHeader().getSessionUID();
         log.info("Received Final Classification packet (packet 8) for session UID: {}", sessionUID);
         
-        if (activeLeagueId == null) {
-            log.warn("Cannot save results: No league activated.");
+        if (state.getLeagueId() == null || state.getLeagueId() == -1) {
+            log.warn("Cannot save results: No valid league associated with state.");
             return;
         }
-        if (currentSession == null || currentParticipants == null) {
+        if (state.getCurrentSession() == null || state.getCurrentParticipants() == null) {
             log.warn("Cannot save results: Session or Participants data missing for UID: {}. (Session: {}, Participants: {})", 
                 sessionUID,
-                currentSession != null ? "OK" : "MISSING", 
-                currentParticipants != null ? "OK" : "MISSING");
+                state.getCurrentSession() != null ? "OK" : "MISSING", 
+                state.getCurrentParticipants() != null ? "OK" : "MISSING");
             return;
         }
 
-        League league = leagueRepository.findByIdWithEvents(activeLeagueId).orElse(null);
+        League league = leagueRepository.findByIdWithEvents(state.getLeagueId()).orElse(null);
         if (league == null) {
-            log.warn("Cannot save results: Activated league ID {} not found in database.", activeLeagueId);
+            log.warn("Cannot save results: Activated league ID {} not found in database.", state.getLeagueId());
             return;
         }
 
         // Check if session already recorded
-        int sessionType = currentSession.getSessionType();
+        int sessionType = state.getCurrentSession().getSessionType();
         Optional<SessionResult> existing = sessionResultRepository.findBySessionUIDAndSessionType(sessionUID, sessionType);
         if (existing.isPresent()) {
             SessionResult sr = existing.get();
@@ -486,34 +450,34 @@ public class TelemetryProcessingService {
         }
 
         // Find or create event
-        String trackIdStr = String.valueOf(currentSession.getTrackId());
+        String trackIdStr = String.valueOf(state.getCurrentSession().getTrackId());
         Event event = eventRepository.findByLeagueAndTrackId(league, trackIdStr)
                 .orElseGet(() -> {
                     Event newEvent = new Event();
                     newEvent.setLeague(league);
                     newEvent.setTrackId(trackIdStr);
-                    newEvent.setEventName(TRACK_NAMES.getOrDefault(currentSession.getTrackId(), "Track " + trackIdStr));
+                    newEvent.setEventName(TRACK_NAMES.getOrDefault(state.getCurrentSession().getTrackId(), "Track " + trackIdStr));
                     log.info("Creating new event: {} for track: {}", newEvent.getEventName(), trackIdStr);
                     return eventRepository.save(newEvent);
                 });
 
         log.info("Processing {} results for session UID: {} (Type: {})", 
-            classification.getNumCars(), sessionUID, currentSession.getSessionType());
+            classification.getNumCars(), sessionUID, state.getCurrentSession().getSessionType());
 
         SessionResult sessionResult = new SessionResult();
         sessionResult.setLeague(league);
         sessionResult.setEvent(event);
         sessionResult.setSessionUID(classification.getHeader().getSessionUID());
-        sessionResult.setSessionType(currentSession.getSessionType());
+        sessionResult.setSessionType(state.getCurrentSession().getSessionType());
         sessionResult.setTrackId(trackIdStr);
 
-        boolean isRace = currentSession.getSessionType() >= 15 && currentSession.getSessionType() <= 17;
+        boolean isRace = state.getCurrentSession().getSessionType() >= 15 && state.getCurrentSession().getSessionType() <= 17;
 
         for (int i = 0; i < classification.getNumCars(); i++) {
             FinalClassificationData data = classification.getClassificationData().get(i);
             if (data.getResultStatus() == 0) continue; // Inactive/Invalid
 
-            ParticipantData participant = currentParticipants.getParticipants().get(i);
+            ParticipantData participant = state.getCurrentParticipants().getParticipants().get(i);
             
             DriverResult driverResult = new DriverResult();
             driverResult.setSessionResult(sessionResult);
@@ -570,29 +534,29 @@ public class TelemetryProcessingService {
     }
 
     @Transactional
-    public void saveResultsFromLiveState(long sessionUID) {
-        if (activeLeagueId == null || currentSession == null || currentParticipants == null || currentLapData == null) {
+    public void saveResultsFromLiveState(LeagueSessionState state, long sessionUID) {
+        if (state.getLeagueId() == null || state.getLeagueId() == -1 || state.getCurrentSession() == null || state.getCurrentParticipants() == null || state.getCurrentLapData() == null) {
             log.warn("Cannot save live results: Missing critical context (League, Session, Participants or LapData)");
             return;
         }
 
         // Check if session already recorded
-        int sessionType = currentSession.getSessionType();
+        int sessionType = state.getCurrentSession().getSessionType();
         Optional<SessionResult> existing = sessionResultRepository.findBySessionUIDAndSessionType(sessionUID, sessionType);
         if (existing.isPresent()) {
             return; // Already saved (maybe by Packet 8 that arrived just before SEND)
         }
 
-        League league = leagueRepository.findByIdWithEvents(activeLeagueId).orElse(null);
+        League league = leagueRepository.findByIdWithEvents(state.getLeagueId()).orElse(null);
         if (league == null) return;
 
-        String trackIdStr = String.valueOf(currentSession.getTrackId());
+        String trackIdStr = String.valueOf(state.getCurrentSession().getTrackId());
         Event event = eventRepository.findByLeagueAndTrackId(league, trackIdStr)
                 .orElseGet(() -> {
                     Event newEvent = new Event();
                     newEvent.setLeague(league);
                     newEvent.setTrackId(trackIdStr);
-                    newEvent.setEventName(TRACK_NAMES.getOrDefault(currentSession.getTrackId(), "Track " + trackIdStr));
+                    newEvent.setEventName(TRACK_NAMES.getOrDefault(state.getCurrentSession().getTrackId(), "Track " + trackIdStr));
                     return eventRepository.save(newEvent);
                 });
 
@@ -605,12 +569,12 @@ public class TelemetryProcessingService {
 
         boolean isRace = sessionType >= 15 && sessionType <= 17;
 
-        for (int i = 0; i < currentParticipants.getParticipants().size(); i++) {
-            ParticipantData participant = currentParticipants.getParticipants().get(i);
+        for (int i = 0; i < state.getCurrentParticipants().getParticipants().size(); i++) {
+            ParticipantData participant = state.getCurrentParticipants().getParticipants().get(i);
             if (participant.getName() == null || participant.getName().isEmpty()) continue;
 
-            if (i >= currentLapData.getLapData().size()) break;
-            LapData ld = currentLapData.getLapData().get(i);
+            if (i >= state.getCurrentLapData().getLapData().size()) break;
+            LapData ld = state.getCurrentLapData().getLapData().get(i);
             
             // Skip inactive drivers
             if (ld.getResultStatus() == 0 || ld.getResultStatus() == 1) continue;
@@ -621,7 +585,7 @@ public class TelemetryProcessingService {
             driverResult.setTeamName(TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(ld.getCarPosition());
             driverResult.setGridPosition(ld.getGridPosition());
-            driverResult.setBestLapTime(driverBestLap[i] / 1000.0f);
+            driverResult.setBestLapTime(state.getDriverBestLap()[i] / 1000.0f);
             driverResult.setResultStatus(ld.getResultStatus());
             driverResult.setPenalties(ld.getPenalties());
             

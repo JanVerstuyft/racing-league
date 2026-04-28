@@ -18,6 +18,8 @@ import com.vaadin.flow.router.BeforeEvent;
 import com.vaadin.flow.router.HasUrlParameter;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.router.RouterLink;
+import com.vaadin.flow.server.auth.AnonymousAllowed;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -25,13 +27,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@AnonymousAllowed
 @PageTitle("Event Results | F1 Telemetry")
-@Route(value = "event", layout = MainLayout.class)
+@Route(value = "event")
 public class EventResultsView extends VerticalLayout implements HasUrlParameter<Long> {
 
     private final EventRepository eventRepository;
     private final TelemetryProcessingService telemetryProcessingService;
     private final H2 eventHeader = new H2();
+    private final RouterLink backToSeason = new RouterLink("Back to Season", SeasonDetailsView.class, 0L);
     
     private final VerticalLayout resultsContainer = new VerticalLayout();
     private final VerticalLayout statsContainer = new VerticalLayout();
@@ -79,7 +83,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         statsContainer.setSizeFull();
         statsContainer.setVisible(false);
 
-        add(eventHeader, mainTabs, resultsContainer, statsContainer);
+        add(backToSeason, eventHeader, mainTabs, resultsContainer, statsContainer);
     }
 
     @Override
@@ -87,6 +91,8 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         this.currentEventId = parameter;
         this.currentEvent = eventRepository.findByIdWithResults(parameter).orElseThrow();
         eventHeader.setText("Event: " + currentEvent.getEventName());
+        
+        backToSeason.setRoute(SeasonDetailsView.class, currentEvent.getLeague().getId());
         
         setupSessionTabs();
         updateSessionContent();

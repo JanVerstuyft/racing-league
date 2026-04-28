@@ -1,16 +1,17 @@
 package be.jabapage.racingleague.f1telemetry.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.Setter;
 
-@Data
+import java.util.Objects;
+
+@Getter
+@Setter
 @Entity
-@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class TyreStint {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @EqualsAndHashCode.Include
     private Long id;
 
     @ManyToOne
@@ -21,4 +22,16 @@ public class TyreStint {
     private Integer tyreCompound; // Visual compound ID
     private Integer endLap;
     private Integer laps;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof TyreStint that)) return false;
+        return id != null && Objects.equals(id, that.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
 }

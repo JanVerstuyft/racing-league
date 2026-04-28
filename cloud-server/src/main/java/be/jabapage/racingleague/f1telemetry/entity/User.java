@@ -4,32 +4,31 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 @Getter
 @Setter
 @Entity
-public class DriverStanding {
+@Table(name = "app_user")
+public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @ManyToOne
-    @JoinColumn(name = "league_id")
-    private League league;
-
-    @Column(name = "driver_name")
-    private String driverName;
-    @Column(name = "team_name")
-    private String teamName;
-    private Integer points;
-    private Integer wins;
-    private Integer podiums;
+    
+    @Column(unique = true)
+    private String username;
+    
+    private String password;
+    
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<League> leagues = new ArrayList<>();
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof DriverStanding that)) return false;
+        if (!(o instanceof User that)) return false;
         return id != null && Objects.equals(id, that.id);
     }
 

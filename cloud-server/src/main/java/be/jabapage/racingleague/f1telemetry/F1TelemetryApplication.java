@@ -16,4 +16,17 @@ public class F1TelemetryApplication implements AppShellConfigurator {
 		SpringApplication.run(F1TelemetryApplication.class, args);
 	}
 
+	@org.springframework.context.annotation.Bean
+	public org.springframework.boot.CommandLineRunner initData(be.jabapage.racingleague.f1telemetry.repository.UserRepository userRepository,
+															  org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
+		return args -> {
+			if (userRepository.count() == 0) {
+				be.jabapage.racingleague.f1telemetry.entity.User user = new be.jabapage.racingleague.f1telemetry.entity.User();
+				user.setUsername("user");
+				user.setPassword(passwordEncoder.encode("password"));
+				userRepository.save(user);
+			}
+		};
+	}
+
 }

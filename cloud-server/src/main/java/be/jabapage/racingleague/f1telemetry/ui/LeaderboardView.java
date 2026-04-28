@@ -11,15 +11,19 @@ import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.router.BeforeEvent;
+import com.vaadin.flow.router.HasUrlParameter;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.auth.AnonymousAllowed;
 import com.vaadin.flow.shared.Registration;
 
 import java.util.List;
 
 @PageTitle("Live Leaderboard | F1 Telemetry")
-@Route(value = "leaderboard", layout = MainLayout.class)
-public class LeaderboardView extends VerticalLayout {
+@Route(value = "leaderboard")
+@AnonymousAllowed
+public class LeaderboardView extends VerticalLayout implements HasUrlParameter<Long> {
 
     private final Broadcaster broadcaster;
     private final Grid<DriverBoardState> grid = new Grid<>(DriverBoardState.class, false);
@@ -27,6 +31,7 @@ public class LeaderboardView extends VerticalLayout {
     private final Span scStatus = new Span();
     private Registration leaderboardRegistration;
     private Registration sessionInfoRegistration;
+    private Long leagueId;
 
     public LeaderboardView(Broadcaster broadcaster) {
         this.broadcaster = broadcaster;
@@ -41,6 +46,10 @@ public class LeaderboardView extends VerticalLayout {
         add(header, grid);
     }
 
+    @Override
+    public void setParameter(BeforeEvent event, Long parameter) {
+        this.leagueId = parameter;
+    }
 
     private void configureGrid() {
         grid.setSizeFull();
@@ -109,13 +118,17 @@ public class LeaderboardView extends VerticalLayout {
 
     @Override
     protected void onAttach(AttachEvent attachEvent) {
+        if (leagueId == null) {
+            title.setText("NO LEAGUE SELECTED");
+            return;
+        }
         UI ui = attachEvent.getUI();
-        leaderboardRegistration = broadcaster.registerLeaderboard(data -> {
+        leaderboardRegistration = broadcaster.registerLeaderboard(leagueId, data -> {
             if (ui.isAttached()) {
                 ui.access(() -> updateLeaderboard(data));
             }
         });
-        sessionInfoRegistration = broadcaster.registerSessionInfo(info -> {
+        sessionInfoRegistration = broadcaster.registerSessionInfo(leagueId, info -> {
             if (ui.isAttached()) {
                 ui.access(() -> updateSessionInfo(info));
             }

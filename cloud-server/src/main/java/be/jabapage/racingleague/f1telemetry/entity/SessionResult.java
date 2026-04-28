@@ -1,22 +1,23 @@
 package be.jabapage.racingleague.f1telemetry.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.ToString;
+
 import java.util.LinkedHashSet;
+import java.util.Objects;
 import java.util.Set;
 
-@Data
+@Getter
+@Setter
 @Entity
-@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @Table(name = "session_result", uniqueConstraints = {
     @UniqueConstraint(columnNames = {"session_uid", "session_type"})
 })
 public class SessionResult {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @EqualsAndHashCode.Include
     private Long id;
 
     @ManyToOne
@@ -37,4 +38,16 @@ public class SessionResult {
     @OneToMany(mappedBy = "sessionResult", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     @ToString.Exclude
     private Set<DriverResult> driverResults = new LinkedHashSet<>();
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof SessionResult that)) return false;
+        return id != null && Objects.equals(id, that.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
 }

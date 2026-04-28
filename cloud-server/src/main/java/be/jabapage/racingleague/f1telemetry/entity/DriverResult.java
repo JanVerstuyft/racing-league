@@ -1,9 +1,13 @@
 package be.jabapage.racingleague.f1telemetry.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
-@Data
+import java.util.Objects;
+
+@Getter
+@Setter
 @Entity
 public class DriverResult {
     @Id
@@ -37,4 +41,16 @@ public class DriverResult {
 
     @OneToMany(mappedBy = "driverResult", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private java.util.List<LapResult> lapResults = new java.util.ArrayList<>();
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof DriverResult that)) return false;
+        return id != null && Objects.equals(id, that.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
 }

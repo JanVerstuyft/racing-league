@@ -12,7 +12,6 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
-import java.net.UnknownHostException;
 import java.util.Enumeration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,6 +25,9 @@ public class UdpForwarderService {
 
     @Value("${telemetry.cloud.url:http://localhost:8080/api/telemetry}")
     private String cloudUrl;
+
+    @Value("${telemetry.cloud.token:default}")
+    private String cloudToken;
 
     @Value("${telemetry.recording.enabled:false}")
     private boolean recordingEnabled;
@@ -67,7 +69,7 @@ public class UdpForwarderService {
         }
         executorService.submit(this::listen);
         log.info("UDP Forwarder Service started on port {}", port);
-        log.info("Forwarding telemetry to {}", cloudUrl);
+        log.info("Forwarding telemetry to {} with token {}", cloudUrl, cloudToken);
         if (recordingEnabled) {
             log.info("Recording telemetry to {}", recordingPath);
             // Ensure directory exists
@@ -139,8 +141,12 @@ public class UdpForwarderService {
                 }
 
                 try {
-                    restTemplate.postForObject(cloudUrl, data, Void.class);
-                    log.debug("Forwarded {} bytes to cloud", data.length);
+                    String urlWithToken = cloudUrl;
+                    if (!urlWithToken.endsWith("/")) urlWithToken += "/";
+                    urlWithToken += cloudToken;
+
+                    restTemplate.postForObject(urlWithToken, data, Void.class);
+                    log.debug("Forwarded {} bytes to cloud with token {}", data.length, cloudToken);
                 } catch (Exception e) {
                     log.error("Failed to forward telemetry to cloud: {}", e.getMessage());
                 }

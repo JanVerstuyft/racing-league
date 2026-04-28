@@ -9,6 +9,7 @@ import be.jabapage.racingleague.f1telemetry.repository.EventRepository;
 import be.jabapage.racingleague.f1telemetry.repository.LeagueRepository;
 import be.jabapage.racingleague.f1telemetry.repository.TeamStandingRepository;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
+import be.jabapage.racingleague.f1telemetry.security.SecurityService;
 import be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -23,20 +24,24 @@ import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.tabs.Tab;
 import com.vaadin.flow.component.tabs.Tabs;
 import com.vaadin.flow.router.*;
+import com.vaadin.flow.server.auth.AnonymousAllowed;
 
 import java.util.Comparator;
 import java.util.stream.Collectors;
 
+@AnonymousAllowed
 @PageTitle("Season Details | F1 Telemetry")
-@Route(value = "season", layout = MainLayout.class)
+@Route(value = "season")
 public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter<Long> {
 
     private final LeagueRepository leagueRepository;
     private final EventRepository eventRepository;
     private final DriverStandingRepository driverStandingRepository;
     private final TeamStandingRepository teamStandingRepository;
+    private final SecurityService securityService;
+    private final TelemetryProcessingService telemetryProcessingService;
+    
     private League league;
-
     private final H2 seasonName = new H2();
     private final Grid<Event> eventGrid = new Grid<>(Event.class, false);
     private final Grid<DriverStanding> driverGrid = new Grid<>(DriverStanding.class, false);
@@ -44,17 +49,21 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
     private final VerticalLayout eventsLayout = new VerticalLayout();
     private final VerticalLayout standingsLayout = new VerticalLayout();
-    private final TelemetryProcessingService telemetryProcessingService;
+    
+    private final Button recalculateBtn = new Button("Recalculate Standings");
+    private Grid.Column<Event> actionsColumn;
 
     public SeasonDetailsView(LeagueRepository leagueRepository, EventRepository eventRepository,
                              DriverStandingRepository driverStandingRepository,
                              TeamStandingRepository teamStandingRepository,
-                             TelemetryProcessingService telemetryProcessingService) {
+                             TelemetryProcessingService telemetryProcessingService,
+                             SecurityService securityService) {
         this.leagueRepository = leagueRepository;
         this.eventRepository = eventRepository;
         this.driverStandingRepository = driverStandingRepository;
         this.teamStandingRepository = teamStandingRepository;
         this.telemetryProcessingService = telemetryProcessingService;
+        this.securityService = securityService;
 
         setSizeFull();
         configureGrids();
@@ -68,13 +77,14 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
         eventsLayout.add(new H3("Race Weekends"), eventGrid);
         
-        Button recalculateBtn = new Button("Recalculate Standings", e -> {
+        recalculateBtn.addClickListener(e -> {
             if (league != null) {
                 telemetryProcessingService.recalculateStandings(league.getId());
                 updateData();
                 Notification.show("Standings recalculated!");
             }
         });
+        
         standingsLayout.add(new HorizontalLayout(new H3("Driver Standings"), recalculateBtn), 
                 driverGrid, new H3("Team Standings"), teamGrid);
         standingsLayout.setVisible(false);
@@ -92,29 +102,31 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                     .collect(Collectors.joining(", "));
         }).setHeader("Sessions");
 
-        eventGrid.addComponentColumn(event -> {
+        actionsColumn = eventGrid.addComponentColumn(event -> {
             HorizontalLayout actions = new HorizontalLayout();
-
             RouterLink resultsLink = new RouterLink("Results", EventResultsView.class, event.getId());
+            actions.add(resultsLink);
 
-            Button deleteBtn = new Button("Delete", e -> {
-                ConfirmDialog dialog = new ConfirmDialog();
-                dialog.setHeader("Delete Weekend?");
-                dialog.setText("Are you sure you want to delete the weekend '" + event.getEventName() + "'? Standings will be automatically recalculated.");
-                dialog.setCancelable(true);
-                dialog.setConfirmText("Delete");
-                dialog.setConfirmButtonTheme("error primary");
-                dialog.addConfirmListener(ev -> {
-                    eventRepository.delete(event);
-                    telemetryProcessingService.recalculateStandings(league.getId());
-                    updateData();
-                    Notification.show("Weekend deleted and standings recalculated");
+            if (securityService.getAuthenticatedUser().isPresent()) {
+                Button deleteBtn = new Button("Delete", e -> {
+                    ConfirmDialog dialog = new ConfirmDialog();
+                    dialog.setHeader("Delete Weekend?");
+                    dialog.setText("Are you sure you want to delete the weekend '" + event.getEventName() + "'? Standings will be automatically recalculated.");
+                    dialog.setCancelable(true);
+                    dialog.setConfirmText("Delete");
+                    dialog.setConfirmButtonTheme("error primary");
+                    dialog.addConfirmListener(ev -> {
+                        eventRepository.delete(event);
+                        telemetryProcessingService.recalculateStandings(league.getId());
+                        updateData();
+                        Notification.show("Weekend deleted and standings recalculated");
+                    });
+                    dialog.open();
                 });
-                dialog.open();
-            });
-            deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
+                deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
+                actions.add(deleteBtn);
+            }
 
-            actions.add(resultsLink, deleteBtn);
             actions.setAlignItems(FlexComponent.Alignment.CENTER);
             return actions;
         }).setHeader("Actions");
@@ -133,6 +145,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         league = leagueRepository.findById(parameter).orElseThrow();
         seasonName.setText("Season: " + league.getName());
         updateData();
+        
+        // Hide admin-only features if not logged in
+        boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
+        recalculateBtn.setVisible(loggedIn);
     }
 
     private void updateData() {
