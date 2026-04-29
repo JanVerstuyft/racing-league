@@ -89,13 +89,15 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     @Override
     public void setParameter(BeforeEvent event, Long parameter) {
         this.currentEventId = parameter;
-        this.currentEvent = eventRepository.findByIdWithResults(parameter).orElseThrow();
-        eventHeader.setText("Event: " + currentEvent.getEventName());
-        
-        backToSeason.setRoute(SeasonDetailsView.class, currentEvent.getLeague().getId());
-        
-        setupSessionTabs();
-        updateSessionContent();
+        eventRepository.findByIdWithResults(parameter).ifPresentOrElse(e -> {
+            this.currentEvent = e;
+            eventHeader.setText("Event: " + currentEvent.getEventName());
+            backToSeason.setRoute(SeasonDetailsView.class, currentEvent.getLeague().getId());
+            setupSessionTabs();
+            updateSessionContent();
+        }, () -> {
+            event.forwardTo(SeasonListView.class);
+        });
     }
 
     private void setupSessionTabs() {

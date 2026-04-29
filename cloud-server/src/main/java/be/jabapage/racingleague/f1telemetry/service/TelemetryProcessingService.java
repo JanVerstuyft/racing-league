@@ -68,7 +68,9 @@ public class TelemetryProcessingService {
                         .findFirst()
                         .ifPresent(entry -> {
                             try {
-                                LeagueSessionState state = objectMapper.readValue(remote.getJsonState(), LeagueSessionState.class);
+                                String json = decompress(remote.getCompressedState());
+                                if (json.isEmpty()) return;
+                                LeagueSessionState state = objectMapper.readValue(json, LeagueSessionState.class);
                                 entry.setValue(state);
                                 lastLocalUpdate.put(remote.getLeagueId(), remote.getLastUpdated());
                                 
@@ -115,7 +117,9 @@ public class TelemetryProcessingService {
 
     private void loadAndBroadcast(LiveState remote) {
         try {
-            LeagueSessionState state = objectMapper.readValue(remote.getJsonState(), LeagueSessionState.class);
+            String json = decompress(remote.getCompressedState());
+            if (json.isEmpty()) return;
+            LeagueSessionState state = objectMapper.readValue(json, LeagueSessionState.class);
             lastLocalUpdate.put(remote.getLeagueId(), remote.getLastUpdated());
             
             leagueRepository.findById(remote.getLeagueId()).ifPresent(l -> {
@@ -142,12 +146,15 @@ public class TelemetryProcessingService {
                 Optional<LiveState> liveState = liveStateRepository.findById(l.getId());
                 if (liveState.isPresent()) {
                     try {
-                        LeagueSessionState state = objectMapper.readValue(liveState.get().getJsonState(), LeagueSessionState.class);
-                        // Refresh transient mappings
-                        refreshDriverMappings(state, l);
-                        state.setHideAi(l.isHideAi());
-                        log.info("Loaded live state for league {} from database", l.getId());
-                        return state;
+                        String json = decompress(liveState.get().getCompressedState());
+                        if (!json.isEmpty()) {
+                            LeagueSessionState state = objectMapper.readValue(json, LeagueSessionState.class);
+                            // Refresh transient mappings
+                            refreshDriverMappings(state, l);
+                            state.setHideAi(l.isHideAi());
+                            log.info("Loaded live state for league {} from database", l.getId());
+                            return state;
+                        }
                     } catch (Exception e) {
                         log.error("Failed to deserialize live state for league {}: {}", l.getId(), e.getMessage());
                     }
@@ -185,11 +192,32 @@ public class TelemetryProcessingService {
             LiveState liveState = new LiveState();
             liveState.setLeagueId(state.getLeagueId());
             liveState.setLastUpdated(now);
-            liveState.setJsonState(objectMapper.writeValueAsString(state));
+            
+            String json = objectMapper.writeValueAsString(state);
+            liveState.setCompressedState(compress(json));
+            
             liveStateRepository.save(liveState);
             lastLocalUpdate.put(state.getLeagueId(), now);
         } catch (Exception e) {
             log.error("Failed to persist live state for league {}: {}", state.getLeagueId(), e.getMessage());
+        }
+    }
+
+    private byte[] compress(String data) throws java.io.IOException {
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream(data.length());
+        try (java.util.zip.GZIPOutputStream gzip = new java.util.zip.GZIPOutputStream(bos)) {
+            gzip.write(data.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+        return bos.toByteArray();
+    }
+
+    private String decompress(byte[] compressed) throws java.io.IOException {
+        if (compressed == null || compressed.length == 0) {
+            return "";
+        }
+        try (java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(compressed);
+             java.util.zip.GZIPInputStream gzip = new java.util.zip.GZIPInputStream(bis)) {
+            return new String(gzip.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
         }
     }
 

@@ -19,7 +19,7 @@ public class LiveState {
     @Column(name = "last_updated")
     private LocalDateTime lastUpdated;
 
-    @Lob
-    @Column(columnDefinition = "TEXT")
-    private String jsonState;
+    @Column(name = "compressed_state", columnDefinition = "BYTEA")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.BINARY)
+    private byte[] compressedState;
 }
