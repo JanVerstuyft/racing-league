@@ -29,6 +29,8 @@ public class TelemetryProcessingService {
     @Autowired
     private LapResultRepository lapResultRepository;
     @Autowired
+    private DriverMappingRepository driverMappingRepository;
+    @Autowired
     private Broadcaster broadcaster;
 
     private final Map<String, LeagueSessionState> leagueStates = new java.util.concurrent.ConcurrentHashMap<>();
@@ -37,13 +39,55 @@ public class TelemetryProcessingService {
         return leagueStates.computeIfAbsent(token, t -> {
             Optional<League> league = leagueRepository.findByToken(t);
             if (league.isPresent()) {
-                return new LeagueSessionState(league.get().getId());
+                LeagueSessionState state = new LeagueSessionState(league.get().getId());
+                state.setHideAi(league.get().isHideAi());
+                refreshDriverMappings(state, league.get());
+                return state;
             } else if ("default".equals(t)) {
                 // Fallback for default token if no league found
                 return new LeagueSessionState(-1L);
             }
             return null;
         });
+    }
+
+    public void refreshHideAiSetting(Long leagueId) {
+        leagueStates.values().stream()
+                .filter(s -> Objects.equals(s.getLeagueId(), leagueId))
+                .findFirst()
+                .ifPresent(state -> {
+                    leagueRepository.findById(leagueId).ifPresent(league -> state.setHideAi(league.isHideAi()));
+                });
+    }
+
+    public void refreshDriverMappings(Long leagueId) {
+        leagueStates.values().stream()
+                .filter(s -> Objects.equals(s.getLeagueId(), leagueId))
+                .findFirst()
+                .ifPresent(state -> {
+                    leagueRepository.findById(leagueId).ifPresent(league -> refreshDriverMappings(state, league));
+                });
+    }
+
+    private void refreshDriverMappings(LeagueSessionState state, League league) {
+        List<DriverMapping> mappings = driverMappingRepository.findByLeague(league);
+        state.getDriverNameOverrides().clear();
+        for (DriverMapping mapping : mappings) {
+            if (mapping.getOverriddenName() != null && !mapping.getOverriddenName().isEmpty()) {
+                state.getDriverNameOverrides().put(
+                        mapping.getTelemetryName() + "|" + mapping.getRaceNumber() + "|" + mapping.getDriverId(),
+                        mapping.getOverriddenName()
+                );
+            }
+        }
+    }
+
+    private String getDriverName(LeagueSessionState state, ParticipantData p) {
+        String key = p.getName() + "|" + p.getRaceNumber() + "|" + p.getDriverId();
+        String overridden = state.getDriverNameOverrides().get(key);
+        if (overridden != null && !overridden.isEmpty()) return overridden;
+
+        return p.getName();
     }
 
     // Team ID to Name mapping (simplified)
@@ -81,6 +125,39 @@ public class TelemetryProcessingService {
             Map.entry(15, "Race"), Map.entry(16, "Race 2"), Map.entry(17, "Race 3"),
             Map.entry(18, "Time Trial")
     );
+
+    private void autoDiscoverDrivers(LeagueSessionState state, PacketParticipantsData participants) {
+        if (state.getLeagueId() == null || state.getLeagueId() == -1) return;
+
+        League league = leagueRepository.findById(state.getLeagueId()).orElse(null);
+        if (league == null) return;
+
+        boolean changed = false;
+        for (ParticipantData p : participants.getParticipants()) {
+            if (p.getName() == null || p.getName().isEmpty()) continue;
+
+            String key = p.getName() + "|" + p.getRaceNumber() + "|" + p.getDriverId();
+            if (state.getDriverNameOverrides().containsKey(key)) continue;
+
+            // Check if we already have a mapping (even without override)
+            Optional<DriverMapping> mapping = driverMappingRepository.findByLeagueAndTelemetryNameAndRaceNumberAndDriverId(league, p.getName(), p.getRaceNumber(), p.getDriverId());
+            if (mapping.isEmpty()) {
+                DriverMapping newMapping = new DriverMapping();
+                newMapping.setLeague(league);
+                newMapping.setTelemetryName(p.getName());
+                newMapping.setRaceNumber(p.getRaceNumber());
+                newMapping.setDriverId(p.getDriverId());
+                driverMappingRepository.save(newMapping);
+                // Add to cache with empty override to avoid re-checking
+                state.getDriverNameOverrides().put(key, "");
+                changed = true;
+                log.info("Auto-discovered new driver in league {}: {} (#{}, ID: {})", league.getId(), p.getName(), p.getRaceNumber(), p.getDriverId());
+            } else {
+                // Already in DB, add to cache to avoid re-checking DB
+                state.getDriverNameOverrides().put(key, mapping.get().getOverriddenName() != null ? mapping.get().getOverriddenName() : "");
+            }
+        }
+    }
 
     public synchronized void processPacket(String token, PacketHeader header, ByteBuffer buffer) {
         LeagueSessionState state = getOrCreateState(token);
@@ -141,7 +218,9 @@ public class TelemetryProcessingService {
                 }
                 break;
             case 4: // Participants
-                state.setCurrentParticipants(PacketParticipantsData.fromByteBuffer(buffer, header));
+                PacketParticipantsData participants = PacketParticipantsData.fromByteBuffer(buffer, header);
+                state.setCurrentParticipants(participants);
+                autoDiscoverDrivers(state, participants);
                 break;
             case 7: // Car Status
                 state.setCurrentCarStatus(PacketCarStatusData.fromByteBuffer(buffer, header));
@@ -271,7 +350,8 @@ public class TelemetryProcessingService {
 
             DriverBoardState driverState = new DriverBoardState();
             driverState.setPosition(ld.getCarPosition());
-            driverState.setName(p.getName());
+            driverState.setName(getDriverName(state, p));
+            driverState.setAi(p.getAiControlled() == 1);
             driverState.setTeam(TEAM_NAMES.getOrDefault(p.getTeamId(), "Unknown"));
             driverState.setTyreCompound(TYRE_COMPOUNDS.getOrDefault(csd.getVisualTyreCompound(), "Unknown"));
             driverState.setTyreAge(csd.getTyresAgeLaps());
@@ -301,6 +381,11 @@ public class TelemetryProcessingService {
             
             board.add(driverState);
         }
+        
+        if (state.isHideAi()) {
+            board = board.stream().filter(s -> !s.isAi()).collect(Collectors.toList());
+        }
+
         board.sort(Comparator.comparingInt(DriverBoardState::getPosition));
         broadcaster.broadcastLeaderboard(state.getLeagueId(), board);
     }
@@ -344,6 +429,7 @@ public class TelemetryProcessingService {
 
             RacePaceStats stats = new RacePaceStats();
             stats.setDriverName(dr.getDriverName());
+            stats.setAi(dr.isAi());
             stats.setTeamName(dr.getTeamName());
 
             double s1 = calculateWeightedSector(validLaps.stream().mapToLong(LapResult::getS1InMS).toArray());
@@ -481,7 +567,11 @@ public class TelemetryProcessingService {
             
             DriverResult driverResult = new DriverResult();
             driverResult.setSessionResult(sessionResult);
-            driverResult.setDriverName(participant.getName());
+            driverResult.setDriverName(getDriverName(state, participant));
+            driverResult.setTelemetryName(participant.getName());
+            driverResult.setRaceNumber(participant.getRaceNumber());
+            driverResult.setDriverId(participant.getDriverId());
+            driverResult.setAi(participant.getAiControlled() == 1);
             driverResult.setTeamName(TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(data.getPosition());
             driverResult.setPointsAwarded(data.getPoints());
@@ -581,7 +671,11 @@ public class TelemetryProcessingService {
 
             DriverResult driverResult = new DriverResult();
             driverResult.setSessionResult(sessionResult);
-            driverResult.setDriverName(participant.getName());
+            driverResult.setDriverName(getDriverName(state, participant));
+            driverResult.setTelemetryName(participant.getName());
+            driverResult.setRaceNumber(participant.getRaceNumber());
+            driverResult.setDriverId(participant.getDriverId());
+            driverResult.setAi(participant.getAiControlled() == 1);
             driverResult.setTeamName(TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(ld.getCarPosition());
             driverResult.setGridPosition(ld.getGridPosition());
@@ -668,23 +762,80 @@ public class TelemetryProcessingService {
     }
 
     @Transactional
+    public void updateDriverNamesFromMappings(Long leagueId) {
+        League league = leagueRepository.findByIdWithEvents(leagueId).orElse(null);
+        if (league == null) return;
+
+        List<DriverMapping> mappings = driverMappingRepository.findByLeague(league);
+        Map<String, String> nameMap = mappings.stream()
+                .filter(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty())
+                .collect(Collectors.toMap(
+                        m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId(),
+                        DriverMapping::getOverriddenName,
+                        (existing, replacement) -> existing
+                ));
+
+        List<SessionResult> allSessions = league.getEvents().stream()
+                .flatMap(e -> e.getSessionResults().stream())
+                .collect(Collectors.toList());
+
+        for (SessionResult session : allSessions) {
+            for (DriverResult result : session.getDriverResults()) {
+                if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
+                    String key = result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId();
+                    String nameToUse = nameMap.getOrDefault(key, result.getTelemetryName());
+                    if (!nameToUse.equals(result.getDriverName())) {
+                        result.setDriverName(nameToUse);
+                    }
+                }
+            }
+        }
+        log.info("Updated driver names in all results for league: {}", league.getId());
+    }
+
+    @Transactional
     public void recalculateStandings(Long leagueId) {
         League league = leagueRepository.findByIdWithEvents(leagueId).orElse(null);
         if (league == null) return;
+
+        // Load all mappings for this league
+        List<DriverMapping> mappings = driverMappingRepository.findByLeague(league);
+        Map<String, String> nameMap = mappings.stream()
+                .filter(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty())
+                .collect(Collectors.toMap(
+                        m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId(),
+                        DriverMapping::getOverriddenName,
+                        (existing, replacement) -> existing
+                ));
 
         // Clear existing standings
         driverStandingRepository.deleteAll(driverStandingRepository.findByLeague(league));
         teamStandingRepository.deleteAll(teamStandingRepository.findByLeague(league));
 
-        // Get all race sessions from events
-        List<SessionResult> raceSessions = league.getEvents().stream()
+        // Get all sessions from events
+        List<SessionResult> allSessions = league.getEvents().stream()
                 .flatMap(e -> e.getSessionResults().stream())
-                .filter(s -> s.getSessionType() >= 15 && s.getSessionType() <= 17)
                 .collect(Collectors.toList());
 
-        for (SessionResult session : raceSessions) {
+        for (SessionResult session : allSessions) {
+            boolean isRace = session.getSessionType() >= 15 && session.getSessionType() <= 17;
             for (DriverResult result : session.getDriverResults()) {
-                updateStandings(league, result);
+                // Determine the correct name to use
+                String nameToUse = result.getDriverName();
+                if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
+                    String key = result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId();
+                    nameToUse = nameMap.getOrDefault(key, result.getTelemetryName());
+                }
+
+                // Update the DriverResult itself so it stays consistent in the UI
+                if (!nameToUse.equals(result.getDriverName())) {
+                    result.setDriverName(nameToUse);
+                }
+
+                // Only update standings if it's a race
+                if (isRace) {
+                    updateStandings(league, result);
+                }
             }
         }
         log.info("Recalculated standings for league: {}", league.getName());
@@ -702,6 +853,7 @@ public class TelemetryProcessingService {
                     newDs.setPodiums(0);
                     return newDs;
                 });
+        ds.setAi(result.isAi());
         ds.setTeamName(result.getTeamName());
         ds.setPoints((ds.getPoints() != null ? ds.getPoints() : 0) + result.getPointsAwarded());
         if (result.getPosition() != null && result.getPosition() == 1) ds.setWins((ds.getWins() != null ? ds.getWins() : 0) + 1);

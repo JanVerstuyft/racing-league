@@ -35,26 +35,30 @@ def replay_session(file_path, target_url):
                 if not data:
                     break
 
-                # Forward to cloud server using persistent connection
-                try:
-                    conn.request('POST', path, body=data, headers={'Content-Type': 'application/octet-stream'})
-                    response = conn.getresponse()
-                    response.read() # Must read the full response to reuse connection
-                    if response.status != 200:
-                        print(f"Error forwarding packet {packet_count}: {response.status}")
-                except Exception as e:
-                    print(f"Request failed at packet {packet_count}: {e}")
-                    # Reconnect on error
-                    if parsed_url.scheme == 'https':
-                        conn = http.client.HTTPSConnection(host)
-                    else:
-                        conn = http.client.HTTPConnection(host)
+                # Filtering: Only send packets the cloud server actually processes
+                # Packet ID is at index 6 of the F1 25 header
+                packet_id = data[6]
+                if packet_id in [1, 2, 3, 4, 7, 8]:
+                    # Forward to cloud server using persistent connection
+                    try:
+                        conn.request('POST', path, body=data, headers={'Content-Type': 'application/octet-stream'})
+                        response = conn.getresponse()
+                        response.read() # Must read the full response to reuse connection
+                        if response.status != 200:
+                            print(f"Error forwarding packet {packet_count}: {response.status}")
+                    except Exception as e:
+                        print(f"Request failed at packet {packet_count}: {e}")
+                        # Reconnect on error
+                        if parsed_url.scheme == 'https':
+                            conn = http.client.HTTPSConnection(host)
+                        else:
+                            conn = http.client.HTTPConnection(host)
 
                 packet_count += 1
-                if packet_count % 100 == 0:
-                    print(f"Sent {packet_count} packets...")
+                if packet_count % 500 == 0:
+                    print(f"Processed {packet_count} packets...")
                 
-                # Small delay to prevent overwhelming the server, but much faster than before
+                # No delay - let it run at network speed
                 # time.sleep(0.001)
                 
         except KeyboardInterrupt:
@@ -66,5 +70,5 @@ def replay_session(file_path, target_url):
 
 if __name__ == "__main__":
     RECORDING_FILE = "data/local_race.bin"
-    CLOUD_URL = "https://racingleague.jabapage.be/api/telemetry/26c5b212-ebd6-49b2-a134-d7fbf1d4f77e"
+    CLOUD_URL = "http://localhost:8080/api/telemetry/c38befb8-f354-4ae2-aefe-1f97c689f0bc"
     replay_session(RECORDING_FILE, CLOUD_URL)

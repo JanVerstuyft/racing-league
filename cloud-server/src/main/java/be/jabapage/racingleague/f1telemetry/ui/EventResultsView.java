@@ -139,6 +139,10 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         List<DriverResult> driverResults = session.getDriverResults().stream()
                 .sorted(Comparator.comparingInt(DriverResult::getPosition))
                 .collect(Collectors.toList());
+        
+        if (currentEvent.getLeague().isHideAi()) {
+            driverResults = driverResults.stream().filter(dr -> !dr.isAi()).collect(Collectors.toList());
+        }
 
         float fastestLap = driverResults.stream()
                 .map(dr -> dr.getBestLapTime() != null ? dr.getBestLapTime() : 0.0f)
@@ -153,17 +157,26 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
 
         Grid<DriverResult> grid = new Grid<>(DriverResult.class, false);
         grid.addColumn(dr -> dr.getPosition() != null ? dr.getPosition() : "-").setHeader("Pos").setWidth("60px").setFlexGrow(0);
-        grid.addColumn(dr -> {
-            String name = dr.getDriverName();
+        
+        grid.addComponentColumn(dr -> {
+            String nameText = dr.getDriverName();
             Integer status = dr.getResultStatus();
             if (status != null) {
-                if (status == 4) name += " (DNF)";
-                else if (status == 5) name += " (DSQ)";
-                else if (status == 6) name += " (NC)";
-                else if (status == 7) name += " (RET)";
+                if (status == 4) nameText += " (DNF)";
+                else if (status == 5) nameText += " (DSQ)";
+                else if (status == 6) nameText += " (NC)";
+                else if (status == 7) nameText += " (RET)";
+            }
+            Span name = new Span(nameText);
+            if (dr.isAi()) {
+                Span badge = new Span("AI");
+                badge.getElement().getThemeList().add("badge contrast small");
+                badge.getStyle().set("margin-left", "var(--lumo-space-s)");
+                return new HorizontalLayout(name, badge);
             }
             return name;
         }).setHeader("Driver");
+        
         grid.addColumn(DriverResult::getTeamName).setHeader("Team");
         
         if (!isQualifying) {
@@ -259,6 +272,10 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
 
     private void updatePaceData() {
         List<RacePaceStats> stats = telemetryProcessingService.calculatePureRacePace(currentEventId);
+        
+        if (currentEvent.getLeague().isHideAi()) {
+            stats = stats.stream().filter(s -> !s.isAi()).collect(Collectors.toList());
+        }
         
         if (stats.isEmpty()) {
             statsContent.add(new Span("No pace data available (only for Race sessions with drivers > 50% distance)."));

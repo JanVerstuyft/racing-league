@@ -14,6 +14,7 @@ public class DriverBoardState {
     private String gapToFront;
     private int penalties;
     private int resultStatus;
+    private boolean ai;
     
     // Qualifying fields
     private boolean qualifying;

@@ -61,7 +61,18 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
             if (status == 7) return "RET";
             return state.getPosition();
         }).setHeader("Pos").setWidth("70px").setFlexGrow(0);
-        grid.addColumn(DriverBoardState::getName).setHeader("Driver");
+        
+        grid.addComponentColumn(state -> {
+            Span name = new Span(state.getName());
+            if (state.isAi()) {
+                Span badge = new Span("AI");
+                badge.getElement().getThemeList().add("badge contrast small");
+                badge.getStyle().set("margin-left", "var(--lumo-space-s)");
+                return new HorizontalLayout(name, badge);
+            }
+            return name;
+        }).setHeader("Driver");
+        
         grid.addColumn(DriverBoardState::getTeam).setHeader("Team");
         
         // Race columns

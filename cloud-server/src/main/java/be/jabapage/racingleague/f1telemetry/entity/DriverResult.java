@@ -20,6 +20,23 @@ public class DriverResult {
 
     @Column(name = "driver_name")
     private String driverName;
+
+    @Column(name = "telemetry_name")
+    private String telemetryName;
+
+    @Column(name = "race_number")
+    private Integer raceNumber;
+
+    @Column(name = "driver_id")
+    private Integer driverId;
+
+    @Column(name = "is_ai")
+    private Boolean ai = false;
+
+    public boolean isAi() {
+        return ai != null && ai;
+    }
+
     @Column(name = "team_name")
     private String teamName;
     private Integer position;

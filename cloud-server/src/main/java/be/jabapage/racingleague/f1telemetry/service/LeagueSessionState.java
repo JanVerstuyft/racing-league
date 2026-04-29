@@ -11,10 +11,14 @@ import java.util.Arrays;
 @Data
 public class LeagueSessionState {
     private Long leagueId;
+    private boolean hideAi;
     private PacketSessionData currentSession;
     private PacketParticipantsData currentParticipants;
     private PacketLapData currentLapData;
     private PacketCarStatusData currentCarStatus;
+
+    // Mapping: "telemetryName|raceNumber|driverId" -> "overriddenName"
+    private final java.util.Map<String, String> driverNameOverrides = new java.util.concurrent.ConcurrentHashMap<>();
 
     private final int[] lastLapNum = new int[22];
     private final long[] lastS1 = new long[22];

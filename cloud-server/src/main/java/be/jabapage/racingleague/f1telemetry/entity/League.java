@@ -20,6 +20,13 @@ public class League {
     @Column(unique = true)
     private String token;
 
+    @Column(name = "hide_ai")
+    private Boolean hideAi = false;
+
+    public boolean isHideAi() {
+        return hideAi != null && hideAi;
+    }
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user;

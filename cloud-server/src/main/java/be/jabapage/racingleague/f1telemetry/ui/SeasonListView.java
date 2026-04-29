@@ -108,6 +108,7 @@ public class SeasonListView extends VerticalLayout {
                     league.setName(nameField.getValue());
                     league.setUser(user);
                     league.setToken(UUID.randomUUID().toString());
+                    league.setHideAi(true);
                     leagueRepository.save(league);
                     nameField.clear();
                     updateList();

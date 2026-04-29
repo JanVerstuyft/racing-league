@@ -6,6 +6,7 @@ import java.util.Map;
 @Data
 public class RacePaceStats {
     private String driverName;
+    private boolean ai;
     private String teamName;
     private double pureRacePace; // combined weighted average sectors
     private Map<String, Double> tyreUsage; // Compound Name -> Percentage

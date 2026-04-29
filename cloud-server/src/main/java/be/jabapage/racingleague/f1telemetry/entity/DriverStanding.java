@@ -20,8 +20,17 @@ public class DriverStanding {
 
     @Column(name = "driver_name")
     private String driverName;
+
+    @Column(name = "is_ai")
+    private Boolean ai = false;
+
+    public boolean isAi() {
+        return ai != null && ai;
+    }
+
     @Column(name = "team_name")
     private String teamName;
+
     private Integer points;
     private Integer wins;
     private Integer podiums;
