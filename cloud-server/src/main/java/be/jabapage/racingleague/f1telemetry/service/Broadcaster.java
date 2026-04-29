@@ -43,6 +43,18 @@ public class Broadcaster {
         };
     }
 
+    public synchronized boolean hasListeners(Long leagueId) {
+        List<Consumer<List<DriverBoardState>>> lListeners = leaderboardListeners.get(leagueId);
+        List<Consumer<SessionInfo>> sListeners = sessionInfoListeners.get(leagueId);
+        return (lListeners != null && !lListeners.isEmpty()) || (sListeners != null && !sListeners.isEmpty());
+    }
+
+    public synchronized java.util.Set<Long> getActiveLeagueIds() {
+        java.util.Set<Long> ids = new java.util.HashSet<>(leaderboardListeners.keySet());
+        ids.addAll(sessionInfoListeners.keySet());
+        return ids;
+    }
+
     public synchronized void broadcastLeaderboard(Long leagueId, List<DriverBoardState> data) {
         List<Consumer<List<DriverBoardState>>> listeners = leaderboardListeners.get(leagueId);
         if (listeners != null) {

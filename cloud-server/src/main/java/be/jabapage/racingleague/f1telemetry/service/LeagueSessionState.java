@@ -9,6 +9,9 @@ import lombok.Data;
 import java.util.Arrays;
 
 @Data
+@lombok.NoArgsConstructor
+@lombok.AllArgsConstructor
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public class LeagueSessionState {
     private Long leagueId;
     private boolean hideAi;

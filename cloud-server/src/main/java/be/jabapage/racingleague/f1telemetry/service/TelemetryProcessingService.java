@@ -3,12 +3,16 @@ package be.jabapage.racingleague.f1telemetry.service;
 import be.jabapage.racingleague.f1telemetry.entity.*;
 import be.jabapage.racingleague.f1telemetry.model.*;
 import be.jabapage.racingleague.f1telemetry.repository.*;
+import be.jabapage.racingleague.f1telemetry.entity.LiveState;
+import be.jabapage.racingleague.f1telemetry.repository.LiveStateRepository;
+import tools.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.ByteBuffer;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -31,17 +35,127 @@ public class TelemetryProcessingService {
     @Autowired
     private DriverMappingRepository driverMappingRepository;
     @Autowired
+    private LiveStateRepository liveStateRepository;
+    @Autowired
     private Broadcaster broadcaster;
+    @Autowired
+    private ObjectMapper objectMapper;
 
     private final Map<String, LeagueSessionState> leagueStates = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<Long, LocalDateTime> lastLocalUpdate = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<Long, Long> lastSavedMap = new java.util.concurrent.ConcurrentHashMap<>();
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 1000)
+    public void syncDistributedState() {
+        Set<Long> activeLeagueIds = getActiveLeagueIds();
+        if (activeLeagueIds.isEmpty()) return;
+
+        // Fetch only states for leagues we care about
+        List<LiveState> updates = liveStateRepository.findAllById(activeLeagueIds);
+        
+        for (LiveState remote : updates) {
+            // CRITICAL: If we are the ones receiving UDP for this league, 
+            // our memory is newer than the DB. Do NOT overwrite.
+            if (isLocallyManaged(remote.getLeagueId())) {
+                continue;
+            }
+
+            LocalDateTime local = lastLocalUpdate.get(remote.getLeagueId());
+            if (local == null || remote.getLastUpdated().isAfter(local)) {
+                // Update memory cache for UDP processing
+                leagueStates.entrySet().stream()
+                        .filter(entry -> Objects.equals(entry.getValue().getLeagueId(), remote.getLeagueId()))
+                        .findFirst()
+                        .ifPresent(entry -> {
+                            try {
+                                LeagueSessionState state = objectMapper.readValue(remote.getJsonState(), LeagueSessionState.class);
+                                entry.setValue(state);
+                                lastLocalUpdate.put(remote.getLeagueId(), remote.getLastUpdated());
+                                
+                                leagueRepository.findById(remote.getLeagueId()).ifPresent(l -> {
+                                    refreshDriverMappings(state, l);
+                                    state.setHideAi(l.isHideAi());
+                                });
+
+                                broadcastLeaderboard(state);
+                                broadcastSessionInfo(state);
+                                log.debug("Sync: Updated state for league {} from DB", remote.getLeagueId());
+                            } catch (Exception e) {
+                                log.error("Sync: Failed to update league {}: {}", remote.getLeagueId(), e.getMessage());
+                            }
+                        });
+                
+                // If we don't have it in memory but someone is listening, broadcast to them
+                if (!lastLocalUpdate.containsKey(remote.getLeagueId()) || remote.getLastUpdated().isAfter(lastLocalUpdate.getOrDefault(remote.getLeagueId(), LocalDateTime.MIN))) {
+                    if (broadcaster.hasListeners(remote.getLeagueId())) {
+                         loadAndBroadcast(remote);
+                    }
+                }
+            }
+        }
+    }
+
+    private boolean isLocallyManaged(Long leagueId) {
+        return leagueStates.values().stream()
+                .anyMatch(s -> Objects.equals(s.getLeagueId(), leagueId));
+    }
+
+    private Set<Long> getActiveLeagueIds() {
+        Set<Long> activeIds = new HashSet<>();
+        // Add IDs from active UDP sessions
+        leagueStates.values().forEach(s -> {
+            if (s.getLeagueId() != null && s.getLeagueId() != -1) {
+                activeIds.add(s.getLeagueId());
+            }
+        });
+        // Add IDs from active UI listeners (e.g., people watching the dashboard)
+        activeIds.addAll(broadcaster.getActiveLeagueIds());
+        return activeIds;
+    }
+
+    private void loadAndBroadcast(LiveState remote) {
+        try {
+            LeagueSessionState state = objectMapper.readValue(remote.getJsonState(), LeagueSessionState.class);
+            lastLocalUpdate.put(remote.getLeagueId(), remote.getLastUpdated());
+            
+            leagueRepository.findById(remote.getLeagueId()).ifPresent(l -> {
+                refreshDriverMappings(state, l);
+                state.setHideAi(l.isHideAi());
+                // We need a token to put it in leagueStates. 
+                // But we don't know the token here.
+                // However, we can just broadcast without putting in leagueStates 
+                // if this instance is just a "viewer".
+                broadcastLeaderboard(state);
+                broadcastSessionInfo(state);
+            });
+        } catch (Exception e) {
+            log.error("Failed to load and broadcast league {}: {}", remote.getLeagueId(), e.getMessage());
+        }
+    }
 
     private LeagueSessionState getOrCreateState(String token) {
         return leagueStates.computeIfAbsent(token, t -> {
             Optional<League> league = leagueRepository.findByToken(t);
             if (league.isPresent()) {
-                LeagueSessionState state = new LeagueSessionState(league.get().getId());
-                state.setHideAi(league.get().isHideAi());
-                refreshDriverMappings(state, league.get());
+                // Try to load from DB first
+                League l = league.get();
+                Optional<LiveState> liveState = liveStateRepository.findById(l.getId());
+                if (liveState.isPresent()) {
+                    try {
+                        LeagueSessionState state = objectMapper.readValue(liveState.get().getJsonState(), LeagueSessionState.class);
+                        // Refresh transient mappings
+                        refreshDriverMappings(state, l);
+                        state.setHideAi(l.isHideAi());
+                        log.info("Loaded live state for league {} from database", l.getId());
+                        return state;
+                    } catch (Exception e) {
+                        log.error("Failed to deserialize live state for league {}: {}", l.getId(), e.getMessage());
+                    }
+                }
+
+                LeagueSessionState state = new LeagueSessionState(l.getId());
+                state.setHideAi(l.isHideAi());
+                refreshDriverMappings(state, l);
                 return state;
             } else if ("default".equals(t)) {
                 // Fallback for default token if no league found
@@ -49,6 +163,40 @@ public class TelemetryProcessingService {
             }
             return null;
         });
+    }
+
+    private void saveState(LeagueSessionState state) {
+        if (state.getLeagueId() == null || state.getLeagueId() == -1) return;
+
+        long now = System.currentTimeMillis();
+        long lastSaved = lastSavedMap.getOrDefault(state.getLeagueId(), 0L);
+
+        // Throttle DB writes to once per 1000ms
+        if (now - lastSaved > 1000) {
+            lastSavedMap.put(state.getLeagueId(), now);
+            performAsyncSave(state);
+        }
+    }
+
+    @org.springframework.scheduling.annotation.Async
+    protected void performAsyncSave(LeagueSessionState state) {
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            LiveState liveState = new LiveState();
+            liveState.setLeagueId(state.getLeagueId());
+            liveState.setLastUpdated(now);
+            liveState.setJsonState(objectMapper.writeValueAsString(state));
+            liveStateRepository.save(liveState);
+            lastLocalUpdate.put(state.getLeagueId(), now);
+        } catch (Exception e) {
+            log.error("Failed to persist live state for league {}: {}", state.getLeagueId(), e.getMessage());
+        }
+    }
+
+    private void clearState(Long leagueId) {
+        if (leagueId != null && leagueId != -1) {
+            liveStateRepository.deleteById(leagueId);
+        }
     }
 
     public void refreshHideAiSetting(Long leagueId) {
@@ -187,12 +335,20 @@ public class TelemetryProcessingService {
                 timeout ? "Timeout" : "Session change",
                 state.getLeagueId(),
                 packetSessionUID, state.getCurrentSessionUID(), (now - state.getLastPacketTime()));
+            
+            // If it was a real session that just ended/timed out, save what we have before resetting?
+            // Usually SEND or Final Classification handles this, but this is a safety net.
+            
             state.reset();
+            clearState(state.getLeagueId());
             state.setCurrentSessionUID(packetSessionUID);
             // Clear the live UI
             broadcaster.broadcastLeaderboard(state.getLeagueId(), Collections.emptyList());
         }
         state.setLastPacketTime(now);
+        lastLocalUpdate.put(state.getLeagueId(), LocalDateTime.now());
+
+        // ... (existing packet matching logic)
 
         // Skip packets that don't match the session we are currently tracking.
         if (state.getCurrentSessionUID() != -1 && state.getCurrentSessionUID() != 0 && packetSessionUID == 0) {
@@ -234,10 +390,13 @@ public class TelemetryProcessingService {
             case 8: // Final Classification
                 PacketFinalClassificationData classification = PacketFinalClassificationData.fromByteBuffer(buffer, header);
                 handleFinalClassification(state, classification);
+                clearState(state.getLeagueId());
                 break;
             default:
                 break;
         }
+
+        saveState(state);
     }
 
     private void processLapData(LeagueSessionState state, PacketLapData packet) {
@@ -765,6 +924,8 @@ public class TelemetryProcessingService {
                 updateStandings(league, driverResult, isReserve);
             }
         }
+
+        clearState(state.getLeagueId());
 
         log.info("Saved Fallback {} results (from live state) for session UID: {} in event: {}", 
                 isRace ? "Race" : "Qualifying", sessionUID, event.getEventName());

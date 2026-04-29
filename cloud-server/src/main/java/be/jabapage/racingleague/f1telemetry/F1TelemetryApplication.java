@@ -10,6 +10,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 @Theme(value = "racing-league", variant = Lumo.DARK)
 @Push
+@org.springframework.scheduling.annotation.EnableScheduling
+@org.springframework.scheduling.annotation.EnableAsync
 public class F1TelemetryApplication implements AppShellConfigurator {
 
 	public static void main(String[] args) {
