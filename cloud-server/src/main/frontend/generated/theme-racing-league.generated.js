@@ -2,6 +2,7 @@ import { injectGlobalCss } from 'Frontend/generated/jar-resources/theme-util.js'
 import { webcomponentGlobalCssInjector } from 'Frontend/generated/jar-resources/theme-util.js';
 import './theme-racing-league.components.generated.js';
 let needsReloadOnChanges = false;
+import stylesCss from 'themes/racing-league/styles.css?inline';
 
   let themeRemovers = new WeakMap();
   let targets = [];
@@ -10,7 +11,8 @@ let needsReloadOnChanges = false;
   export const applyTheme = (target) => {
     const removers = [];
     if (target !== document) {
-      
+      removers.push(injectGlobalCss(stylesCss.toString(), '', target));
+    
       
         webcomponentGlobalCssInjector((css) => {
           removers.push(injectGlobalCss(css, '', target));

@@ -29,6 +29,7 @@ public class SecurityConfig {
         // Register custom API rules
         http.authorizeHttpRequests(auth -> auth
             .requestMatchers(HttpMethod.POST, "/api/telemetry/**").permitAll()
+            .requestMatchers("/actuator/**").permitAll()
         );
 
         http.with(VaadinSecurityConfigurer.vaadin(), configurer -> {

@@ -140,15 +140,29 @@ public class UdpForwarderService {
                     }
                 }
 
-                try {
-                    String urlWithToken = cloudUrl;
-                    if (!urlWithToken.endsWith("/")) urlWithToken += "/";
-                    urlWithToken += cloudToken;
+                // Filtering: Only send packets the cloud server actually processes
+                // Packet ID is at index 6 of the F1 25 header
+                if (data.length > 6) {
+                    int packetId = data[6] & 0xFF;
+                    boolean shouldForward = switch (packetId) {
+                        case 1, 2, 3, 4, 7, 8 -> true; // Session, Lap Data, Event, Participants, Car Status, Final Classification
+                        default -> false;
+                    };
 
-                    restTemplate.postForObject(urlWithToken, data, Void.class);
-                    log.debug("Forwarded {} bytes to cloud with token {}", data.length, cloudToken);
-                } catch (Exception e) {
-                    log.error("Failed to forward telemetry to cloud: {}", e.getMessage());
+                    if (shouldForward) {
+                        try {
+                            String urlWithToken = cloudUrl;
+                            if (!urlWithToken.endsWith("/")) urlWithToken += "/";
+                            urlWithToken += cloudToken;
+
+                            restTemplate.postForObject(urlWithToken, data, Void.class);
+                            log.debug("Forwarded {} bytes (Packet ID: {}) to cloud", data.length, packetId);
+                        } catch (Exception e) {
+                            log.error("Failed to forward telemetry to cloud: {}", e.getMessage());
+                        }
+                    } else {
+                        log.trace("Skipping packet ID {} (not needed by cloud)", packetId);
+                    }
                 }
             }
         } catch (Exception e) {

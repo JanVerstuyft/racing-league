@@ -23,6 +23,21 @@
     <java.version>21</java.version>
     <vaadin.version>25.0.0</vaadin.version>
   </properties>
+
+  <scm>
+    <developerConnection>scm:git:ssh://git@bitbucket.org/jabapage/${project.name}.git
+    </developerConnection>
+    <tag>10.0.0</tag>
+  </scm>
+  <distributionManagement>
+    <repository>
+      <id>Jabapage</id>
+      <name>Jabapage-releases</name>
+      <url>http://nexus.jabapage.be/repository/maven-releases</url>
+    </repository>
+  </distributionManagement>
+
+
   <dependencyManagement>
     <dependencies>
       <dependency>
@@ -35,7 +50,61 @@
     </dependencies>
   </dependencyManagement>
 
+  <repositories>
+    <repository>
+      <id>jabapage</id>
+      <name>jabapage</name>
+      <url>https://nexus.jabapage.be/repository/maven-public</url>
+    </repository>
+  </repositories>
+
   <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-release-plugin</artifactId>
+          <version>${maven-release-plugin.version}</version>
+          <executions>
+            <execution>
+              <id>default-cli</id>
+              <goals>
+                <goal>perform</goal>
+              </goals>
+              <configuration>
+                <arguments>-DskipTests -Dmaven.javadoc.skip=true</arguments>
+                <localCheckout>true</localCheckout>
+                <releaseProfiles>docker</releaseProfiles>
+              </configuration>
+            </execution>
+          </executions>
+          <configuration>
+            <autoVersionSubmodules>true</autoVersionSubmodules>
+            <tagNameFormat>@{project.version}</tagNameFormat>
+            <pushChanges>false</pushChanges>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.jacoco</groupId>
+          <artifactId>jacoco-maven-plugin</artifactId>
+          <version>${jacoco-maven-plugin.version}</version>
+          <executions>
+            <execution>
+              <goals>
+                <goal>prepare-agent</goal>
+              </goals>
+            </execution>
+            <execution>
+              <id>report</id>
+              <phase>prepare-package</phase>
+              <goals>
+                <goal>report</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+      </plugins>
+    </pluginManagement>
     <plugins>
       <plugin>
         <groupId>org.springframework.boot</groupId>
@@ -51,5 +120,4 @@
       </plugin>
     </plugins>
   </build>
-
 </project>
