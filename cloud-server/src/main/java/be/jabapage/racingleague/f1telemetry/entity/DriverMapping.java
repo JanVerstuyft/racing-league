@@ -9,44 +9,38 @@ import java.util.Objects;
 @Getter
 @Setter
 @Entity
-public class DriverStanding {
+public class DriverMapping {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "league_id")
     private League league;
 
-    @Column(name = "driver_name")
-    private String driverName;
+    @Column(name = "telemetry_name")
+    private String telemetryName;
 
-    @Column(name = "is_ai")
-    private Boolean ai = false;
+    @Column(name = "race_number")
+    private Integer raceNumber;
+
+    @Column(name = "driver_id")
+    private Integer driverId;
+
+    @Column(name = "overridden_name")
+    private String overriddenName;
 
     @Column(name = "is_reserve")
     private Boolean reserve = false;
-
-    public boolean isAi() {
-        return ai != null && ai;
-    }
 
     public boolean isReserve() {
         return reserve != null && reserve;
     }
 
-
-    @Column(name = "team_name")
-    private String teamName;
-
-    private Integer points;
-    private Integer wins;
-    private Integer podiums;
-
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof DriverStanding that)) return false;
+        if (!(o instanceof DriverMapping that)) return false;
         return id != null && Objects.equals(id, that.id);
     }
 

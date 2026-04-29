@@ -72,12 +72,14 @@ public class TelemetryProcessingService {
     private void refreshDriverMappings(LeagueSessionState state, League league) {
         List<DriverMapping> mappings = driverMappingRepository.findByLeague(league);
         state.getDriverNameOverrides().clear();
+        state.getReserveDrivers().clear();
         for (DriverMapping mapping : mappings) {
+            String key = mapping.getTelemetryName() + "|" + mapping.getRaceNumber() + "|" + mapping.getDriverId();
             if (mapping.getOverriddenName() != null && !mapping.getOverriddenName().isEmpty()) {
-                state.getDriverNameOverrides().put(
-                        mapping.getTelemetryName() + "|" + mapping.getRaceNumber() + "|" + mapping.getDriverId(),
-                        mapping.getOverriddenName()
-                );
+                state.getDriverNameOverrides().put(key, mapping.getOverriddenName());
+            }
+            if (mapping.isReserve()) {
+                state.getReserveDrivers().add(key);
             }
         }
     }
@@ -155,6 +157,9 @@ public class TelemetryProcessingService {
             } else {
                 // Already in DB, add to cache to avoid re-checking DB
                 state.getDriverNameOverrides().put(key, mapping.get().getOverriddenName() != null ? mapping.get().getOverriddenName() : "");
+                if (mapping.get().isReserve()) {
+                    state.getReserveDrivers().add(key);
+                }
             }
         }
     }
@@ -615,7 +620,9 @@ public class TelemetryProcessingService {
         // Then update standings if it's a race
         if (isRace) {
             for (DriverResult driverResult : sessionResult.getDriverResults()) {
-                updateStandings(league, driverResult);
+                String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId();
+                boolean isReserve = state.getReserveDrivers().contains(key);
+                updateStandings(league, driverResult, isReserve);
             }
         }
 
@@ -753,7 +760,9 @@ public class TelemetryProcessingService {
 
         if (isRace) {
             for (DriverResult driverResult : sessionResult.getDriverResults()) {
-                updateStandings(league, driverResult);
+                String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId();
+                boolean isReserve = state.getReserveDrivers().contains(key);
+                updateStandings(league, driverResult, isReserve);
             }
         }
 
@@ -808,6 +817,11 @@ public class TelemetryProcessingService {
                         (existing, replacement) -> existing
                 ));
 
+        java.util.Set<String> reserveSet = mappings.stream()
+                .filter(DriverMapping::isReserve)
+                .map(m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId())
+                .collect(Collectors.toSet());
+
         // Clear existing standings
         driverStandingRepository.deleteAll(driverStandingRepository.findByLeague(league));
         teamStandingRepository.deleteAll(teamStandingRepository.findByLeague(league));
@@ -834,14 +848,18 @@ public class TelemetryProcessingService {
 
                 // Only update standings if it's a race
                 if (isRace) {
-                    updateStandings(league, result);
+                    boolean isReserve = false;
+                    if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
+                        isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId());
+                    }
+                    updateStandings(league, result, isReserve);
                 }
             }
         }
         log.info("Recalculated standings for league: {}", league.getName());
     }
 
-    private void updateStandings(League league, DriverResult result) {
+    private void updateStandings(League league, DriverResult result, boolean isReserve) {
         // Update Driver Standings
         DriverStanding ds = driverStandingRepository.findByLeagueAndDriverName(league, result.getDriverName())
                 .orElseGet(() -> {
@@ -854,7 +872,19 @@ public class TelemetryProcessingService {
                     return newDs;
                 });
         ds.setAi(result.isAi());
-        ds.setTeamName(result.getTeamName());
+        ds.setReserve(isReserve);
+        
+        // Handle multiple teams for a driver
+        String currentTeams = ds.getTeamName();
+        String newTeam = result.getTeamName();
+        if (isReserve) {
+            ds.setTeamName("Reserve Driver");
+        } else if (currentTeams == null || currentTeams.isEmpty() || "Reserve Driver".equals(currentTeams)) {
+            ds.setTeamName(newTeam);
+        } else if (!currentTeams.contains(newTeam)) {
+            ds.setTeamName(currentTeams + ", " + newTeam);
+        }
+
         ds.setPoints((ds.getPoints() != null ? ds.getPoints() : 0) + result.getPointsAwarded());
         if (result.getPosition() != null && result.getPosition() == 1) ds.setWins((ds.getWins() != null ? ds.getWins() : 0) + 1);
         if (result.getPosition() != null && result.getPosition() <= 3) ds.setPodiums((ds.getPodiums() != null ? ds.getPodiums() : 0) + 1);

@@ -194,6 +194,12 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         mappingGrid.addColumn(DriverMapping::getRaceNumber).setHeader("Race #");
         mappingGrid.addColumn(DriverMapping::getDriverId).setHeader("Driver ID");
         
+        Grid.Column<DriverMapping> reserveColumn = mappingGrid.addComponentColumn(item -> {
+            Checkbox cb = new Checkbox(item.isReserve());
+            cb.setReadOnly(true);
+            return cb;
+        }).setHeader("Reserve");
+
         Grid.Column<DriverMapping> overrideColumn = mappingGrid.addColumn(DriverMapping::getOverriddenName).setHeader("Display Name");
 
         Binder<DriverMapping> binder = new Binder<>(DriverMapping.class);
@@ -205,6 +211,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         overrideField.setWidthFull();
         binder.forField(overrideField).bind(DriverMapping::getOverriddenName, DriverMapping::setOverriddenName);
         overrideColumn.setEditorComponent(overrideField);
+
+        Checkbox reserveField = new Checkbox();
+        binder.forField(reserveField).bind(DriverMapping::getReserve, DriverMapping::setReserve);
+        reserveColumn.setEditorComponent(reserveField);
 
         Button saveButton = new Button("Save", e -> {
             DriverMapping item = editor.getItem();

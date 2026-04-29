@@ -20,6 +20,9 @@ public class LeagueSessionState {
     // Mapping: "telemetryName|raceNumber|driverId" -> "overriddenName"
     private final java.util.Map<String, String> driverNameOverrides = new java.util.concurrent.ConcurrentHashMap<>();
 
+    // Set of "telemetryName|raceNumber|driverId" for reserve drivers
+    private final java.util.Set<String> reserveDrivers = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private final int[] lastLapNum = new int[22];
     private final long[] lastS1 = new long[22];
     private final long[] lastS2 = new long[22];
