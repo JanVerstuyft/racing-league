@@ -8,6 +8,7 @@ import org.springframework.web.client.RestTemplate;
 @SpringBootApplication
 public class CollectorApplication {
     public static void main(String[] args) {
+        System.setProperty("java.awt.headless", "false");
         SpringApplication.run(CollectorApplication.class, args);
     }
 

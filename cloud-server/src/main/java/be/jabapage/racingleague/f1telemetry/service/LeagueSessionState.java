@@ -31,6 +31,7 @@ public class LeagueSessionState {
     private final long[] lastS2 = new long[22];
     private final int[] lastTyre = new int[22];
     private final boolean[] lapInvalid = new boolean[22];
+    private final boolean[] isHuman = new boolean[22];
 
     private final long[] driverBestLap = new long[22];
     private final long[] driverBestS1 = new long[22];
@@ -56,6 +57,7 @@ public class LeagueSessionState {
         Arrays.fill(lastS2, 0);
         Arrays.fill(lastTyre, 0);
         Arrays.fill(lapInvalid, false);
+        Arrays.fill(isHuman, false);
         Arrays.fill(driverBestLap, 0);
         Arrays.fill(driverBestS1, 0);
         Arrays.fill(driverBestS2, 0);

@@ -62,6 +62,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
     private final VerticalLayout eventsLayout = new VerticalLayout();
     private final VerticalLayout standingsLayout = new VerticalLayout();
+    private final VerticalLayout driverStandingsContent = new VerticalLayout();
+    private final VerticalLayout teamStandingsContent = new VerticalLayout();
     private final VerticalLayout driversLayout = new VerticalLayout();
     
     private final Button recalculateBtn = new Button("Recalculate Standings");
@@ -98,8 +100,9 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         header.setAlignItems(Alignment.BASELINE);
         header.setSpacing(true);
 
-        Tabs tabs = new Tabs(new Tab("Race Weekends"), new Tab("Standings"), new Tab("Drivers"));
-        tabs.addSelectedChangeListener(e -> {
+        // Top level tabs
+        Tabs mainTabs = new Tabs(new Tab("Race Weekends"), new Tab("Standings"), new Tab("Drivers"));
+        mainTabs.addSelectedChangeListener(e -> {
             String label = e.getSelectedTab().getLabel();
             eventsLayout.setVisible(label.equals("Race Weekends"));
             standingsLayout.setVisible(label.equals("Standings"));
@@ -115,9 +118,24 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 Notification.show("Standings recalculated!");
             }
         });
+
+        // Inner tabs for Standings
+        Tabs standingsTabs = new Tabs(new Tab("Drivers"), new Tab("Teams"));
+        standingsTabs.addSelectedChangeListener(e -> {
+            String label = e.getSelectedTab().getLabel();
+            driverStandingsContent.setVisible(label.equals("Drivers"));
+            teamStandingsContent.setVisible(label.equals("Teams"));
+        });
+
+        driverStandingsContent.add(new HorizontalLayout(new H3("Driver Standings"), recalculateBtn), 
+                driverGrid);
+        driverStandingsContent.setPadding(false);
         
-        standingsLayout.add(new HorizontalLayout(new H3("Driver Standings"), recalculateBtn), 
-                driverGrid, new H3("Team Standings"), teamGrid);
+        teamStandingsContent.add(new H3("Team Standings"), teamGrid);
+        teamStandingsContent.setVisible(false);
+        teamStandingsContent.setPadding(false);
+
+        standingsLayout.add(standingsTabs, driverStandingsContent, teamStandingsContent);
         standingsLayout.setVisible(false);
 
         driversLayout.add(new H3("Driver Name Overrides"), 
@@ -125,7 +143,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 mappingGrid);
         driversLayout.setVisible(false);
 
-        add(header, tabs, eventsLayout, standingsLayout, driversLayout);
+        add(header, mainTabs, eventsLayout, standingsLayout, driversLayout);
     }
 
     private void configureGrids() {

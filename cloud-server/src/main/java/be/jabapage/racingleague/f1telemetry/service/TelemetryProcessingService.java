@@ -54,52 +54,63 @@ public class TelemetryProcessingService {
         List<LiveState> updates = liveStateRepository.findAllById(activeLeagueIds);
         
         for (LiveState remote : updates) {
-            // CRITICAL: If we are the ones receiving UDP for this league, 
-            // our memory is newer than the DB. Do NOT overwrite.
-            if (isLocallyManaged(remote.getLeagueId())) {
-                continue;
-            }
-
             LocalDateTime local = lastLocalUpdate.get(remote.getLeagueId());
             if (local == null || remote.getLastUpdated().isAfter(local)) {
                 // Update memory cache for UDP processing
                 leagueStates.entrySet().stream()
                         .filter(entry -> Objects.equals(entry.getValue().getLeagueId(), remote.getLeagueId()))
                         .findFirst()
-                        .ifPresent(entry -> {
+                        .ifPresentOrElse(entry -> {
                             try {
                                 String json = decompress(remote.getCompressedState());
                                 if (json.isEmpty()) return;
-                                LeagueSessionState state = objectMapper.readValue(json, LeagueSessionState.class);
-                                entry.setValue(state);
+                                LeagueSessionState remoteState = objectMapper.readValue(json, LeagueSessionState.class);
+                                LeagueSessionState localState = entry.getValue();
+
+                                // Merge logic: If we are actively receiving packets, only fill in what we are missing
+                                // or update if the remote is a newer session.
+                                boolean remoteIsNewerSession = remoteState.getCurrentSessionUID() != localState.getCurrentSessionUID() && remoteState.getCurrentSessionUID() != -1;
+                                boolean localIsActivelyReceiving = System.currentTimeMillis() - localState.getLastPacketTime() < 2000;
+
+                                if (remoteIsNewerSession || !localIsActivelyReceiving) {
+                                    entry.setValue(remoteState);
+                                    log.debug("Sync: Updated state for league {} (Remote is newer or local is idle)", remote.getLeagueId());
+                                } else {
+                                    // Merge critical fields if missing locally
+                                    boolean merged = false;
+                                    if (localState.getCurrentSession() == null && remoteState.getCurrentSession() != null) {
+                                        localState.setCurrentSession(remoteState.getCurrentSession());
+                                        merged = true;
+                                    }
+                                    if (localState.getCurrentParticipants() == null && remoteState.getCurrentParticipants() != null) {
+                                        localState.setCurrentParticipants(remoteState.getCurrentParticipants());
+                                        merged = true;
+                                    }
+                                    if (merged) {
+                                        log.info("Sync: Merged missing Session/Participants for league {} from DB", remote.getLeagueId());
+                                    }
+                                }
+
                                 lastLocalUpdate.put(remote.getLeagueId(), remote.getLastUpdated());
                                 
                                 leagueRepository.findById(remote.getLeagueId()).ifPresent(l -> {
-                                    refreshDriverMappings(state, l);
-                                    state.setHideAi(l.isHideAi());
+                                    refreshDriverMappings(entry.getValue(), l);
+                                    entry.getValue().setHideAi(l.isHideAi());
                                 });
 
-                                broadcastLeaderboard(state);
-                                broadcastSessionInfo(state);
-                                log.debug("Sync: Updated state for league {} from DB", remote.getLeagueId());
+                                broadcastLeaderboard(entry.getValue());
+                                broadcastSessionInfo(entry.getValue());
                             } catch (Exception e) {
                                 log.error("Sync: Failed to update league {}: {}", remote.getLeagueId(), e.getMessage());
                             }
+                        }, () -> {
+                            // If we don't have it in memory but someone is listening, broadcast to them
+                            if (broadcaster.hasListeners(remote.getLeagueId())) {
+                                loadAndBroadcast(remote);
+                            }
                         });
-                
-                // If we don't have it in memory but someone is listening, broadcast to them
-                if (!lastLocalUpdate.containsKey(remote.getLeagueId()) || remote.getLastUpdated().isAfter(lastLocalUpdate.getOrDefault(remote.getLeagueId(), LocalDateTime.MIN))) {
-                    if (broadcaster.hasListeners(remote.getLeagueId())) {
-                         loadAndBroadcast(remote);
-                    }
-                }
             }
         }
-    }
-
-    private boolean isLocallyManaged(Long leagueId) {
-        return leagueStates.values().stream()
-                .anyMatch(s -> Objects.equals(s.getLeagueId(), leagueId));
     }
 
     private Set<Long> getActiveLeagueIds() {
@@ -311,8 +322,15 @@ public class TelemetryProcessingService {
         if (league == null) return;
 
         boolean changed = false;
-        for (ParticipantData p : participants.getParticipants()) {
+        for (int i = 0; i < participants.getParticipants().size(); i++) {
+            ParticipantData p = participants.getParticipants().get(i);
             if (p.getName() == null || p.getName().isEmpty()) continue;
+
+            // Track if this car was EVER controlled by a human during this session.
+            // In online races, if a human DNFs/Retires, aiControlled might switch to 1.
+            if (p.getAiControlled() == 0 && i < state.getIsHuman().length) {
+                state.getIsHuman()[i] = true;
+            }
 
             String key = p.getName() + "|" + p.getRaceNumber() + "|" + p.getDriverId();
             if (state.getDriverNameOverrides().containsKey(key)) continue;
@@ -338,6 +356,14 @@ public class TelemetryProcessingService {
                 }
             }
         }
+    }
+
+    private boolean isAi(LeagueSessionState state, ParticipantData p, int carIndex) {
+        // If we EVER saw a human in this car slot, it's NOT an AI for league purposes.
+        if (carIndex >= 0 && carIndex < state.getIsHuman().length && state.getIsHuman()[carIndex]) {
+            return false;
+        }
+        return p.getAiControlled() == 1;
     }
 
     public synchronized void processPacket(String token, PacketHeader header, ByteBuffer buffer) {
@@ -374,9 +400,6 @@ public class TelemetryProcessingService {
             broadcaster.broadcastLeaderboard(state.getLeagueId(), Collections.emptyList());
         }
         state.setLastPacketTime(now);
-        lastLocalUpdate.put(state.getLeagueId(), LocalDateTime.now());
-
-        // ... (existing packet matching logic)
 
         // Skip packets that don't match the session we are currently tracking.
         if (state.getCurrentSessionUID() != -1 && state.getCurrentSessionUID() != 0 && packetSessionUID == 0) {
@@ -543,7 +566,7 @@ public class TelemetryProcessingService {
             DriverBoardState driverState = new DriverBoardState();
             driverState.setPosition(ld.getCarPosition());
             driverState.setName(getDriverName(state, p));
-            driverState.setAi(p.getAiControlled() == 1);
+            driverState.setAi(isAi(state, p, i));
             driverState.setTeam(TEAM_NAMES.getOrDefault(p.getTeamId(), "Unknown"));
             driverState.setTyreCompound(TYRE_COMPOUNDS.getOrDefault(csd.getVisualTyreCompound(), "Unknown"));
             driverState.setTyreAge(csd.getTyresAgeLaps());
@@ -703,6 +726,35 @@ public class TelemetryProcessingService {
             log.warn("Cannot save results: No valid league associated with state.");
             return;
         }
+
+        // Check if session already recorded (Search by UID only first, handles multi-pod finishing)
+        Optional<SessionResult> existing = sessionResultRepository.findBySessionUID(sessionUID);
+        if (existing.isPresent()) {
+            log.info("Session UID: {} already recorded as ID: {}. Skipping.", 
+                sessionUID, existing.get().getId());
+            return;
+        }
+
+        // Fallback fetch from DB if critical data is missing
+        if (state.getCurrentSession() == null || state.getCurrentParticipants() == null) {
+            log.info("Session or Participants data missing for UID: {}, trying fallback fetch from DB.", sessionUID);
+            liveStateRepository.findById(state.getLeagueId()).ifPresent(remote -> {
+                try {
+                    String json = decompress(remote.getCompressedState());
+                    if (!json.isEmpty()) {
+                        LeagueSessionState remoteState = objectMapper.readValue(json, LeagueSessionState.class);
+                        if (remoteState.getCurrentSessionUID() == sessionUID) {
+                            if (state.getCurrentSession() == null) state.setCurrentSession(remoteState.getCurrentSession());
+                            if (state.getCurrentParticipants() == null) state.setCurrentParticipants(remoteState.getCurrentParticipants());
+                            log.info("Successfully recovered missing data from database for league {}", state.getLeagueId());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("Fallback fetch failed: {}", e.getMessage());
+                }
+            });
+        }
+
         if (state.getCurrentSession() == null || state.getCurrentParticipants() == null) {
             log.warn("Cannot save results: Session or Participants data missing for UID: {}. (Session: {}, Participants: {})", 
                 sessionUID,
@@ -714,16 +766,6 @@ public class TelemetryProcessingService {
         League league = leagueRepository.findByIdWithEvents(state.getLeagueId()).orElse(null);
         if (league == null) {
             log.warn("Cannot save results: Activated league ID {} not found in database.", state.getLeagueId());
-            return;
-        }
-
-        // Check if session already recorded
-        int sessionType = state.getCurrentSession().getSessionType();
-        Optional<SessionResult> existing = sessionResultRepository.findBySessionUIDAndSessionType(sessionUID, sessionType);
-        if (existing.isPresent()) {
-            SessionResult sr = existing.get();
-            log.info("Session UID: {} with Type: {} already recorded as ID: {}. Skipping.", 
-                sessionUID, sessionType, sr.getId());
             return;
         }
 
@@ -763,7 +805,7 @@ public class TelemetryProcessingService {
             driverResult.setTelemetryName(participant.getName());
             driverResult.setRaceNumber(participant.getRaceNumber());
             driverResult.setDriverId(participant.getDriverId());
-            driverResult.setAi(participant.getAiControlled() == 1);
+            driverResult.setAi(isAi(state, participant, i));
             driverResult.setTeamName(TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(data.getPosition());
             driverResult.setPointsAwarded(data.getPoints());
@@ -869,7 +911,7 @@ public class TelemetryProcessingService {
             driverResult.setTelemetryName(participant.getName());
             driverResult.setRaceNumber(participant.getRaceNumber());
             driverResult.setDriverId(participant.getDriverId());
-            driverResult.setAi(participant.getAiControlled() == 1);
+            driverResult.setAi(isAi(state, participant, i));
             driverResult.setTeamName(TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(ld.getCarPosition());
             driverResult.setGridPosition(ld.getGridPosition());
