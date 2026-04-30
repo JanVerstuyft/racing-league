@@ -83,7 +83,8 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         statsContainer.setSizeFull();
         statsContainer.setVisible(false);
 
-        add(backToSeason, eventHeader, mainTabs, resultsContainer, statsContainer);
+        add(new HorizontalLayout(backToSeason, new RouterLink("Documentation", DocumentationView.class)), 
+                eventHeader, mainTabs, resultsContainer, statsContainer);
     }
 
     @Override

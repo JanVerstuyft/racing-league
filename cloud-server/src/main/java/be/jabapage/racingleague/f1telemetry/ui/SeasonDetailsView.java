@@ -86,6 +86,12 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         setSizeFull();
         configureGrids();
 
+        HorizontalLayout nav = new HorizontalLayout(
+                new RouterLink("All Seasons", SeasonListView.class),
+                new RouterLink("Documentation", DocumentationView.class)
+        );
+        nav.setSpacing(true);
+
         hideAiCheckbox.addValueChangeListener(e -> {
             if (league != null) {
                 league.setHideAi(e.getValue());
@@ -143,7 +149,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 mappingGrid);
         driversLayout.setVisible(false);
 
-        add(header, mainTabs, eventsLayout, standingsLayout, driversLayout);
+        add(nav, header, mainTabs, eventsLayout, standingsLayout, driversLayout);
     }
 
     private void configureGrids() {

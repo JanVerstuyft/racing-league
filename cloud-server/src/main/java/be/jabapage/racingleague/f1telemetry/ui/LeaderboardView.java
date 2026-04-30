@@ -15,6 +15,7 @@ import com.vaadin.flow.router.BeforeEvent;
 import com.vaadin.flow.router.HasUrlParameter;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.router.RouterLink;
 import com.vaadin.flow.server.auth.AnonymousAllowed;
 import com.vaadin.flow.shared.Registration;
 
@@ -29,6 +30,7 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
     private final Grid<DriverBoardState> grid = new Grid<>(DriverBoardState.class, false);
     private final H2 title = new H2("LIVE LEADERBOARD");
     private final Span scStatus = new Span();
+    private final RouterLink backLink = new RouterLink("← Back to Season", SeasonDetailsView.class, 0L);
     private Registration leaderboardRegistration;
     private Registration sessionInfoRegistration;
     private Long leagueId;
@@ -43,12 +45,17 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         header.setAlignItems(Alignment.BASELINE);
         header.setSpacing(true);
 
+        add(new HorizontalLayout(
+                backLink,
+                new RouterLink("Documentation", DocumentationView.class)
+        ));
         add(header, grid);
     }
 
     @Override
     public void setParameter(BeforeEvent event, Long parameter) {
         this.leagueId = parameter;
+        backLink.setRoute(SeasonDetailsView.class, leagueId);
     }
 
     private void configureGrid() {
