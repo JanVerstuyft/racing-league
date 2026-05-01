@@ -65,8 +65,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final VerticalLayout driverStandingsContent = new VerticalLayout();
     private final VerticalLayout teamStandingsContent = new VerticalLayout();
     private final VerticalLayout driversLayout = new VerticalLayout();
+    private final Button addManualDriverBtn = new Button("Add Manual Driver");
     
     private final Button recalculateBtn = new Button("Recalculate Standings");
+    private final Button addManualWeekendBtn = new Button("Add Manual Weekend");
     private Grid.Column<Event> actionsColumn;
 
     public SeasonDetailsView(LeagueRepository leagueRepository, EventRepository eventRepository,
@@ -115,7 +117,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             driversLayout.setVisible(label.equals("Drivers"));
         });
 
-        eventsLayout.add(new H3("Race Weekends"), eventGrid);
+        eventsLayout.add(new HorizontalLayout(new H3("Race Weekends"), addManualWeekendBtn), eventGrid);
         
         recalculateBtn.addClickListener(e -> {
             if (league != null) {
@@ -123,6 +125,50 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 updateData();
                 Notification.show("Standings recalculated!");
             }
+        });
+
+        addManualWeekendBtn.addClickListener(e -> {
+            if (league == null) return;
+            
+            com.vaadin.flow.component.dialog.Dialog dialog = new com.vaadin.flow.component.dialog.Dialog();
+            dialog.setHeaderTitle("Add Manual Weekend");
+            
+            com.vaadin.flow.component.combobox.ComboBox<Integer> trackCombo = new com.vaadin.flow.component.combobox.ComboBox<>("Track");
+            trackCombo.setItems(java.util.stream.IntStream.rangeClosed(0, 41).boxed().toList());
+            trackCombo.setItemLabelGenerator(id -> TelemetryProcessingService.TRACK_NAMES.getOrDefault(id, "Track " + id));
+            trackCombo.setWidthFull();
+
+            TextField nameField = new TextField("Event Name (e.g. Belgian Grand Prix)");
+            nameField.setWidthFull();
+
+            trackCombo.addValueChangeListener(ev -> {
+                if (ev.getValue() != null && (nameField.getValue() == null || nameField.getValue().isEmpty())) {
+                    nameField.setValue(TelemetryProcessingService.TRACK_NAMES.getOrDefault(ev.getValue(), "") + " Grand Prix");
+                }
+            });
+
+            VerticalLayout dialogLayout = new VerticalLayout(trackCombo, nameField);
+            dialog.add(dialogLayout);
+
+            Button saveBtn = new Button("Add", ev -> {
+                if (trackCombo.getValue() == null || nameField.getValue().isEmpty()) {
+                    Notification.show("Please fill in all fields");
+                    return;
+                }
+                Event newEvent = new Event();
+                newEvent.setLeague(league);
+                newEvent.setTrackId(String.valueOf(trackCombo.getValue()));
+                newEvent.setEventName(nameField.getValue());
+                eventRepository.save(newEvent);
+                updateData();
+                dialog.close();
+                Notification.show("Manual weekend added");
+            });
+            saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+            
+            Button cancelBtn = new Button("Cancel", ev -> dialog.close());
+            dialog.getFooter().add(cancelBtn, saveBtn);
+            dialog.open();
         });
 
         // Inner tabs for Standings
@@ -144,10 +190,48 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         standingsLayout.add(standingsTabs, driverStandingsContent, teamStandingsContent);
         standingsLayout.setVisible(false);
 
-        driversLayout.add(new H3("Driver Name Overrides"), 
+        driversLayout.add(new HorizontalLayout(new H3("Driver Name Overrides"), addManualDriverBtn), 
                 new Span("Drivers are automatically discovered when they join a session. Edit the 'Display Name' to override how they appear in the leaderboard and standings."), 
                 mappingGrid);
         driversLayout.setVisible(false);
+
+        addManualDriverBtn.addClickListener(e -> {
+            if (league == null) return;
+            com.vaadin.flow.component.dialog.Dialog dialog = new com.vaadin.flow.component.dialog.Dialog();
+            dialog.setHeaderTitle("Add Manual Driver");
+
+            TextField nameField = new TextField("Display Name");
+            nameField.setWidthFull();
+
+            TextField telemetryNameField = new TextField("Telemetry Name (Optional)");
+            telemetryNameField.setWidthFull();
+
+            com.vaadin.flow.component.textfield.IntegerField raceNumField = new com.vaadin.flow.component.textfield.IntegerField("Race #");
+            raceNumField.setWidthFull();
+
+            VerticalLayout dialogLayout = new VerticalLayout(nameField, telemetryNameField, raceNumField);
+            dialog.add(dialogLayout);
+
+            Button saveBtn = new Button("Add", ev -> {
+                if (nameField.getValue().isEmpty()) {
+                    Notification.show("Please enter a name");
+                    return;
+                }
+                DriverMapping mapping = new DriverMapping();
+                mapping.setLeague(league);
+                mapping.setOverriddenName(nameField.getValue());
+                mapping.setTelemetryName(telemetryNameField.getValue().isEmpty() ? nameField.getValue() : telemetryNameField.getValue());
+                mapping.setRaceNumber(raceNumField.getValue() != null ? raceNumField.getValue() : 0);
+                mapping.setDriverId(255); // Use 255 for manual drivers
+                driverMappingRepository.save(mapping);
+                updateData();
+                dialog.close();
+                Notification.show("Manual driver added");
+            });
+            saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+            dialog.getFooter().add(new Button("Cancel", ev -> dialog.close()), saveBtn);
+            dialog.open();
+        });
 
         add(nav, header, mainTabs, eventsLayout, standingsLayout, driversLayout);
     }
@@ -254,18 +338,36 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         Button cancelButton = new Button("Cancel", e -> editor.cancel());
         cancelButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_SMALL);
         
-        HorizontalLayout actions = new HorizontalLayout(saveButton, cancelButton);
-        actions.setPadding(false);
         mappingGrid.addComponentColumn(item -> {
+            HorizontalLayout actions = new HorizontalLayout();
+            
             Button editButton = new Button("Edit");
             editButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_SMALL);
             editButton.addClickListener(e -> {
                 if (editor.isOpen()) editor.cancel();
                 mappingGrid.getEditor().editItem(item);
             });
-            editButton.setVisible(securityService.getAuthenticatedUser().isPresent());
-            return editButton;
-        }).setEditorComponent(actions);
+            
+            Button deleteBtn = new Button("Delete", e -> {
+                ConfirmDialog dialog = new ConfirmDialog();
+                dialog.setHeader("Delete Driver Mapping?");
+                dialog.setText("Are you sure you want to delete the mapping for '" + item.getTelemetryName() + "'?");
+                dialog.setCancelable(true);
+                dialog.setConfirmText("Delete");
+                dialog.setConfirmButtonTheme("error primary");
+                dialog.addConfirmListener(ev -> {
+                    driverMappingRepository.delete(item);
+                    updateData();
+                    Notification.show("Driver mapping deleted");
+                });
+                dialog.open();
+            });
+            deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
+
+            actions.add(editButton, deleteBtn);
+            actions.setVisible(securityService.getAuthenticatedUser().isPresent());
+            return actions;
+        }).setEditorComponent(new HorizontalLayout(saveButton, cancelButton));
 
         mappingGrid.setItems(java.util.Collections.emptyList());
     }
@@ -280,6 +382,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         // Hide admin-only features if not logged in
         boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
         recalculateBtn.setVisible(loggedIn);
+        addManualWeekendBtn.setVisible(loggedIn);
+        addManualDriverBtn.setVisible(loggedIn);
         hideAiCheckbox.setVisible(loggedIn);
     }
 

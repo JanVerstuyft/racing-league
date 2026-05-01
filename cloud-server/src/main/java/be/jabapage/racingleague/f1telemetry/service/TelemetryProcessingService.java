@@ -287,7 +287,7 @@ public class TelemetryProcessingService {
     );
 
     // Track ID to Name mapping (simplified)
-    private static final Map<Integer, String> TRACK_NAMES = Map.ofEntries(
+    public static final Map<Integer, String> TRACK_NAMES = Map.ofEntries(
             Map.entry(0, "Melbourne"), Map.entry(1, "Paul Ricard"), Map.entry(2, "Shanghai"), Map.entry(3, "Sakhir"),
             Map.entry(4, "Catalunya"), Map.entry(5, "Monaco"), Map.entry(6, "Montreal"), Map.entry(7, "Silverstone"),
             Map.entry(8, "Hockenheim"), Map.entry(9, "Hungaroring"), Map.entry(10, "Spa"), Map.entry(11, "Monza"),
