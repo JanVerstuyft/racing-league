@@ -21,6 +21,9 @@ public class DriverStanding {
     @Column(name = "driver_name")
     private String driverName;
 
+    @Column(name = "race_number")
+    private Integer raceNumber;
+
     @Column(name = "is_ai")
     private Boolean ai = false;
 

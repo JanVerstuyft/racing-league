@@ -31,6 +31,8 @@ public class TelemetryProcessingService {
     @Autowired
     private EventRepository eventRepository;
     @Autowired
+    private DriverResultRepository driverResultRepository;
+    @Autowired
     private LapResultRepository lapResultRepository;
     @Autowired
     private DriverMappingRepository driverMappingRepository;
@@ -566,6 +568,7 @@ public class TelemetryProcessingService {
             DriverBoardState driverState = new DriverBoardState();
             driverState.setPosition(ld.getCarPosition());
             driverState.setName(getDriverName(state, p));
+            driverState.setRaceNumber(p.getRaceNumber());
             driverState.setAi(isAi(state, p, i));
             driverState.setTeam(TEAM_NAMES.getOrDefault(p.getTeamId(), "Unknown"));
             driverState.setTyreCompound(TYRE_COMPOUNDS.getOrDefault(csd.getVisualTyreCompound(), "Unknown"));
@@ -808,9 +811,11 @@ public class TelemetryProcessingService {
             driverResult.setAi(isAi(state, participant, i));
             driverResult.setTeamName(TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(data.getPosition());
+            driverResult.setNumLaps(data.getNumLaps());
             driverResult.setPointsAwarded(data.getPoints());
             driverResult.setGridPosition(data.getGridPosition());
             driverResult.setBestLapTime(data.getBestLapTimeInMS() / 1000.0f);
+            driverResult.setTotalTime(data.getTotalRaceTime());
             driverResult.setResultStatus(data.getResultStatus());
             driverResult.setPenalties(data.getPenaltiesTime());
 
@@ -846,12 +851,15 @@ public class TelemetryProcessingService {
         // Save everything first to ensure IDs are generated and relations are persisted
         sessionResultRepository.saveAndFlush(sessionResult);
 
+        // Calculate gaps
+        calculateGaps(sessionResult);
+
         // Then update standings if it's a race
         if (isRace) {
             for (DriverResult driverResult : sessionResult.getDriverResults()) {
                 String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId();
                 boolean isReserve = state.getReserveDrivers().contains(key);
-                updateStandings(league, driverResult, isReserve);
+                updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber());
             }
         }
 
@@ -914,6 +922,7 @@ public class TelemetryProcessingService {
             driverResult.setAi(isAi(state, participant, i));
             driverResult.setTeamName(TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(ld.getCarPosition());
+            driverResult.setNumLaps(ld.getCurrentLapNum() - 1); // Live state current lap means they completed current-1
             driverResult.setGridPosition(ld.getGridPosition());
             driverResult.setBestLapTime(state.getDriverBestLap()[i] / 1000.0f);
             driverResult.setResultStatus(ld.getResultStatus());
@@ -987,11 +996,14 @@ public class TelemetryProcessingService {
 
         sessionResultRepository.saveAndFlush(sessionResult);
 
+        // Calculate gaps
+        calculateGaps(sessionResult);
+
         if (isRace) {
             for (DriverResult driverResult : sessionResult.getDriverResults()) {
                 String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId();
                 boolean isReserve = state.getReserveDrivers().contains(key);
-                updateStandings(league, driverResult, isReserve);
+                updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber());
             }
         }
 
@@ -1015,9 +1027,9 @@ public class TelemetryProcessingService {
                         (existing, replacement) -> existing
                 ));
 
-        List<SessionResult> allSessions = league.getEvents().stream()
+        java.util.Set<SessionResult> allSessions = league.getEvents().stream()
                 .flatMap(e -> e.getSessionResults().stream())
-                .collect(Collectors.toList());
+                .collect(java.util.stream.Collectors.toSet());
 
         for (SessionResult session : allSessions) {
             for (DriverResult result : session.getDriverResults()) {
@@ -1057,13 +1069,17 @@ public class TelemetryProcessingService {
         driverStandingRepository.deleteAll(driverStandingRepository.findByLeague(league));
         teamStandingRepository.deleteAll(teamStandingRepository.findByLeague(league));
 
-        // Get all sessions from events
-        List<SessionResult> allSessions = league.getEvents().stream()
+        // Get all sessions from events - Use a Set to avoid duplicates if hibernate join fetch returned duplicates
+        java.util.Set<SessionResult> allSessions = league.getEvents().stream()
                 .flatMap(e -> e.getSessionResults().stream())
-                .collect(Collectors.toList());
+                .collect(java.util.stream.Collectors.toSet());
 
         for (SessionResult session : allSessions) {
             boolean isRace = session.getSessionType() >= 15 && session.getSessionType() <= 17;
+            
+            // Recalculate gaps for each session
+            calculateGaps(session);
+            
             for (DriverResult result : session.getDriverResults()) {
                 // Determine the correct name to use
                 String nameToUse = result.getDriverName();
@@ -1080,17 +1096,18 @@ public class TelemetryProcessingService {
                 // Only update standings if it's a race
                 if (isRace) {
                     boolean isReserve = false;
+                    Integer raceNumber = result.getRaceNumber();
                     if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
                         isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId());
                     }
-                    updateStandings(league, result, isReserve);
+                    updateStandings(league, result, isReserve, raceNumber);
                 }
             }
         }
         log.info("Recalculated standings for league: {}", league.getName());
     }
 
-    private void updateStandings(League league, DriverResult result, boolean isReserve) {
+    private void updateStandings(League league, DriverResult result, boolean isReserve, Integer raceNumber) {
         // Update Driver Standings
         DriverStanding ds = driverStandingRepository.findByLeagueAndDriverName(league, result.getDriverName())
                 .orElseGet(() -> {
@@ -1104,6 +1121,7 @@ public class TelemetryProcessingService {
                 });
         ds.setAi(result.isAi());
         ds.setReserve(isReserve);
+        ds.setRaceNumber(raceNumber);
         
         // Handle multiple teams for a driver
         String currentTeams = ds.getTeamName();
@@ -1132,5 +1150,46 @@ public class TelemetryProcessingService {
                 });
         ts.setPoints((ts.getPoints() != null ? ts.getPoints() : 0) + result.getPointsAwarded());
         teamStandingRepository.save(ts);
+    }
+
+    public void calculateGaps(SessionResult session) {
+        if (session.getDriverResults() == null || session.getDriverResults().isEmpty()) return;
+
+        // Find the winner (Position 1)
+        Optional<DriverResult> winner = session.getDriverResults().stream()
+                .filter(dr -> dr.getPosition() != null && dr.getPosition() == 1)
+                .findFirst();
+
+        if (winner.isPresent()) {
+            DriverResult w = winner.get();
+            w.setGapToLeader("Winner");
+            
+            Integer winnerLaps = w.getNumLaps();
+            double winnerTime = w.getTotalTime() != null ? w.getTotalTime() : 0;
+
+            for (DriverResult dr : session.getDriverResults()) {
+                if (dr.getPosition() != null && dr.getPosition() == 1) continue;
+
+                // 1. Check for Lap Gaps first
+                if (winnerLaps != null && dr.getNumLaps() != null && dr.getNumLaps() < winnerLaps) {
+                    int lapGap = winnerLaps - dr.getNumLaps();
+                    dr.setGapToLeader("+" + lapGap + (lapGap == 1 ? " Lap" : " Laps"));
+                } 
+                // 2. Check for Time Gaps if on the same lap
+                else if (dr.getTotalTime() != null && dr.getTotalTime() > 0 && winnerTime > 0) {
+                    double gap = dr.getTotalTime() - winnerTime;
+                    dr.setGapToLeader(String.format("+%.3fs", gap));
+                } 
+                else {
+                    dr.setGapToLeader("-");
+                }
+            }
+        } else {
+            // No winner found, clear gaps
+            for (DriverResult dr : session.getDriverResults()) {
+                dr.setGapToLeader("-");
+            }
+        }
+        driverResultRepository.saveAll(session.getDriverResults());
     }
 }

@@ -185,9 +185,20 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             NumberField pointsField = new NumberField("Points");
             pointsField.setStepButtonsVisible(true);
 
-            TextField timeField = new TextField("Best Lap Time (e.g. 1:24.500)");
+            NumberField penaltiesField = new NumberField("Penalties (seconds)");
+            penaltiesField.setStepButtonsVisible(true);
+            penaltiesField.setMin(0);
 
-            VerticalLayout layout = new VerticalLayout(driverCombo, teamCombo, new HorizontalLayout(posField, pointsField), timeField);
+            com.vaadin.flow.component.textfield.IntegerField lapsField = new com.vaadin.flow.component.textfield.IntegerField("Laps Completed");
+            lapsField.setStepButtonsVisible(true);
+            lapsField.setMin(0);
+
+            TextField timeField = new TextField("Best Lap Time (e.g. 1:24.500)");
+            TextField totalTimeField = new TextField("Total Race Time (e.g. 45:12.300)");
+
+            VerticalLayout layout = new VerticalLayout(driverCombo, teamCombo, 
+                    new HorizontalLayout(posField, pointsField, penaltiesField, lapsField), 
+                    timeField, totalTimeField);
             dialog.add(layout);
 
             Button saveBtn = new Button("Add", ev -> {
@@ -203,21 +214,36 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 dr.setDriverId(driverCombo.getValue().getDriverId());
                 dr.setTeamName(teamCombo.getValue());
                 dr.setPosition(posField.getValue().intValue());
+                dr.setNumLaps(lapsField.getValue() != null ? lapsField.getValue() : 0);
                 dr.setPointsAwarded(pointsField.getValue() != null ? pointsField.getValue().intValue() : 0);
                 dr.setResultStatus(3);
                 dr.setAi(false);
-                dr.setPenalties(0);
+                dr.setPenalties(penaltiesField.getValue() != null ? penaltiesField.getValue().intValue() : 0);
                 
                 if (timeField.getValue() != null && !timeField.getValue().isEmpty()) {
                     try {
                         dr.setBestLapTime(parseLapTime(timeField.getValue()));
                     } catch (Exception ex) {
-                        Notification.show("Invalid time format. Use m:ss.SSS or s.SSS");
+                        Notification.show("Invalid best lap time format. Use m:ss.SSS or s.SSS");
+                        return;
+                    }
+                }
+
+                if (totalTimeField.getValue() != null && !totalTimeField.getValue().isEmpty()) {
+                    try {
+                        dr.setTotalTime((double) parseLapTime(totalTimeField.getValue()));
+                    } catch (Exception ex) {
+                        Notification.show("Invalid total time format. Use m:ss.SSS or s.SSS");
                         return;
                     }
                 }
 
                 driverResultRepository.save(dr);
+                
+                // Recalculate gaps and standings for this league
+                telemetryProcessingService.calculateGaps(session);
+                telemetryProcessingService.recalculateStandings(currentEvent.getLeague().getId());
+                
                 refreshEvent();
                 dialog.close();
                 Notification.show("Result added");
@@ -229,14 +255,21 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     }
 
     private float parseLapTime(String text) {
+        if (text == null || text.isEmpty()) return 0;
         if (text.contains(":")) {
             String[] parts = text.split(":");
-            int mins = Integer.parseInt(parts[0]);
-            float secs = Float.parseFloat(parts[1]);
-            return mins * 60 + secs;
-        } else {
-            return Float.parseFloat(text);
+            if (parts.length == 3) { // HH:mm:ss.SSS
+                int hours = Integer.parseInt(parts[0]);
+                int mins = Integer.parseInt(parts[1]);
+                float secs = Float.parseFloat(parts[2]);
+                return hours * 3600 + mins * 60 + secs;
+            } else if (parts.length == 2) { // mm:ss.SSS
+                int mins = Integer.parseInt(parts[0]);
+                float secs = Float.parseFloat(parts[1]);
+                return mins * 60 + secs;
+            }
         }
+        return Float.parseFloat(text);
     }
 
     private void refreshEvent() {
@@ -347,16 +380,19 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             grid.addColumn(dr -> dr.getGridPosition() != null ? dr.getGridPosition() : "-").setHeader("Grid");
         }
 
+        grid.addColumn(dr -> dr.getNumLaps() != null ? dr.getNumLaps() : "-").setHeader("Laps");
+
         grid.addColumn(dr -> formatLapTime(dr.getBestLapTime() != null ? dr.getBestLapTime() : 0.0f))
                 .setHeader("Best Lap")
                 .setPartNameGenerator(dr -> (dr.getBestLapTime() != null && fastestLap > 0 && dr.getBestLapTime() == fastestLap) ? "fastest-lap" : null);
 
+        if (!isQualifying) {
+            grid.addColumn(dr -> formatLapTime(dr.getTotalTime() != null ? dr.getTotalTime().floatValue() : 0.0f)).setHeader("Total Time");
+            grid.addColumn(dr -> dr.getGapToLeader() != null ? dr.getGapToLeader() : "-").setHeader("Gap");
+        }
+
         if (isQualifying) {
-            grid.addColumn(dr -> {
-                if (dr.getBestLapTime() == null || dr.getBestLapTime() == 0 || fastestLap == 0) return "-";
-                float gap = dr.getBestLapTime() - fastestLap;
-                return gap <= 0 ? "-" : String.format("+%.3fs", gap);
-            }).setHeader("Gap");
+            grid.addColumn(dr -> dr.getGapToLeader() != null ? dr.getGapToLeader() : "-").setHeader("Gap");
 
             grid.addColumn(dr -> {
                 long bestS1 = dr.getLapResults().stream().mapToLong(l -> l.getS1InMS() != null ? l.getS1InMS() : Long.MAX_VALUE).min().orElse(0);

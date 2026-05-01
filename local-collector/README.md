@@ -8,7 +8,11 @@ A lightweight bridge that forwards F1 25 UDP telemetry to the Cloud Server.
 3. It uses a **Telemetry Token** to identify which league the data belongs to.
 
 ## Setup
-Edit `src/main/resources/application.properties`:
+The application provides a Graphical User Interface (GUI) to manage settings. You can enter your Cloud Telemetry Token directly in the UI.
+
+Settings are automatically saved to an `application.properties` file in the working directory when you click **Save & Apply**. This ensures your configuration is remembered the next time you launch the collector.
+
+Alternatively, you can manually edit `src/main/resources/application.properties` before building:
 
 ```properties
 # The unique token from your Cloud Server Season page

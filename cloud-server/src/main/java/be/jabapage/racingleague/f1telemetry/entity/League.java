@@ -38,10 +38,10 @@ public class League {
     private List<TeamStanding> teamStandings = new ArrayList<>();
 
     @OneToMany(mappedBy = "league", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<SessionResult> sessionResults = new ArrayList<>();
+    private java.util.Set<SessionResult> sessionResults = new java.util.LinkedHashSet<>();
 
     @OneToMany(mappedBy = "league", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<Event> events = new ArrayList<>();
+    private java.util.Set<Event> events = new java.util.LinkedHashSet<>();
 
     @Override
     public boolean equals(Object o) {

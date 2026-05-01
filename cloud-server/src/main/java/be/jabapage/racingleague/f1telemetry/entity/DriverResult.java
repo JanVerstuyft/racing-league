@@ -40,12 +40,20 @@ public class DriverResult {
     @Column(name = "team_name")
     private String teamName;
     private Integer position;
+    @Column(name = "num_laps")
+    private Integer numLaps;
     @Column(name = "points_awarded")
     private Integer pointsAwarded;
     @Column(name = "grid_position")
     private Integer gridPosition;
     @Column(name = "best_lap_time")
     private Float bestLapTime;
+
+    @Column(name = "total_time")
+    private Double totalTime;
+
+    @Column(name = "gap_to_leader")
+    private String gapToLeader;
 
     @Column(name = "result_status", nullable = false, columnDefinition = "int default 0")
     private Integer resultStatus;
@@ -54,10 +62,10 @@ public class DriverResult {
     private Integer penalties;
 
     @OneToMany(mappedBy = "driverResult", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
-    private java.util.List<TyreStint> tyreStints = new java.util.ArrayList<>();
+    private java.util.Set<TyreStint> tyreStints = new java.util.LinkedHashSet<>();
 
     @OneToMany(mappedBy = "driverResult", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
-    private java.util.List<LapResult> lapResults = new java.util.ArrayList<>();
+    private java.util.Set<LapResult> lapResults = new java.util.LinkedHashSet<>();
 
     @Override
     public boolean equals(Object o) {

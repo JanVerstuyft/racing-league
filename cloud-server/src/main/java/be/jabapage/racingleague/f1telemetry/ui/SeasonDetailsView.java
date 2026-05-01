@@ -66,6 +66,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final VerticalLayout teamStandingsContent = new VerticalLayout();
     private final VerticalLayout driversLayout = new VerticalLayout();
     private final Button addManualDriverBtn = new Button("Add Manual Driver");
+    private final Button deleteSelectedStandingsBtn = new Button("Delete Selected");
+    private final Button deleteSelectedMappingsBtn = new Button("Delete Selected");
     
     private final Button recalculateBtn = new Button("Recalculate Standings");
     private final Button addManualWeekendBtn = new Button("Add Manual Weekend");
@@ -179,7 +181,28 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             teamStandingsContent.setVisible(label.equals("Teams"));
         });
 
-        driverStandingsContent.add(new HorizontalLayout(new H3("Driver Standings"), recalculateBtn), 
+        deleteSelectedStandingsBtn.addThemeVariants(ButtonVariant.LUMO_ERROR);
+        deleteSelectedStandingsBtn.setEnabled(false);
+        driverGrid.setSelectionMode(Grid.SelectionMode.MULTI);
+        driverGrid.addSelectionListener(e -> deleteSelectedStandingsBtn.setEnabled(!e.getAllSelectedItems().isEmpty()));
+        
+        deleteSelectedStandingsBtn.addClickListener(e -> {
+            var selected = driverGrid.getSelectedItems();
+            ConfirmDialog dialog = new ConfirmDialog();
+            dialog.setHeader("Delete " + selected.size() + " Drivers?");
+            dialog.setText("Are you sure you want to delete the selected drivers from the standings?");
+            dialog.setCancelable(true);
+            dialog.setConfirmText("Delete");
+            dialog.setConfirmButtonTheme("error primary");
+            dialog.addConfirmListener(ev -> {
+                driverStandingRepository.deleteAll(selected);
+                updateData();
+                Notification.show(selected.size() + " drivers removed from standings");
+            });
+            dialog.open();
+        });
+
+        driverStandingsContent.add(new HorizontalLayout(new H3("Driver Standings"), recalculateBtn, deleteSelectedStandingsBtn), 
                 driverGrid);
         driverStandingsContent.setPadding(false);
         
@@ -190,7 +213,28 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         standingsLayout.add(standingsTabs, driverStandingsContent, teamStandingsContent);
         standingsLayout.setVisible(false);
 
-        driversLayout.add(new HorizontalLayout(new H3("Driver Name Overrides"), addManualDriverBtn), 
+        deleteSelectedMappingsBtn.addThemeVariants(ButtonVariant.LUMO_ERROR);
+        deleteSelectedMappingsBtn.setEnabled(false);
+        mappingGrid.setSelectionMode(Grid.SelectionMode.MULTI);
+        mappingGrid.addSelectionListener(e -> deleteSelectedMappingsBtn.setEnabled(!e.getAllSelectedItems().isEmpty()));
+
+        deleteSelectedMappingsBtn.addClickListener(e -> {
+            var selected = mappingGrid.getSelectedItems();
+            ConfirmDialog dialog = new ConfirmDialog();
+            dialog.setHeader("Delete " + selected.size() + " Mappings?");
+            dialog.setText("Are you sure you want to delete the selected driver mappings?");
+            dialog.setCancelable(true);
+            dialog.setConfirmText("Delete");
+            dialog.setConfirmButtonTheme("error primary");
+            dialog.addConfirmListener(ev -> {
+                driverMappingRepository.deleteAll(selected);
+                updateData();
+                Notification.show(selected.size() + " mappings deleted");
+            });
+            dialog.open();
+        });
+
+        driversLayout.add(new HorizontalLayout(new H3("Driver Name Overrides"), addManualDriverBtn, deleteSelectedMappingsBtn), 
                 new Span("Drivers are automatically discovered when they join a session. Edit the 'Display Name' to override how they appear in the leaderboard and standings."), 
                 mappingGrid);
         driversLayout.setVisible(false);
@@ -276,20 +320,54 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         }).setHeader("Actions");
 
         driverGrid.addComponentColumn(ds -> {
+            HorizontalLayout nameLayout = new HorizontalLayout();
+            nameLayout.setAlignItems(Alignment.CENTER);
+            nameLayout.setSpacing(false);
+
+            if (ds.getRaceNumber() != null && ds.getRaceNumber() > 0) {
+                Span raceNum = new Span("#" + ds.getRaceNumber());
+                raceNum.getStyle().set("color", "var(--lumo-secondary-text-color)");
+                raceNum.getStyle().set("font-size", "0.8em");
+                raceNum.getStyle().set("margin-right", "var(--lumo-space-s)");
+                nameLayout.add(raceNum);
+            }
+
             Span name = new Span(ds.getDriverName());
+            nameLayout.add(name);
+
             if (ds.isAi()) {
                 Span badge = new Span("AI");
                 badge.getElement().getThemeList().add("badge contrast small");
                 badge.getStyle().set("margin-left", "var(--lumo-space-s)");
-                return new HorizontalLayout(name, badge);
+                nameLayout.add(badge);
             }
-            return name;
-        }).setHeader("Driver");
+            return nameLayout;
+        }).setHeader("Driver").setSortable(true).setComparator(DriverStanding::getDriverName);
 
         driverGrid.addColumn(DriverStanding::getTeamName).setHeader("Team");
 
         driverGrid.addColumn(ds -> ds.getPoints() != null ? ds.getPoints() : 0).setHeader("Points").setSortable(true);
         driverGrid.addColumn(ds -> ds.getWins() != null ? ds.getWins() : 0).setHeader("Wins");
+
+        driverGrid.addComponentColumn(ds -> {
+            Button deleteBtn = new Button("Delete", e -> {
+                ConfirmDialog dialog = new ConfirmDialog();
+                dialog.setHeader("Delete Driver?");
+                dialog.setText("Are you sure you want to delete '" + ds.getDriverName() + "' from the standings? This will remove them from the list, but their results in individual races will remain until you recalculate standings.");
+                dialog.setCancelable(true);
+                dialog.setConfirmText("Delete");
+                dialog.setConfirmButtonTheme("error primary");
+                dialog.addConfirmListener(ev -> {
+                    driverStandingRepository.delete(ds);
+                    updateData();
+                    Notification.show("Driver removed from standings");
+                });
+                dialog.open();
+            });
+            deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
+            deleteBtn.setVisible(securityService.getAuthenticatedUser().isPresent());
+            return deleteBtn;
+        }).setHeader("Actions");
 
         teamGrid.addColumn(TeamStanding::getTeamName).setHeader("Team");
         teamGrid.addColumn(ts -> ts.getPoints() != null ? ts.getPoints() : 0).setHeader("Points").setSortable(true);
@@ -384,6 +462,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         recalculateBtn.setVisible(loggedIn);
         addManualWeekendBtn.setVisible(loggedIn);
         addManualDriverBtn.setVisible(loggedIn);
+        deleteSelectedStandingsBtn.setVisible(loggedIn);
+        deleteSelectedMappingsBtn.setVisible(loggedIn);
         hideAiCheckbox.setVisible(loggedIn);
     }
 

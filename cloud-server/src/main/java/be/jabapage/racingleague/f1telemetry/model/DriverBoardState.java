@@ -6,6 +6,7 @@ import lombok.Data;
 public class DriverBoardState {
     private int position;
     private String name;
+    private int raceNumber;
     private String team;
     private String tyreCompound;
     private int tyreAge;
