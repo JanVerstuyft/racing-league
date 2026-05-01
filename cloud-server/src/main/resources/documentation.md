@@ -2,7 +2,7 @@
 
 ## 1. Local Collector Setup
 The Local Collector is a desktop application that forwards data from your F1 game to this cloud server. It provides a graphical interface for easy configuration.
-You need Java 21 Runtime environment to run the application.
+You need Java 21 Runtime environment to run the application.  You can download it from [here](https://github.com/JanVerstuyft/racing-league/releases).
 
 ### Collector Application
 1. Launch the Local Collector application.
