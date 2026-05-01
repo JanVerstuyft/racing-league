@@ -9,7 +9,7 @@
   </parent>
   <groupId>be.jabapage.racingleague</groupId>
   <artifactId>f1-telemetry-parent</artifactId>
-  <version>0.0.3-SNAPSHOT</version>
+  <version>0.0.2-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>f1-telemetry</name>
   <description>F1 25 UDP Telemetry Reader</description>
