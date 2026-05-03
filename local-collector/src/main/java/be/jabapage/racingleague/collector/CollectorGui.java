@@ -14,6 +14,7 @@ public class CollectorGui extends JFrame {
     private final UdpForwarderService forwarderService;
 
     private JTextField tokenField;
+    private JTextField listenPortField;
     private JCheckBox cloudForwardCheckbox;
     private JCheckBox udpForwardCheckbox;
     private JTextField forwardHostField;
@@ -72,34 +73,40 @@ public class CollectorGui extends JFrame {
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
         gbc.gridx = 0; gbc.gridy = 0;
-        configPanel.add(new JLabel("Cloud Telemetry Token:"), gbc);
+        configPanel.add(new JLabel("Listening UDP Port:"), gbc);
         gbc.gridx = 1; gbc.gridy = 0; gbc.weightx = 1.0;
+        listenPortField = new JTextField(String.valueOf(settings.getPort()));
+        configPanel.add(listenPortField, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.0;
+        configPanel.add(new JLabel("Cloud Telemetry Token:"), gbc);
+        gbc.gridx = 1; gbc.gridy = 1; gbc.weightx = 1.0;
         tokenField = new JTextField(settings.getCloudToken());
         configPanel.add(tokenField, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.0;
+        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.0;
         configPanel.add(new JLabel("Enable Cloud Sync:"), gbc);
-        gbc.gridx = 1; gbc.gridy = 1; gbc.weightx = 1.0;
+        gbc.gridx = 1; gbc.gridy = 2; gbc.weightx = 1.0;
         cloudForwardCheckbox = new JCheckBox();
         cloudForwardCheckbox.setSelected(settings.isCloudForwardEnabled());
         configPanel.add(cloudForwardCheckbox, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.0;
+        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0.0;
         configPanel.add(new JLabel("Enable Local UDP Forwarding:"), gbc);
-        gbc.gridx = 1; gbc.gridy = 2; gbc.weightx = 1.0;
+        gbc.gridx = 1; gbc.gridy = 3; gbc.weightx = 1.0;
         udpForwardCheckbox = new JCheckBox();
         udpForwardCheckbox.setSelected(settings.isForwardEnabled());
         configPanel.add(udpForwardCheckbox, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0.0;
+        gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 0.0;
         configPanel.add(new JLabel("UDP Forward Host:"), gbc);
-        gbc.gridx = 1; gbc.gridy = 3; gbc.weightx = 1.0;
+        gbc.gridx = 1; gbc.gridy = 4; gbc.weightx = 1.0;
         forwardHostField = new JTextField(settings.getForwardHost());
         configPanel.add(forwardHostField, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 0.0;
+        gbc.gridx = 0; gbc.gridy = 5; gbc.weightx = 0.0;
         configPanel.add(new JLabel("UDP Forward Port:"), gbc);
-        gbc.gridx = 1; gbc.gridy = 4; gbc.weightx = 1.0;
+        gbc.gridx = 1; gbc.gridy = 5; gbc.weightx = 1.0;
         forwardPortField = new JTextField(String.valueOf(settings.getForwardPort()));
         configPanel.add(forwardPortField, gbc);
 
@@ -118,6 +125,13 @@ public class CollectorGui extends JFrame {
     }
 
     private void applySettings() {
+        try {
+            settings.setPort(Integer.parseInt(listenPortField.getText().trim()));
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(this, "Invalid listening port number", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
         settings.setCloudToken(tokenField.getText().trim());
         settings.setCloudForwardEnabled(cloudForwardCheckbox.isSelected());
         settings.setForwardEnabled(udpForwardCheckbox.isSelected());
