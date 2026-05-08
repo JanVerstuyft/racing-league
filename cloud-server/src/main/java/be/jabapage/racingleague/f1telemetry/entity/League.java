@@ -23,8 +23,22 @@ public class League {
     @Column(name = "hide_ai")
     private Boolean hideAi = false;
 
+    @Column(name = "show_tyre_wear")
+    private Boolean showTyreWear = false;
+
+    @Column(name = "show_ers")
+    private Boolean showErs = false;
+
     public boolean isHideAi() {
         return hideAi != null && hideAi;
+    }
+
+    public boolean isShowTyreWear() {
+        return showTyreWear != null && showTyreWear;
+    }
+
+    public boolean isShowErs() {
+        return showErs != null && showErs;
     }
 
     @ManyToOne(fetch = FetchType.LAZY)

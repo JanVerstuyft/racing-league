@@ -98,6 +98,8 @@ public class TelemetryProcessingService {
                                 leagueRepository.findById(remote.getLeagueId()).ifPresent(l -> {
                                     refreshDriverMappings(entry.getValue(), l);
                                     entry.getValue().setHideAi(l.isHideAi());
+                                    entry.getValue().setShowTyreWear(l.isShowTyreWear());
+                                    entry.getValue().setShowErs(l.isShowErs());
                                 });
 
                                 broadcastLeaderboard(entry.getValue());
@@ -138,6 +140,8 @@ public class TelemetryProcessingService {
             leagueRepository.findById(remote.getLeagueId()).ifPresent(l -> {
                 refreshDriverMappings(state, l);
                 state.setHideAi(l.isHideAi());
+                state.setShowTyreWear(l.isShowTyreWear());
+                state.setShowErs(l.isShowErs());
                 // We need a token to put it in leagueStates. 
                 // But we don't know the token here.
                 // However, we can just broadcast without putting in leagueStates 
@@ -165,6 +169,8 @@ public class TelemetryProcessingService {
                             // Refresh transient mappings
                             refreshDriverMappings(state, l);
                             state.setHideAi(l.isHideAi());
+                            state.setShowTyreWear(l.isShowTyreWear());
+                            state.setShowErs(l.isShowErs());
                             log.info("Loaded live state for league {} from database", l.getId());
                             return state;
                         }
@@ -175,6 +181,8 @@ public class TelemetryProcessingService {
 
                 LeagueSessionState state = new LeagueSessionState(l.getId());
                 state.setHideAi(l.isHideAi());
+                state.setShowTyreWear(l.isShowTyreWear());
+                state.setShowErs(l.isShowErs());
                 refreshDriverMappings(state, l);
                 return state;
             } else if ("default".equals(t)) {
@@ -440,6 +448,10 @@ public class TelemetryProcessingService {
                 state.setCurrentCarStatus(PacketCarStatusData.fromByteBuffer(buffer, header));
                 broadcastLeaderboard(state);
                 break;
+            case 10: // Car Damage
+                state.setCurrentCarDamageData(PacketCarDamageData.fromByteBuffer(buffer, header));
+                broadcastLeaderboard(state);
+                break;
             case 8: // Final Classification
                 PacketFinalClassificationData classification = PacketFinalClassificationData.fromByteBuffer(buffer, header);
                 handleFinalClassification(state, classification);
@@ -575,8 +587,26 @@ public class TelemetryProcessingService {
             driverState.setTyreAge(csd.getTyresAgeLaps());
             driverState.setPitStops(ld.getNumPitStops());
             driverState.setPenalties(ld.getPenalties());
+            driverState.setWarnings(ld.getTotalWarnings());
+
+            if (state.isShowErs() && csd != null) {
+                driverState.setErsPercentage((int) (csd.getErsStoreEnergy() / 4000000.0 * 100.0));
+                driverState.setErsActive(csd.getErsDeployMode() == 3); // Overtake mode
+            }
+
+            if (state.isShowTyreWear() && state.getCurrentCarDamageData() != null && i < state.getCurrentCarDamageData().getCarDamageData().size()) {
+                CarDamageData cdd = state.getCurrentCarDamageData().getCarDamageData().get(i);
+                float maxWear = 0;
+                for (float wear : cdd.getTyresWear()) {
+                    if (wear > maxWear) maxWear = wear;
+                }
+                driverState.setTyreWear((int) maxWear);
+            }
+
             driverState.setResultStatus(ld.getResultStatus());
             driverState.setQualifying(isQualifying);
+            driverState.setShowTyreWear(state.isShowTyreWear());
+            driverState.setShowErs(state.isShowErs());
 
             if (isQualifying) {
                 driverState.setBestLapTime(formatLapTimeFull(state.getDriverBestLap()[i]));
@@ -687,6 +717,220 @@ public class TelemetryProcessingService {
 
         return statsList.stream()
                 .sorted(Comparator.comparingDouble(RacePaceStats::getPureRacePace))
+                .collect(Collectors.toList());
+    }
+
+    public List<ConsistencyStats> calculateConsistency(Long eventId) {
+        Event event = eventRepository.findByIdWithResults(eventId).orElse(null);
+        if (event == null) return Collections.emptyList();
+
+        SessionResult raceSession = event.getSessionResults().stream()
+                .filter(s -> s.getSessionType() >= 15 && s.getSessionType() <= 17)
+                .findFirst().orElse(null);
+        if (raceSession == null) return Collections.emptyList();
+
+        List<ConsistencyStats> statsList = new ArrayList<>();
+
+        for (DriverResult dr : raceSession.getDriverResults()) {
+            List<LapResult> laps = dr.getLapResults().stream()
+                    .filter(LapResult::getIsValid)
+                    .sorted(Comparator.comparingInt(LapResult::getLapNumber))
+                    .collect(Collectors.toList());
+
+            if (laps.size() < 3) continue;
+
+            ConsistencyStats stats = new ConsistencyStats();
+            stats.setDriverName(dr.getDriverName());
+            stats.setAi(dr.isAi());
+            stats.setTeamName(dr.getTeamName());
+
+            stats.setS1AvgDiff(calculateProcessedSectorDiff(laps.stream().mapToLong(LapResult::getS1InMS).toArray()));
+            stats.setS2AvgDiff(calculateProcessedSectorDiff(laps.stream().mapToLong(LapResult::getS2InMS).toArray()));
+            stats.setS3AvgDiff(calculateProcessedSectorDiff(laps.stream().mapToLong(LapResult::getS3InMS).toArray()));
+            stats.setAvgDiff((stats.getS1AvgDiff() + stats.getS2AvgDiff() + stats.getS3AvgDiff()) / 1000.0);
+
+            statsList.add(stats);
+        }
+
+        if (!statsList.isEmpty()) {
+            // Overall rating calculation (normalized 0-100 based on total avg diff)
+            double bestTotal = statsList.stream().mapToDouble(ConsistencyStats::getAvgDiff).min().orElse(0);
+            double worstTotal = statsList.stream().mapToDouble(ConsistencyStats::getAvgDiff).max().orElse(1);
+            
+            // Sector rating calculation
+            double bestS1 = statsList.stream().mapToDouble(ConsistencyStats::getS1AvgDiff).min().orElse(0);
+            double worstS1 = statsList.stream().mapToDouble(ConsistencyStats::getS1AvgDiff).max().orElse(1);
+            double bestS2 = statsList.stream().mapToDouble(ConsistencyStats::getS2AvgDiff).min().orElse(0);
+            double worstS2 = statsList.stream().mapToDouble(ConsistencyStats::getS2AvgDiff).max().orElse(1);
+            double bestS3 = statsList.stream().mapToDouble(ConsistencyStats::getS3AvgDiff).min().orElse(0);
+            double worstS3 = statsList.stream().mapToDouble(ConsistencyStats::getS3AvgDiff).max().orElse(1);
+
+            for (ConsistencyStats s : statsList) {
+                s.setRating(calculateNormalizedRating(s.getAvgDiff(), bestTotal, worstTotal));
+                s.setS1Rating(calculateNormalizedRating(s.getS1AvgDiff(), bestS1, worstS1));
+                s.setS2Rating(calculateNormalizedRating(s.getS2AvgDiff(), bestS2, worstS2));
+                s.setS3Rating(calculateNormalizedRating(s.getS3AvgDiff(), bestS3, worstS3));
+            }
+        }
+
+        return statsList.stream()
+                .sorted(Comparator.comparingDouble(ConsistencyStats::getRating).reversed())
+                .collect(Collectors.toList());
+    }
+
+    private double calculateNormalizedRating(double val, double best, double worst) {
+        if (worst == best) return 100.0;
+        double r = 100.0 * (1.0 - (val - best) / (worst - best));
+        return Math.max(0, Math.min(100.0, r));
+    }
+
+    private double calculateProcessedSectorDiff(long[] times) {
+        if (times.length < 2) return 0;
+
+        List<Double> diffs2 = new ArrayList<>();
+        for (int i = 1; i < times.length; i++) {
+            if (times[i] <= 0 || times[i-1] <= 0) continue;
+            double diff = Math.abs(times[i] - times[i-1]);
+            if (times[i] < times[i-1]) diff *= 0.5; // Reward improvement
+            diffs2.add(diff);
+        }
+
+        List<Double> diffs3 = new ArrayList<>();
+        for (int i = 2; i < times.length; i++) {
+            if (times[i] <= 0 || times[i-1] <= 0 || times[i-2] <= 0) continue;
+            // Difference between three consecutive laps: sum of adjacent diffs / 2
+            double d1 = Math.abs(times[i] - times[i-1]) * (times[i] < times[i-1] ? 0.5 : 1.0);
+            double d2 = Math.abs(times[i-1] - times[i-2]) * (times[i-1] < times[i-2] ? 0.5 : 1.0);
+            diffs3.add((d1 + d2) / 2.0);
+        }
+
+        double score2 = processWeightedDiff(diffs2, 0.25, 0.25, 1.0);
+        double score3 = processWeightedDiff(diffs3, 0.15, 0.15, 0.75);
+
+        return (score2 + score3);
+    }
+
+    private double processWeightedDiff(List<Double> diffs, double p1, double p2, double baseWeight) {
+        if (diffs.isEmpty()) return 0;
+        Collections.sort(diffs);
+
+        int n = diffs.size();
+        double totalWeight = 0;
+        double weightedSum = 0;
+
+        for (int i = 0; i < n; i++) {
+            double rank = i + 1;
+            double weight = 0;
+
+            if (rank <= n * p1) {
+                weight = baseWeight;
+            } else if (rank <= n * (p1 + p2)) {
+                weight = baseWeight * (1.0 - (rank - n * p1) / (n * p2));
+            }
+
+            if (weight > 0) {
+                weightedSum += diffs.get(i) * weight;
+                totalWeight += weight;
+            }
+        }
+
+        return totalWeight > 0 ? weightedSum / totalWeight : 0;
+    }
+
+    public List<LongestStintStats> calculateLongestStints(Long eventId) {
+        Event event = eventRepository.findByIdWithResults(eventId).orElse(null);
+        if (event == null) return Collections.emptyList();
+
+        // Find the main race session
+        SessionResult raceSession = event.getSessionResults().stream()
+                .filter(s -> s.getSessionType() >= 15 && s.getSessionType() <= 17)
+                .findFirst().orElse(null);
+        if (raceSession == null) return Collections.emptyList();
+
+        // Find best sectors for 107% rule
+        long bestS1 = Long.MAX_VALUE;
+        long bestS2 = Long.MAX_VALUE;
+        long bestS3 = Long.MAX_VALUE;
+
+        for (DriverResult dr : raceSession.getDriverResults()) {
+            for (LapResult lap : dr.getLapResults()) {
+                if (lap.getIsValid()) {
+                    if (lap.getS1InMS() > 0) bestS1 = Math.min(bestS1, lap.getS1InMS());
+                    if (lap.getS2InMS() > 0) bestS2 = Math.min(bestS2, lap.getS2InMS());
+                    if (lap.getS3InMS() > 0) bestS3 = Math.min(bestS3, lap.getS3InMS());
+                }
+            }
+        }
+
+        if (bestS1 == Long.MAX_VALUE || bestS2 == Long.MAX_VALUE || bestS3 == Long.MAX_VALUE) {
+            return Collections.emptyList();
+        }
+
+        double limitS1 = bestS1 * 1.07;
+        double limitS2 = bestS2 * 1.07;
+        double limitS3 = bestS3 * 1.07;
+
+        List<LongestStintStats> allStints = new ArrayList<>();
+
+        for (DriverResult dr : raceSession.getDriverResults()) {
+            List<LapResult> laps = new ArrayList<>(dr.getLapResults());
+            laps.sort(Comparator.comparingInt(LapResult::getLapNumber));
+
+            LongestStintStats bestDriverStint = null;
+
+            for (TyreStint stint : dr.getTyreStints()) {
+                int startLap = stint.getEndLap() - stint.getLaps() + 1;
+                int endLap = stint.getEndLap();
+
+                List<LapResult> stintLaps = laps.stream()
+                        .filter(l -> l.getLapNumber() >= startLap && l.getLapNumber() <= endLap)
+                        .collect(Collectors.toList());
+
+                if (stintLaps.isEmpty()) continue;
+
+                LongestStintStats stats = new LongestStintStats();
+                stats.setDriverName(dr.getDriverName());
+                stats.setAi(dr.isAi());
+                stats.setTeamName(dr.getTeamName());
+                stats.setLaps(stint.getLaps());
+                stats.setTyreCompound(TYRE_COMPOUNDS.getOrDefault(stint.getTyreCompound(), "Unknown"));
+
+                List<Long> s1Times = stintLaps.stream()
+                        .filter(LapResult::getIsValid)
+                        .map(LapResult::getS1InMS)
+                        .filter(t -> t > 0 && t <= limitS1)
+                        .collect(Collectors.toList());
+                List<Long> s2Times = stintLaps.stream()
+                        .filter(LapResult::getIsValid)
+                        .map(LapResult::getS2InMS)
+                        .filter(t -> t > 0 && t <= limitS2)
+                        .collect(Collectors.toList());
+                List<Long> s3Times = stintLaps.stream()
+                        .filter(LapResult::getIsValid)
+                        .map(LapResult::getS3InMS)
+                        .filter(t -> t > 0 && t <= limitS3)
+                        .collect(Collectors.toList());
+
+                double avgS1 = s1Times.stream().mapToLong(Long::longValue).average().orElse(0);
+                double avgS2 = s2Times.stream().mapToLong(Long::longValue).average().orElse(0);
+                double avgS3 = s3Times.stream().mapToLong(Long::longValue).average().orElse(0);
+
+                stats.setAvgS1(avgS1 / 1000.0);
+                stats.setAvgS2(avgS2 / 1000.0);
+                stats.setAvgS3(avgS3 / 1000.0);
+                stats.setAvgLapTime((avgS1 + avgS2 + avgS3) / 1000.0);
+
+                if (bestDriverStint == null || stats.getLaps() > bestDriverStint.getLaps()) {
+                    bestDriverStint = stats;
+                }
+            }
+            if (bestDriverStint != null) {
+                allStints.add(bestDriverStint);
+            }
+        }
+
+        return allStints.stream()
+                .sorted(Comparator.comparingInt(LongestStintStats::getLaps).reversed())
                 .collect(Collectors.toList());
     }
 
@@ -818,6 +1062,9 @@ public class TelemetryProcessingService {
             driverResult.setTotalTime(data.getTotalRaceTime());
             driverResult.setResultStatus(data.getResultStatus());
             driverResult.setPenalties(data.getPenaltiesTime());
+            if (state.getCurrentLapData() != null && i < state.getCurrentLapData().getLapData().size()) {
+                driverResult.setWarnings(state.getCurrentLapData().getLapData().get(i).getTotalWarnings());
+            }
 
             // Link stored lap results
             List<LapResult> laps = lapResultRepository.findBySessionUIDAndCarIndex(classification.getHeader().getSessionUID(), i);
@@ -927,6 +1174,7 @@ public class TelemetryProcessingService {
             driverResult.setBestLapTime(state.getDriverBestLap()[i] / 1000.0f);
             driverResult.setResultStatus(ld.getResultStatus());
             driverResult.setPenalties(ld.getPenalties());
+            driverResult.setWarnings(ld.getTotalWarnings());
             
             // Assign points for Race sessions based on standard F1 system
             if (isRace && ld.getCarPosition() >= 1 && ld.getCarPosition() <= 10) {

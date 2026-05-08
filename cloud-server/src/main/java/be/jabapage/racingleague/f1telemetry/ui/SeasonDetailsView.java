@@ -55,6 +55,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private League league;
     private final H2 seasonName = new H2();
     private final Checkbox hideAiCheckbox = new Checkbox("Hide AI Drivers");
+    private final Checkbox showTyreWearCheckbox = new Checkbox("Show Tyre Wear on Live Leaderboard");
+    private final Checkbox showErsCheckbox = new Checkbox("Show ERS on Live Leaderboard");
     private final Grid<Event> eventGrid = new Grid<>(Event.class, false);
     private final Grid<DriverStanding> driverGrid = new Grid<>(DriverStanding.class, false);
     private final Grid<TeamStanding> teamGrid = new Grid<>(TeamStanding.class, false);
@@ -65,6 +67,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final VerticalLayout driverStandingsContent = new VerticalLayout();
     private final VerticalLayout teamStandingsContent = new VerticalLayout();
     private final VerticalLayout driversLayout = new VerticalLayout();
+    private final VerticalLayout settingsLayout = new VerticalLayout();
     private final Button addManualDriverBtn = new Button("Add Manual Driver");
     private final Button deleteSelectedStandingsBtn = new Button("Delete Selected");
     private final Button deleteSelectedMappingsBtn = new Button("Delete Selected");
@@ -72,6 +75,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final Button recalculateBtn = new Button("Recalculate Standings");
     private final Button addManualWeekendBtn = new Button("Add Manual Weekend");
     private Grid.Column<Event> actionsColumn;
+    private boolean isInitializing = false;
 
     public SeasonDetailsView(LeagueRepository leagueRepository, EventRepository eventRepository,
                              DriverStandingRepository driverStandingRepository,
@@ -90,42 +94,67 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         setSizeFull();
         configureGrids();
 
-        HorizontalLayout nav = new HorizontalLayout(
-                new RouterLink("All Seasons", SeasonListView.class),
-                new RouterLink("Documentation", DocumentationView.class)
-        );
+        HorizontalLayout nav = new HorizontalLayout();
+        if (securityService.getAuthenticatedUser().isPresent()) {
+            nav.add(new RouterLink("All Seasons", SeasonListView.class));
+        } else {
+            nav.add(new RouterLink("Login", LoginView.class));
+        }
+        nav.add(new RouterLink("Documentation", DocumentationView.class));
         nav.setSpacing(true);
 
-        hideAiCheckbox.addValueChangeListener(e -> {
-            if (league != null) {
-                league.setHideAi(e.getValue());
-                leagueRepository.save(league);
-                telemetryProcessingService.refreshHideAiSetting(league.getId());
-                updateData();
-                Notification.show("AI visibility updated");
-            }
-        });
-
-        HorizontalLayout header = new HorizontalLayout(seasonName, hideAiCheckbox);
+        HorizontalLayout header = new HorizontalLayout(seasonName);
         header.setAlignItems(Alignment.BASELINE);
         header.setSpacing(true);
 
         // Top level tabs
-        Tabs mainTabs = new Tabs(new Tab("Race Weekends"), new Tab("Standings"), new Tab("Drivers"));
+        Tabs mainTabs = new Tabs(new Tab("Race Weekends"), new Tab("Standings"), new Tab("Drivers"), new Tab("Settings"));
         mainTabs.addSelectedChangeListener(e -> {
             String label = e.getSelectedTab().getLabel();
             eventsLayout.setVisible(label.equals("Race Weekends"));
             standingsLayout.setVisible(label.equals("Standings"));
             driversLayout.setVisible(label.equals("Drivers"));
+            settingsLayout.setVisible(label.equals("Settings"));
         });
 
         eventsLayout.add(new HorizontalLayout(new H3("Race Weekends"), addManualWeekendBtn), eventGrid);
+
+        // Settings Layout
+        settingsLayout.add(new H3("Season Settings"));
+        settingsLayout.add(hideAiCheckbox, showTyreWearCheckbox, showErsCheckbox);
+        settingsLayout.setVisible(false);
+
+        hideAiCheckbox.addValueChangeListener(e -> {
+            if (league != null && !isInitializing) {
+                league.setHideAi(e.getValue());
+                leagueRepository.save(league);
+                telemetryProcessingService.refreshHideAiSetting(league.getId());
+                updateData();
+                Notification.show("AI visibility updated", 3000, Notification.Position.TOP_CENTER);
+            }
+        });
+
+        showTyreWearCheckbox.addValueChangeListener(e -> {
+            if (league != null && !isInitializing) {
+                league.setShowTyreWear(e.getValue());
+                leagueRepository.save(league);
+                Notification.show("Tyre wear visibility updated", 3000, Notification.Position.TOP_CENTER);
+            }
+        });
+
+        showErsCheckbox.addValueChangeListener(e -> {
+            if (league != null && !isInitializing) {
+                league.setShowErs(e.getValue());
+                leagueRepository.save(league);
+                Notification.show("ERS visibility updated", 3000, Notification.Position.TOP_CENTER);
+            }
+        });
         
         recalculateBtn.addClickListener(e -> {
             if (league != null) {
                 telemetryProcessingService.recalculateStandings(league.getId());
                 updateData();
-                Notification.show("Standings recalculated!");
+                Notification.show("Standings recalculated!", 3000, Notification.Position.TOP_CENTER);
             }
         });
 
@@ -154,7 +183,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
             Button saveBtn = new Button("Add", ev -> {
                 if (trackCombo.getValue() == null || nameField.getValue().isEmpty()) {
-                    Notification.show("Please fill in all fields");
+                    Notification.show("Please fill in all fields", 3000, Notification.Position.TOP_CENTER);
                     return;
                 }
                 Event newEvent = new Event();
@@ -164,7 +193,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 eventRepository.save(newEvent);
                 updateData();
                 dialog.close();
-                Notification.show("Manual weekend added");
+                Notification.show("Manual weekend added", 3000, Notification.Position.TOP_CENTER);
             });
             saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
             
@@ -195,9 +224,19 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             dialog.setConfirmText("Delete");
             dialog.setConfirmButtonTheme("error primary");
             dialog.addConfirmListener(ev -> {
-                driverStandingRepository.deleteAll(selected);
-                updateData();
-                Notification.show(selected.size() + " drivers removed from standings");
+                Notification deletingNote = new Notification("Deleting selected drivers...");
+                deletingNote.setPosition(Notification.Position.TOP_CENTER);
+                deletingNote.setDuration(0);
+                deletingNote.open();
+                try {
+                    driverStandingRepository.deleteAll(selected);
+                    updateData();
+                    deletingNote.close();
+                    Notification.show(selected.size() + " drivers removed from standings", 3000, Notification.Position.TOP_CENTER);
+                } catch (Exception ex) {
+                    deletingNote.close();
+                    Notification.show("Error: " + ex.getMessage(), 5000, Notification.Position.TOP_CENTER);
+                }
             });
             dialog.open();
         });
@@ -227,9 +266,19 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             dialog.setConfirmText("Delete");
             dialog.setConfirmButtonTheme("error primary");
             dialog.addConfirmListener(ev -> {
-                driverMappingRepository.deleteAll(selected);
-                updateData();
-                Notification.show(selected.size() + " mappings deleted");
+                Notification deletingNote = new Notification("Deleting mappings...");
+                deletingNote.setPosition(Notification.Position.TOP_CENTER);
+                deletingNote.setDuration(0);
+                deletingNote.open();
+                try {
+                    driverMappingRepository.deleteAll(selected);
+                    updateData();
+                    deletingNote.close();
+                    Notification.show(selected.size() + " mappings deleted", 3000, Notification.Position.TOP_CENTER);
+                } catch (Exception ex) {
+                    deletingNote.close();
+                    Notification.show("Error: " + ex.getMessage(), 5000, Notification.Position.TOP_CENTER);
+                }
             });
             dialog.open();
         });
@@ -258,7 +307,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
             Button saveBtn = new Button("Add", ev -> {
                 if (nameField.getValue().isEmpty()) {
-                    Notification.show("Please enter a name");
+                    Notification.show("Please enter a name", 3000, Notification.Position.TOP_CENTER);
                     return;
                 }
                 DriverMapping mapping = new DriverMapping();
@@ -270,14 +319,14 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 driverMappingRepository.save(mapping);
                 updateData();
                 dialog.close();
-                Notification.show("Manual driver added");
+                Notification.show("Manual driver added", 3000, Notification.Position.TOP_CENTER);
             });
             saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
             dialog.getFooter().add(new Button("Cancel", ev -> dialog.close()), saveBtn);
             dialog.open();
         });
 
-        add(nav, header, mainTabs, eventsLayout, standingsLayout, driversLayout);
+        add(nav, header, mainTabs, eventsLayout, standingsLayout, driversLayout, settingsLayout);
     }
 
     private void configureGrids() {
@@ -304,12 +353,21 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                     dialog.setConfirmText("Delete");
                     dialog.setConfirmButtonTheme("error primary");
                     dialog.addConfirmListener(ev -> {
-                        eventRepository.delete(event);
-                        telemetryProcessingService.recalculateStandings(league.getId());
-                        updateData();
-                        Notification.show("Weekend deleted and standings recalculated");
-                    });
-                    dialog.open();
+                        Notification deletingNote = new Notification("Deleting weekend...");
+                        deletingNote.setPosition(Notification.Position.TOP_CENTER);
+                        deletingNote.setDuration(0);
+                        deletingNote.open();
+                        try {
+                            eventRepository.delete(event);
+                            telemetryProcessingService.recalculateStandings(league.getId());
+                            updateData();
+                            deletingNote.close();
+                            Notification.show("Weekend deleted and standings recalculated", 3000, Notification.Position.TOP_CENTER);
+                        } catch (Exception ex) {
+                            deletingNote.close();
+                            Notification.show("Error: " + ex.getMessage(), 5000, Notification.Position.TOP_CENTER);
+                        }
+                    });                    dialog.open();
                 });
                 deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
                 actions.add(deleteBtn);
@@ -358,9 +416,19 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 dialog.setConfirmText("Delete");
                 dialog.setConfirmButtonTheme("error primary");
                 dialog.addConfirmListener(ev -> {
-                    driverStandingRepository.delete(ds);
-                    updateData();
-                    Notification.show("Driver removed from standings");
+                    Notification deletingNote = new Notification("Deleting...");
+                    deletingNote.setPosition(Notification.Position.TOP_CENTER);
+                    deletingNote.setDuration(0);
+                    deletingNote.open();
+                    try {
+                        driverStandingRepository.delete(ds);
+                        updateData();
+                        deletingNote.close();
+                        Notification.show("Driver removed from standings", 3000, Notification.Position.TOP_CENTER);
+                    } catch (Exception ex) {
+                        deletingNote.close();
+                        Notification.show("Error: " + ex.getMessage(), 5000, Notification.Position.TOP_CENTER);
+                    }
                 });
                 dialog.open();
             });
@@ -403,14 +471,19 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         reserveColumn.setEditorComponent(reserveField);
 
         Button saveButton = new Button("Save", e -> {
-            DriverMapping item = editor.getItem();
-            editor.save();
-            driverMappingRepository.save(item);
-            telemetryProcessingService.refreshDriverMappings(league.getId());
-            telemetryProcessingService.recalculateStandings(league.getId());
-            Notification.show("Driver name and standings updated!");
-            updateData();
+            try {
+                DriverMapping item = editor.getItem();
+                editor.save();
+                driverMappingRepository.save(item);
+                telemetryProcessingService.refreshDriverMappings(league.getId());
+                telemetryProcessingService.recalculateStandings(league.getId());
+                Notification.show("Driver name and standings updated!", 3000, Notification.Position.TOP_CENTER);
+                updateData();
+            } finally {
+                e.getSource().setEnabled(true);
+            }
         });
+        saveButton.setDisableOnClick(true);
         saveButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SMALL);
         
         Button cancelButton = new Button("Cancel", e -> editor.cancel());
@@ -434,9 +507,19 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 dialog.setConfirmText("Delete");
                 dialog.setConfirmButtonTheme("error primary");
                 dialog.addConfirmListener(ev -> {
-                    driverMappingRepository.delete(item);
-                    updateData();
-                    Notification.show("Driver mapping deleted");
+                    Notification deletingNote = new Notification("Deleting...");
+                    deletingNote.setPosition(Notification.Position.TOP_CENTER);
+                    deletingNote.setDuration(0);
+                    deletingNote.open();
+                    try {
+                        driverMappingRepository.delete(item);
+                        updateData();
+                        deletingNote.close();
+                        Notification.show("Driver mapping deleted", 3000, Notification.Position.TOP_CENTER);
+                    } catch (Exception ex) {
+                        deletingNote.close();
+                        Notification.show("Error: " + ex.getMessage(), 5000, Notification.Position.TOP_CENTER);
+                    }
                 });
                 dialog.open();
             });
@@ -452,19 +535,28 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
     @Override
     public void setParameter(BeforeEvent event, Long parameter) {
-        league = leagueRepository.findById(parameter).orElseThrow();
-        seasonName.setText("Season: " + league.getName());
-        hideAiCheckbox.setValue(league.isHideAi());
-        updateData();
-        
-        // Hide admin-only features if not logged in
-        boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
-        recalculateBtn.setVisible(loggedIn);
-        addManualWeekendBtn.setVisible(loggedIn);
-        addManualDriverBtn.setVisible(loggedIn);
-        deleteSelectedStandingsBtn.setVisible(loggedIn);
-        deleteSelectedMappingsBtn.setVisible(loggedIn);
-        hideAiCheckbox.setVisible(loggedIn);
+        isInitializing = true;
+        try {
+            league = leagueRepository.findById(parameter).orElseThrow();
+            seasonName.setText("Season: " + league.getName());
+            hideAiCheckbox.setValue(league.isHideAi());
+            showTyreWearCheckbox.setValue(league.isShowTyreWear());
+            showErsCheckbox.setValue(league.isShowErs());
+            updateData();
+            
+            // Hide admin-only features if not logged in
+            boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
+            recalculateBtn.setVisible(loggedIn);
+            addManualWeekendBtn.setVisible(loggedIn);
+            addManualDriverBtn.setVisible(loggedIn);
+            deleteSelectedStandingsBtn.setVisible(loggedIn);
+            deleteSelectedMappingsBtn.setVisible(loggedIn);
+            hideAiCheckbox.setVisible(loggedIn);
+            showTyreWearCheckbox.setVisible(loggedIn);
+            showErsCheckbox.setVisible(loggedIn);
+        } finally {
+            isInitializing = false;
+        }
     }
 
     private void updateData() {
@@ -472,7 +564,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         
         List<DriverStanding> standings = driverStandingRepository.findByLeague(league);
         if (league.isHideAi()) {
-            standings = standings.stream().filter(s -> !s.isAi()).collect(Collectors.toList());
+            standings = standings.stream().filter(s -> !s.isAi()).toList();
         }
         
         driverGrid.setItems(standings.stream()

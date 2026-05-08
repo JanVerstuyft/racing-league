@@ -58,7 +58,7 @@ public class SeasonListView extends VerticalLayout {
             
             Button copyBtn = new Button("Copy", e -> {
                 getElement().executeJs("navigator.clipboard.writeText($0)", league.getToken());
-                Notification.show("Token copied to clipboard");
+                Notification.show("Token copied to clipboard", 3000, Notification.Position.TOP_CENTER);
             });
             copyBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
             
@@ -89,9 +89,19 @@ public class SeasonListView extends VerticalLayout {
                 dialog.setConfirmText("Delete");
                 dialog.setConfirmButtonTheme("error primary");
                 dialog.addConfirmListener(event -> {
-                    leagueRepository.delete(league);
-                    updateList();
-                    Notification.show("Season deleted");
+                    Notification deletingNote = new Notification("Deleting season...");
+                    deletingNote.setPosition(Notification.Position.TOP_CENTER);
+                    deletingNote.setDuration(0);
+                    deletingNote.open();
+                    try {
+                        leagueRepository.delete(league);
+                        updateList();
+                        deletingNote.close();
+                        Notification.show("Season deleted", 3000, Notification.Position.TOP_CENTER);
+                    } catch (Exception ex) {
+                        deletingNote.close();
+                        Notification.show("Error deleting season: " + ex.getMessage(), 5000, Notification.Position.TOP_CENTER);
+                    }
                 });
                 dialog.open();
             });

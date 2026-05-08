@@ -28,7 +28,8 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
         add(
             new H1("F1 25 Telemetry"),
             login,
-            new RouterLink("Create new account", RegistrationView.class)
+            new RouterLink("Create new account", RegistrationView.class),
+            new RouterLink("Read Documentation", DocumentationView.class)
         );
     }
 

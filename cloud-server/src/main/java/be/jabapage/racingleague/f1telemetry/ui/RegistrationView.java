@@ -32,15 +32,15 @@ public class RegistrationView extends VerticalLayout {
 
         Button registerButton = new Button("Register", e -> {
             if (username.isEmpty() || password.isEmpty()) {
-                Notification.show("Please fill in all fields");
+                Notification.show("Please fill in all fields", 3000, Notification.Position.TOP_CENTER);
                 return;
             }
             if (!password.getValue().equals(confirmPassword.getValue())) {
-                Notification.show("Passwords do not match");
+                Notification.show("Passwords do not match", 3000, Notification.Position.TOP_CENTER);
                 return;
             }
             if (userRepository.findByUsername(username.getValue()).isPresent()) {
-                Notification.show("Username already exists");
+                Notification.show("Username already exists", 5000, Notification.Position.TOP_CENTER);
                 return;
             }
 
@@ -49,7 +49,7 @@ public class RegistrationView extends VerticalLayout {
             user.setPassword(passwordEncoder.encode(password.getValue()));
             userRepository.save(user);
 
-            Notification.show("Registration successful! You can now log in.");
+            Notification.show("Registration successful! You can now log in.", 3000, Notification.Position.TOP_CENTER);
             getUI().ifPresent(ui -> ui.navigate(LoginView.class));
         });
         registerButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);

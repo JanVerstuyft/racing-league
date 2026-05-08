@@ -38,7 +38,7 @@ def replay_session(file_path, target_url):
                 # Filtering: Only send packets the cloud server actually processes
                 # Packet ID is at index 6 of the F1 25 header
                 packet_id = data[6]
-                if packet_id in [1, 2, 3, 4, 7, 8]:
+                if packet_id in [1, 2, 3, 4, 7, 8, 10]:
                     # Forward to cloud server using persistent connection
                     try:
                         conn.request('POST', path, body=data, headers={'Content-Type': 'application/octet-stream'})

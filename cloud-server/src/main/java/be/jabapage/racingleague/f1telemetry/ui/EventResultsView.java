@@ -4,6 +4,8 @@ import be.jabapage.racingleague.f1telemetry.entity.DriverResult;
 import be.jabapage.racingleague.f1telemetry.entity.Event;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
 import be.jabapage.racingleague.f1telemetry.model.RacePaceStats;
+import be.jabapage.racingleague.f1telemetry.model.LongestStintStats;
+import be.jabapage.racingleague.f1telemetry.model.ConsistencyStats;
 import be.jabapage.racingleague.f1telemetry.entity.DriverMapping;
 import be.jabapage.racingleague.f1telemetry.repository.DriverMappingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.DriverResultRepository;
@@ -18,7 +20,6 @@ import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
-import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
@@ -111,14 +112,22 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         // Stats Section
         statsTabs.setWidthFull();
         Tab paceTab = new Tab("Pure Race Pace");
-        statsTabs.add(paceTab);
+        Tab stintsTab = new Tab("Longest Stints");
+        Tab consistencyTab = new Tab("Consistency");
+        statsTabs.add(paceTab, stintsTab, consistencyTab);
         statsTabs.addSelectedChangeListener(event -> updateStatsContent());
         statsContainer.add(statsTabs, statsContent);
         statsContainer.setSizeFull();
         statsContainer.setVisible(false);
 
-        add(new HorizontalLayout(backToSeason, new RouterLink("Documentation", DocumentationView.class)), 
-                eventHeader, mainTabs, resultsContainer, statsContainer);
+        HorizontalLayout nav = new HorizontalLayout(backToSeason);
+        if (!securityService.getAuthenticatedUser().isPresent()) {
+            nav.add(new RouterLink("Login", LoginView.class));
+        }
+        nav.add(new RouterLink("Documentation", DocumentationView.class));
+        nav.setSpacing(true);
+
+        add(nav, eventHeader, mainTabs, resultsContainer, statsContainer);
         
         configureManualEntry();
     }
@@ -152,7 +161,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 sessionResultRepository.save(sr);
                 refreshEvent();
                 dialog.close();
-                Notification.show("Session added");
+                Notification.show("Session added", 3000, Notification.Position.TOP_CENTER);
             });
             saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
             dialog.getFooter().add(new Button("Cancel", ev -> dialog.close()), saveBtn);
@@ -189,6 +198,10 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             penaltiesField.setStepButtonsVisible(true);
             penaltiesField.setMin(0);
 
+            com.vaadin.flow.component.textfield.IntegerField warningsField = new com.vaadin.flow.component.textfield.IntegerField("Warnings");
+            warningsField.setStepButtonsVisible(true);
+            warningsField.setMin(0);
+
             com.vaadin.flow.component.textfield.IntegerField lapsField = new com.vaadin.flow.component.textfield.IntegerField("Laps Completed");
             lapsField.setStepButtonsVisible(true);
             lapsField.setMin(0);
@@ -197,13 +210,13 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             TextField totalTimeField = new TextField("Total Race Time (e.g. 45:12.300)");
 
             VerticalLayout layout = new VerticalLayout(driverCombo, teamCombo, 
-                    new HorizontalLayout(posField, pointsField, penaltiesField, lapsField), 
+                    new HorizontalLayout(posField, pointsField, penaltiesField, warningsField, lapsField), 
                     timeField, totalTimeField);
             dialog.add(layout);
 
             Button saveBtn = new Button("Add", ev -> {
                 if (driverCombo.getValue() == null || teamCombo.getValue() == null || posField.getValue() == null) {
-                    Notification.show("Please fill in Driver, Team and Position");
+                    Notification.show("Please fill in Driver, Team and Position", 3000, Notification.Position.TOP_CENTER);
                     return;
                 }
                 DriverResult dr = new DriverResult();
@@ -219,12 +232,13 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 dr.setResultStatus(3);
                 dr.setAi(false);
                 dr.setPenalties(penaltiesField.getValue() != null ? penaltiesField.getValue().intValue() : 0);
+                dr.setWarnings(warningsField.getValue() != null ? warningsField.getValue() : 0);
                 
                 if (timeField.getValue() != null && !timeField.getValue().isEmpty()) {
                     try {
                         dr.setBestLapTime(parseLapTime(timeField.getValue()));
                     } catch (Exception ex) {
-                        Notification.show("Invalid best lap time format. Use m:ss.SSS or s.SSS");
+                        Notification.show("Invalid best lap time format. Use m:ss.SSS or s.SSS", 5000, Notification.Position.TOP_CENTER);
                         return;
                     }
                 }
@@ -233,7 +247,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                     try {
                         dr.setTotalTime((double) parseLapTime(totalTimeField.getValue()));
                     } catch (Exception ex) {
-                        Notification.show("Invalid total time format. Use m:ss.SSS or s.SSS");
+                        Notification.show("Invalid total time format. Use m:ss.SSS or s.SSS", 5000, Notification.Position.TOP_CENTER);
                         return;
                     }
                 }
@@ -246,7 +260,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 
                 refreshEvent();
                 dialog.close();
-                Notification.show("Result added");
+                Notification.show("Result added", 3000, Notification.Position.TOP_CENTER);
             });
             saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
             dialog.getFooter().add(new Button("Cancel", ev -> dialog.close()), saveBtn);
@@ -455,6 +469,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
 
             grid.addColumn(DriverResult::getPointsAwarded).setHeader("Points");
             grid.addColumn(dr -> dr.getPenalties() != null && dr.getPenalties() > 0 ? dr.getPenalties() + "s" : "-").setHeader("Pen");
+            grid.addColumn(dr -> dr.getWarnings() != null ? dr.getWarnings() : 0)
+                    .setHeader("Warn")
+                    .setPartNameGenerator(dr -> (dr.getWarnings() != null && dr.getWarnings() == 2) ? "warning-danger" : null);
         }
         
         if (loggedIn) {
@@ -467,10 +484,20 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                     dialog.setConfirmText("Delete");
                     dialog.setConfirmButtonTheme("error primary");
                     dialog.addConfirmListener(ev -> {
+                    Notification deletingNote = new Notification("Deleting...");
+                    deletingNote.setPosition(Notification.Position.TOP_CENTER);
+                    deletingNote.setDuration(0);
+                    deletingNote.open();
+                    try {
                         driverResultRepository.delete(dr);
                         refreshEvent();
-                        Notification.show("Result deleted");
-                    });
+                        deletingNote.close();
+                        Notification.show("Result deleted", 3000, Notification.Position.TOP_CENTER);
+                    } catch (Exception ex) {
+                        deletingNote.close();
+                        Notification.show("Error: " + ex.getMessage(), 5000, Notification.Position.TOP_CENTER);
+                    }
+                });
                     dialog.open();
                 });
                 deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
@@ -484,7 +511,8 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         sessionContent.add(grid);
 
         if (loggedIn) {
-            Button deleteSessionBtn = new Button("Delete This Session", e -> {
+            Button deleteSessionBtn = new Button("Delete This Session");
+            deleteSessionBtn.addClickListener(e -> {
                 ConfirmDialog dialog = new ConfirmDialog();
                 dialog.setHeader("Delete Session?");
                 dialog.setText("Are you sure you want to delete this session and all its results?");
@@ -492,9 +520,19 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 dialog.setConfirmText("Delete");
                 dialog.setConfirmButtonTheme("error primary");
                 dialog.addConfirmListener(ev -> {
-                    sessionResultRepository.delete(session);
-                    refreshEvent();
-                    Notification.show("Session deleted");
+                    Notification deletingNote = new Notification("Deleting session...");
+                    deletingNote.setPosition(Notification.Position.TOP_CENTER);
+                    deletingNote.setDuration(0);
+                    deletingNote.open();
+                    try {
+                        sessionResultRepository.delete(session);
+                        refreshEvent();
+                        deletingNote.close();
+                        Notification.show("Session deleted", 3000, Notification.Position.TOP_CENTER);
+                    } catch (Exception ex) {
+                        deletingNote.close();
+                        Notification.show("Error: " + ex.getMessage(), 5000, Notification.Position.TOP_CENTER);
+                    }
                 });
                 dialog.open();
             });
@@ -507,7 +545,78 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         statsContent.removeAll();
         if (statsTabs.getSelectedIndex() == 0) { // Pure Race Pace
             updatePaceData();
+        } else if (statsTabs.getSelectedIndex() == 1) { // Longest Stints
+            updateLongestStintsData();
+        } else if (statsTabs.getSelectedIndex() == 2) { // Consistency
+            updateConsistencyData();
         }
+    }
+
+    private void updateConsistencyData() {
+        List<ConsistencyStats> stats = telemetryProcessingService.calculateConsistency(currentEventId);
+
+        if (currentEvent.getLeague().isHideAi()) {
+            stats = stats.stream().filter(s -> !s.isAi()).collect(Collectors.toList());
+        }
+
+        if (stats.isEmpty()) {
+            statsContent.add(new Span("No consistency data available (need at least 3 valid laps)."));
+            return;
+        }
+
+        Grid<ConsistencyStats> grid = new Grid<>(ConsistencyStats.class, false);
+        grid.addColumn(ConsistencyStats::getDriverName).setHeader("Driver");
+        grid.addColumn(ConsistencyStats::getTeamName).setHeader("Team");
+        grid.addColumn(s -> String.format("%.1f", s.getRating())).setHeader("Rating");
+        grid.addColumn(s -> String.format("%.3fs", s.getAvgDiff())).setHeader("Avg Diff");
+        grid.addColumn(s -> String.format("%.1f", s.getS1Rating())).setHeader("S1");
+        grid.addColumn(s -> String.format("%.1f", s.getS2Rating())).setHeader("S2");
+        grid.addColumn(s -> String.format("%.1f", s.getS3Rating())).setHeader("S3");
+
+        grid.setItems(stats);
+        grid.setAllRowsVisible(true);
+        statsContent.add(grid);
+    }
+
+    private void updateLongestStintsData() {
+        List<LongestStintStats> stats = telemetryProcessingService.calculateLongestStints(currentEventId);
+
+        if (currentEvent.getLeague().isHideAi()) {
+            stats = stats.stream().filter(s -> !s.isAi()).collect(Collectors.toList());
+        }
+
+        if (stats.isEmpty()) {
+            statsContent.add(new Span("No stint data available."));
+            return;
+        }
+
+        Grid<LongestStintStats> grid = new Grid<>(LongestStintStats.class, false);
+        grid.addColumn(LongestStintStats::getDriverName).setHeader("Driver");
+        grid.addColumn(LongestStintStats::getTeamName).setHeader("Team");
+        grid.addColumn(LongestStintStats::getLaps).setHeader("Laps");
+        grid.addComponentColumn(s -> {
+            Span badge = new Span();
+            badge.addClassName("tyre-badge");
+            badge.setText(s.getTyreCompound().substring(0, 1));
+
+            switch (s.getTyreCompound()) {
+                case "Soft" -> badge.addClassName("tyre-soft");
+                case "Medium" -> badge.addClassName("tyre-medium");
+                case "Hard" -> badge.addClassName("tyre-hard");
+                case "Inter" -> badge.addClassName("tyre-inter");
+                case "Wet" -> badge.addClassName("tyre-wet");
+                default -> badge.addClassName("tyre-unknown");
+            }
+            return badge;
+        }).setHeader("Tyre");
+        grid.addColumn(s -> formatLapTime((float) s.getAvgLapTime())).setHeader("Avg Lap");
+        grid.addColumn(s -> formatLapTime((float) s.getAvgS1())).setHeader("Avg S1");
+        grid.addColumn(s -> formatLapTime((float) s.getAvgS2())).setHeader("Avg S2");
+        grid.addColumn(s -> formatLapTime((float) s.getAvgS3())).setHeader("Avg S3");
+
+        grid.setItems(stats);
+        grid.setAllRowsVisible(true);
+        statsContent.add(grid);
     }
 
     private void updatePaceData() {

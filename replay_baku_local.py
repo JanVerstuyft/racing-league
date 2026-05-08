@@ -38,7 +38,7 @@ def replay_session(file_path, target_url):
                 # Filtering: Only send packets the cloud server actually processes
                 # Packet ID is at index 6 of the F1 25 header
                 packet_id = data[6]
-                if packet_id in [1, 2, 3, 4, 7, 8]:
+                if packet_id in [1, 2, 3, 4, 7, 8, 10]:
                     # Forward to cloud server using persistent connection
                     try:
                         conn.request('POST', path, body=data, headers={'Content-Type': 'application/octet-stream'})
@@ -70,5 +70,5 @@ def replay_session(file_path, target_url):
 
 if __name__ == "__main__":
     RECORDING_FILE = "data/local_race.bin"
-    CLOUD_URL = "http://localhost:8080/api/telemetry/c38befb8-f354-4ae2-aefe-1f97c689f0bc"
+    CLOUD_URL = "http://localhost:8080/api/telemetry/02c0d03b-d940-4ae5-ba80-88467955e901"
     replay_session(RECORDING_FILE, CLOUD_URL)

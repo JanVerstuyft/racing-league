@@ -14,8 +14,14 @@ public class DriverBoardState {
     private String gapToLeader;
     private String gapToFront;
     private int penalties;
+    private int warnings;
+    private int tyreWear;
+    private int ersPercentage;
+    private boolean ersActive;
     private int resultStatus;
     private boolean ai;
+    private boolean showTyreWear;
+    private boolean showErs;
     
     // Qualifying fields
     private boolean qualifying;

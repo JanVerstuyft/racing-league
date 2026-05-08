@@ -89,7 +89,7 @@ class TelemetryService : Service() {
                 if (cloudEnabled && cloudUuid.isNotEmpty() && data.size > 6) {
                     val packetId = data[6].toInt() and 0xFF
                     val shouldForward = when (packetId) {
-                        1, 2, 3, 4, 7, 8 -> true
+                        1, 2, 3, 4, 7, 8, 10 -> true
                         else -> false
                     }
                     

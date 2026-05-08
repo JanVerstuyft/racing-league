@@ -2,6 +2,7 @@ package be.jabapage.racingleague.f1telemetry.ui;
 
 import be.jabapage.racingleague.f1telemetry.model.DriverBoardState;
 import be.jabapage.racingleague.f1telemetry.model.SessionInfo;
+import be.jabapage.racingleague.f1telemetry.security.SecurityService;
 import be.jabapage.racingleague.f1telemetry.service.Broadcaster;
 import com.vaadin.flow.component.AttachEvent;
 import com.vaadin.flow.component.DetachEvent;
@@ -27,6 +28,7 @@ import java.util.List;
 public class LeaderboardView extends VerticalLayout implements HasUrlParameter<Long> {
 
     private final Broadcaster broadcaster;
+    private final SecurityService securityService;
     private final Grid<DriverBoardState> grid = new Grid<>(DriverBoardState.class, false);
     private final H2 title = new H2("LIVE LEADERBOARD");
     private final Span scStatus = new Span();
@@ -35,8 +37,9 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
     private Registration sessionInfoRegistration;
     private Long leagueId;
 
-    public LeaderboardView(Broadcaster broadcaster) {
+    public LeaderboardView(Broadcaster broadcaster, SecurityService securityService) {
         this.broadcaster = broadcaster;
+        this.securityService = securityService;
         setSizeFull();
 
         configureGrid();
@@ -45,11 +48,14 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         header.setAlignItems(Alignment.BASELINE);
         header.setSpacing(true);
 
-        add(new HorizontalLayout(
-                backLink,
-                new RouterLink("Documentation", DocumentationView.class)
-        ));
-        add(header, grid);
+        HorizontalLayout nav = new HorizontalLayout(backLink);
+        if (!securityService.getAuthenticatedUser().isPresent()) {
+            nav.add(new RouterLink("Login", LoginView.class));
+        }
+        nav.add(new RouterLink("Documentation", DocumentationView.class));
+        nav.setSpacing(true);
+
+        add(nav, header, grid);
     }
 
     @Override
@@ -113,6 +119,21 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         Grid.Column<DriverBoardState> ageCol = grid.addColumn(DriverBoardState::getTyreAge).setHeader("Age");
         Grid.Column<DriverBoardState> pitsCol = grid.addColumn(DriverBoardState::getPitStops).setHeader("Pits");
         Grid.Column<DriverBoardState> penCol = grid.addColumn(state -> state.getPenalties() > 0 ? state.getPenalties() + "s" : "-").setHeader("Pen");
+        Grid.Column<DriverBoardState> warnCol = grid.addColumn(DriverBoardState::getWarnings).setHeader("Warn").setWidth("70px").setFlexGrow(0);
+        
+        Grid.Column<DriverBoardState> wearCol = grid.addColumn(state -> state.getTyreWear() + "%").setHeader("Wear").setWidth("80px").setFlexGrow(0);
+        
+        Grid.Column<DriverBoardState> ersCol = grid.addComponentColumn(state -> {
+            Span ers = new Span(state.getErsPercentage() + "%");
+            if (state.isErsActive()) {
+                ers.getStyle().set("color", "#ffff00"); // Yellow for active
+                ers.getStyle().set("font-weight", "bold");
+            } else {
+                ers.getStyle().set("color", "#00ff00"); // Green for normal
+            }
+            return ers;
+        }).setHeader("ERS").setWidth("80px").setFlexGrow(0);
+
         Grid.Column<DriverBoardState> gapLdrCol = grid.addColumn(DriverBoardState::getGapToLeader).setHeader("Gap Leader");
         Grid.Column<DriverBoardState> intervalCol = grid.addColumn(DriverBoardState::getGapToFront).setHeader("Interval");
 
@@ -123,6 +144,7 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         Grid.Column<DriverBoardState> s2Col = grid.addColumn(DriverBoardState::getS2Time).setHeader("S2");
         Grid.Column<DriverBoardState> s3Col = grid.addColumn(DriverBoardState::getS3Time).setHeader("S3");
 
+        warnCol.setPartNameGenerator(state -> state.getWarnings() == 2 ? "warning-danger" : null);
         s1Col.setPartNameGenerator(state -> state.isBestS1() ? "best-sector" : null);
         s2Col.setPartNameGenerator(state -> state.isBestS2() ? "best-sector" : null);
         s3Col.setPartNameGenerator(state -> state.isBestS3() ? "best-sector" : null);
@@ -134,12 +156,17 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         });
 
         // Store columns for easy toggling
-        this.raceColumns = List.of(tyreCol, ageCol, pitsCol, penCol, gapLdrCol, intervalCol);
+        this.raceColumns = List.of(tyreCol, ageCol, pitsCol, penCol, warnCol, gapLdrCol, intervalCol);
         this.qualiColumns = List.of(bestLapCol, gapBestCol, s1Col, s2Col, s3Col);
+        
+        this.wearCol = wearCol;
+        this.ersCol = ersCol;
         
         grid.getStyle().set("font-family", "monospace");
     }
 
+    private Grid.Column<DriverBoardState> wearCol;
+    private Grid.Column<DriverBoardState> ersCol;
     private List<Grid.Column<DriverBoardState>> raceColumns;
     private List<Grid.Column<DriverBoardState>> qualiColumns;
 
@@ -176,9 +203,14 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
 
     private void updateLeaderboard(List<DriverBoardState> data) {
         if (!data.isEmpty()) {
-            boolean isQuali = data.get(0).isQualifying();
+            DriverBoardState first = data.get(0);
+            boolean isQuali = first.isQualifying();
             raceColumns.forEach(c -> c.setVisible(!isQuali));
             qualiColumns.forEach(c -> c.setVisible(isQuali));
+            
+            // Also respect league settings (independent of session type)
+            wearCol.setVisible(first.isShowTyreWear());
+            ersCol.setVisible(first.isShowErs());
         }
         grid.setItems(data);
     }

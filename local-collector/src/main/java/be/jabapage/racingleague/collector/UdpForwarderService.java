@@ -140,7 +140,7 @@ public class UdpForwarderService {
                 if (settings.isCloudForwardEnabled() && data.length > 6 && settings.getCloudToken() != null && !settings.getCloudToken().isEmpty()) {
                     int packetId = data[6] & 0xFF;
                     boolean shouldForward = switch (packetId) {
-                        case 1, 2, 3, 4, 7, 8 -> true;
+                        case 1, 2, 3, 4, 7, 8, 10 -> true;
                         default -> false;
                     };
 

@@ -1,5 +1,18 @@
 # Racing League Documentation
 
+## Table of Contents
+- [1. Local Collector Setup](#1-local-collector-setup)
+    - [Collector Application](#collector-application)
+    - [F1 25 Game Settings](#f1-25-game-settings)
+    - [Local UDP Forwarding (Optional)](#local-udp-forwarding-optional)
+- [2. Managing Drivers & Names](#2-managing-drivers--names)
+- [3. Public Pages](#3-public-pages)
+- [4. Race Statistics & Analytics](#4-race-statistics--analytics)
+    - [Pure Race Pace](#pure-race-pace)
+    - [Longest Stints](#longest-stints)
+    - [Consistency Rating](#consistency-rating)
+- [5. Season Settings](#5-season-settings)
+
 ## 1. Local Collector Setup
 The Local Collector is a desktop application that forwards data from your F1 game to this cloud server. It provides a graphical interface for easy configuration.
 You need Java 21 Runtime environment to run the application.  You can download it from [here](https://github.com/JanVerstuyft/racing-league/releases).
@@ -37,5 +50,32 @@ You can share the following pages with your league members. They do not require 
 * **Event Results:** Detailed results for each race weekend, including lap times and tyre stints.
 * **Live Leaderboard:** A dedicated live dashboard for spectators. Use the token from the Season page: `/leaderboard/{token}`.
 
-## 4. AI Drivers
-By default, the system tracks all drivers. You can toggle 'Hide AI Drivers' on the Season page to filter out non-human participants from the public standings.
+## 4. Race Statistics & Analytics
+Detailed analytics are available in the **Event Results** view to help compare driver performance beyond just the finishing position.
+
+### Pure Race Pace
+Calculates a driver's theoretical speed by analyzing sector times across the entire race.
+* **Calculation:** Uses a weighted average of sector times. The fastest 30% of sectors are fully weighted, while the next 30% have a linearly decreasing influence.
+* **Goal:** Filters out "outliers" like laps spent in traffic or following a safety car, providing a realistic view of a driver's true speed in clear air.
+
+### Longest Stints
+Tracks the endurance and pace of the longest continuous run on a single set of tyres for each driver.
+* **Selection:** Only the single longest stint per driver is displayed.
+* **Avg Lap Time:** Calculated by independently averaging S1, S2, and S3 times from that stint.
+* **107% Rule:** To ensure the average represents actual racing speed, any sector time slower than 107% of the session-wide best for that sector is discarded.
+
+### Consistency Rating
+Measures how stable a driver is during the race. A higher rating (0-100) indicates more consistent sector-by-sector performance.
+* **Methodology:** Compares the time difference between consecutive laps (2-lap delta) and across three consecutive laps (3-lap delta).
+* **Weighting:**
+    * **2-lap delta:** The smallest 25% of differences are fully weighted; the next 25% decrease linearly to zero.
+    * **3-lap delta:** (Weight factor 0.75) The smallest 15% are fully weighted; the next 15% decrease linearly.
+* **Improvement Reward:** If a driver improves their time (negative delta), a **0.5 coefficient** is applied to that difference. This rewards drivers who consistently get faster rather than just staying at the same speed.
+* **Avg Diff:** The sum of the calculated average deviations for S1, S2, and S3.
+
+## 5. Season Settings
+League administrators can customize the live leaderboard behavior via the **Settings** tab in the Season Details view.
+
+* **Hide AI Drivers:** If enabled, AI drivers will be filtered out from the standings and the live leaderboard.
+* **Show Tyre Wear:** Displays the current maximum tyre wear percentage for each driver on the live leaderboard.
+* **Show ERS:** Displays the current ERS battery percentage for each driver on the live leaderboard. When a driver is actively using ERS (Overtake mode), the value is highlighted in bold yellow.

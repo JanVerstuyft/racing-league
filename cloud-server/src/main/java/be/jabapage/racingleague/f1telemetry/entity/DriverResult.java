@@ -61,6 +61,9 @@ public class DriverResult {
     @Column(name = "penalties", nullable = false, columnDefinition = "int default 0")
     private Integer penalties;
 
+    @Column(name = "warnings", nullable = false, columnDefinition = "int default 0")
+    private Integer warnings;
+
     @OneToMany(mappedBy = "driverResult", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private java.util.Set<TyreStint> tyreStints = new java.util.LinkedHashSet<>();
 

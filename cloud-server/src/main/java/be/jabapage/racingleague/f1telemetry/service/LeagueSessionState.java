@@ -1,6 +1,7 @@
 package be.jabapage.racingleague.f1telemetry.service;
 
 import be.jabapage.racingleague.f1telemetry.model.PacketCarStatusData;
+import be.jabapage.racingleague.f1telemetry.model.PacketCarDamageData;
 import be.jabapage.racingleague.f1telemetry.model.PacketLapData;
 import be.jabapage.racingleague.f1telemetry.model.PacketParticipantsData;
 import be.jabapage.racingleague.f1telemetry.model.PacketSessionData;
@@ -15,10 +16,13 @@ import java.util.Arrays;
 public class LeagueSessionState {
     private Long leagueId;
     private boolean hideAi;
+    private boolean showTyreWear;
+    private boolean showErs;
     private PacketSessionData currentSession;
     private PacketParticipantsData currentParticipants;
     private PacketLapData currentLapData;
     private PacketCarStatusData currentCarStatus;
+    private PacketCarDamageData currentCarDamageData;
 
     // Mapping: "telemetryName|raceNumber|driverId" -> "overriddenName"
     private final java.util.Map<String, String> driverNameOverrides = new java.util.concurrent.ConcurrentHashMap<>();
