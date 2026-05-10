@@ -28,7 +28,12 @@ class TelemetryService : Service() {
     private var running = false
     
     private val client = HttpClient(OkHttp)
-    private val baseUrl = "https://racing-league.jabapage.be/api/telemetry/"
+    private val baseUrl = "https://racingleague.jabapage.be/api/telemetry/"
+
+    override fun onCreate() {
+        super.onCreate()
+        android.util.Log.e("TelemetryService", "Service onCreate called")
+    }
 
     companion object {
         const val CHANNEL_ID = "TelemetryServiceChannel"
@@ -41,9 +46,12 @@ class TelemetryService : Service() {
         val LOCAL_FORWARD_PORT = intPreferencesKey("local_forward_port")
         val CLOUD_FORWARD_ENABLED = booleanPreferencesKey("cloud_forward_enabled")
         val CLOUD_UUID = stringPreferencesKey("cloud_uuid")
+        val SERVICE_RUNNING = booleanPreferencesKey("service_running")
+        val LAST_ERROR = stringPreferencesKey("last_error")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        android.util.Log.e("TelemetryService", "onStartCommand called")
         createNotificationChannel()
         val notification = createNotification("Listening for telemetry...")
         startForeground(NOTIFICATION_ID, notification)
@@ -51,6 +59,10 @@ class TelemetryService : Service() {
         if (!running) {
             running = true
             serviceScope.launch {
+                dataStore.edit { 
+                    it[SERVICE_RUNNING] = true 
+                    it[LAST_ERROR] = ""
+                }
                 listen()
             }
         }
@@ -61,6 +73,7 @@ class TelemetryService : Service() {
     private suspend fun listen() {
         val settings = dataStore.data.first()
         val port = settings[UDP_PORT] ?: 20777
+        android.util.Log.e("TelemetryService", "Starting listener on port $port")
         val localEnabled = settings[LOCAL_FORWARD_ENABLED] ?: false
         val localHost = settings[LOCAL_FORWARD_HOST] ?: "127.0.0.1"
         val localPort = settings[LOCAL_FORWARD_PORT] ?: 20778
@@ -77,6 +90,7 @@ class TelemetryService : Service() {
                 val packet = DatagramPacket(buffer, buffer.size)
                 socket?.receive(packet)
                 
+                android.util.Log.e("TelemetryService", "Received packet of size ${packet.length}")
                 val data = packet.data.copyOfRange(0, packet.length)
                 
                 // Local Forwarding
@@ -94,22 +108,35 @@ class TelemetryService : Service() {
                     }
                     
                     if (shouldForward) {
-                        launch {
+                        val url = baseUrl + cloudUuid
+                        serviceScope.launch {
                             try {
-                                client.post(baseUrl + cloudUuid) {
+                                val response = client.post(url) {
                                     setBody(data)
                                 }
+                                if (response.status.value !in 200..299) {
+                                    val err = "Server returned ${response.status}"
+                                    android.util.Log.e("TelemetryService", err)
+                                    dataStore.edit { it[LAST_ERROR] = err }
+                                }
                             } catch (e: Exception) {
-                                // Log error or update UI state
+                                val err = "${e.javaClass.simpleName}: ${e.message ?: "No message"}"
+                                android.util.Log.e("TelemetryService", "Cloud error: $err", e)
+                                dataStore.edit { it[LAST_ERROR] = err }
                             }
                         }
                     }
                 }
             }
         } catch (e: Exception) {
+            val err = "Listener error: ${e.message}"
+            android.util.Log.e("TelemetryService", err, e)
+            dataStore.edit { it[LAST_ERROR] = err }
             running = false
         } finally {
+            android.util.Log.i("TelemetryService", "Listener stopped")
             socket?.close()
+            dataStore.edit { it[SERVICE_RUNNING] = false }
         }
     }
 
@@ -143,9 +170,13 @@ class TelemetryService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        android.util.Log.d("TelemetryService", "onDestroy called")
         running = false
         socket?.close()
-        serviceJob.cancel()
+        serviceScope.launch {
+            dataStore.edit { it[SERVICE_RUNNING] = false }
+            serviceJob.cancel()
+        }
         super.onDestroy()
     }
 }

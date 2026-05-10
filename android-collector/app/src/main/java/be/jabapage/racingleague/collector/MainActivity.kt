@@ -24,6 +24,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import java.net.Inet4Address
+import java.net.NetworkInterface
 
 class MainViewModel(private val context: android.content.Context) : ViewModel() {
     val udpPort = context.dataStore.data.map { it[TelemetryService.UDP_PORT] ?: 20777 }
@@ -32,6 +34,8 @@ class MainViewModel(private val context: android.content.Context) : ViewModel() 
     val localForwardPort = context.dataStore.data.map { it[TelemetryService.LOCAL_FORWARD_PORT] ?: 20778 }
     val cloudForwardEnabled = context.dataStore.data.map { it[TelemetryService.CLOUD_FORWARD_ENABLED] ?: false }
     val cloudUuid = context.dataStore.data.map { it[TelemetryService.CLOUD_UUID] ?: "" }
+    val serviceRunning = context.dataStore.data.map { it[TelemetryService.SERVICE_RUNNING] ?: false }
+    val lastError = context.dataStore.data.map { it[TelemetryService.LAST_ERROR] ?: "" }
 
     fun updateUdpPort(value: Int) = viewModelScope.launch { context.dataStore.edit { it[TelemetryService.UDP_PORT] = value } }
     fun updateLocalForwardEnabled(value: Boolean) = viewModelScope.launch { context.dataStore.edit { it[TelemetryService.LOCAL_FORWARD_ENABLED] = value } }
@@ -39,6 +43,18 @@ class MainViewModel(private val context: android.content.Context) : ViewModel() 
     fun updateLocalForwardPort(value: Int) = viewModelScope.launch { context.dataStore.edit { it[TelemetryService.LOCAL_FORWARD_PORT] = value } }
     fun updateCloudForwardEnabled(value: Boolean) = viewModelScope.launch { context.dataStore.edit { it[TelemetryService.CLOUD_FORWARD_ENABLED] = value } }
     fun updateCloudUuid(value: String) = viewModelScope.launch { context.dataStore.edit { it[TelemetryService.CLOUD_UUID] = value } }
+
+    fun getIpAddresses(): List<String> {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces().toList()
+            return interfaces.flatMap { it.inetAddresses.asSequence() }
+                .filter { !it.isLoopbackAddress && it is Inet4Address }
+                .map { it.hostAddress ?: "Unknown" }
+                .toList()
+        } catch (e: Exception) {
+            return listOf("Error: ${e.message}")
+        }
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -76,42 +92,87 @@ fun MainScreen(viewModel: MainViewModel) {
             }
         }
     ) { padding ->
+        val serviceRunning by viewModel.serviceRunning.collectAsStateWithLifecycle(false)
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
             if (selectedTab == 0) {
-                DashboardScreen(context)
+                DashboardScreen(context, viewModel, serviceRunning)
             } else {
                 SettingsScreen(viewModel)
             }
         }
     }
 }
-
 @Composable
-fun DashboardScreen(context: android.content.Context) {
+fun DashboardScreen(context: android.content.Context, viewModel: MainViewModel, serviceRunning: Boolean) {
+    val ipAddresses = remember { viewModel.getIpAddresses() }
+    val udpPort by viewModel.udpPort.collectAsStateWithLifecycle(20777)
+    val lastError by viewModel.lastError.collectAsStateWithLifecycle("")
+
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Service Status", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Button(onClick = {
-            val intent = Intent(context, TelemetryService::class.java)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+        Text("Detected IP Addresses", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        if (ipAddresses.isEmpty()) {
+            Text("Not connected", color = androidx.compose.ui.graphics.Color.Gray)
+        } else {
+            ipAddresses.forEach { ip ->
+                Text(ip, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
-        }) {
+        }
+        Text("Listening on UDP Port: $udpPort", fontSize = 14.sp)
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Text("Service Status", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Text(
+            text = if (serviceRunning) "RUNNING" else "STOPPED",
+            color = if (serviceRunning) androidx.compose.ui.graphics.Color.Green else androidx.compose.ui.graphics.Color.Red,
+            fontWeight = FontWeight.Bold,
+            fontSize = 24.sp
+        )
+        
+        if (lastError.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = lastError,
+                color = androidx.compose.ui.graphics.Color.Red,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        Button(
+            onClick = {
+                android.util.Log.e("MainActivity", "Start Button Clicked")
+                try {
+                    val intent = Intent(context, TelemetryService::class.java)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("MainActivity", "Failed to start service: ${e.message}", e)
+                }
+            }
+        ) {
             Text("Start Collector")
         }
         
         Spacer(modifier = Modifier.height(8.dp))
         
-        OutlinedButton(onClick = {
-            context.stopService(Intent(context, TelemetryService::class.java))
-        }) {
+        OutlinedButton(
+            onClick = {
+                android.util.Log.e("MainActivity", "Stop Button Clicked")
+                context.stopService(Intent(context, TelemetryService::class.java))
+            }
+        ) {
             Text("Stop Collector")
         }
     }
@@ -132,7 +193,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
         Text("UDP Listener Settings", fontWeight = FontWeight.Bold)
         OutlinedTextField(
             value = udpPort.toString(),
-            onValueChange = { viewModel.updateUdpPort(it.toIntOrNull() ?: 20777) },
+            onValueChange = { s: String -> viewModel.updateUdpPort(s.toIntOrNull() ?: 20777) },
             label = { Text("UDP Port") },
             modifier = Modifier.fillMaxWidth()
         )
@@ -141,19 +202,19 @@ fun SettingsScreen(viewModel: MainViewModel) {
         
         Text("Local Forwarding", fontWeight = FontWeight.Bold)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = localEnabled, onCheckedChange = { viewModel.updateLocalForwardEnabled(it) })
+            Checkbox(checked = localEnabled, onCheckedChange = { b: Boolean -> viewModel.updateLocalForwardEnabled(b) })
             Text("Enabled")
         }
         OutlinedTextField(
             value = localHost,
-            onValueChange = { viewModel.updateLocalForwardHost(it) },
+            onValueChange = { s: String -> viewModel.updateLocalForwardHost(s) },
             label = { Text("Target IP") },
             modifier = Modifier.fillMaxWidth(),
             enabled = localEnabled
         )
         OutlinedTextField(
             value = localPort.toString(),
-            onValueChange = { viewModel.updateLocalForwardPort(it.toIntOrNull() ?: 20778) },
+            onValueChange = { s: String -> viewModel.updateLocalForwardPort(s.toIntOrNull() ?: 20778) },
             label = { Text("Target Port") },
             modifier = Modifier.fillMaxWidth(),
             enabled = localEnabled
@@ -163,12 +224,12 @@ fun SettingsScreen(viewModel: MainViewModel) {
         
         Text("Cloud Forwarding", fontWeight = FontWeight.Bold)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = cloudEnabled, onCheckedChange = { viewModel.updateCloudForwardEnabled(it) })
+            Checkbox(checked = cloudEnabled, onCheckedChange = { b: Boolean -> viewModel.updateCloudForwardEnabled(b) })
             Text("Enabled")
         }
         OutlinedTextField(
             value = cloudUuid,
-            onValueChange = { viewModel.updateCloudUuid(it) },
+            onValueChange = { s: String -> viewModel.updateCloudUuid(s) },
             label = { Text("Cloud UUID") },
             modifier = Modifier.fillMaxWidth(),
             enabled = cloudEnabled

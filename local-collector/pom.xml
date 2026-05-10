@@ -34,9 +34,45 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
-        <configuration>
-          <executable>true</executable>
-        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>com.akathist.maven.plugins.launch4j</groupId>
+        <artifactId>launch4j-maven-plugin</artifactId>
+        <version>2.5.2</version>
+        <executions>
+          <execution>
+            <id>l4j-gui</id>
+            <phase>package</phase>
+            <goals>
+              <goal>launch4j</goal>
+            </goals>
+            <configuration>
+              <headerType>gui</headerType>
+              <outfile>target/local-collector.exe</outfile>
+              <jar>target/local-collector-${project.version}.jar</jar>
+              <errTitle>Local Collector Error</errTitle>
+              <classPath>
+                <mainClass>be.jabapage.racingleague.collector.CollectorApplication</mainClass>
+              </classPath>
+              <jre>
+                <path>./jre</path>
+                <bundledJre64Bit>true</bundledJre64Bit>
+                <minVersion>21</minVersion>
+              </jre>
+              <versionInfo>
+                <fileVersion>1.1.1.0</fileVersion>
+                <txtFileVersion>${project.version}</txtFileVersion>
+                <fileDescription>${project.description}</fileDescription>
+                <copyright>Jabapage</copyright>
+                <productVersion>1.1.1.0</productVersion>
+                <txtProductVersion>${project.version}</txtProductVersion>
+                <productName>${project.name}</productName>
+                <internalName>local-collector</internalName>
+                <originalFilename>local-collector.exe</originalFilename>
+              </versionInfo>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
