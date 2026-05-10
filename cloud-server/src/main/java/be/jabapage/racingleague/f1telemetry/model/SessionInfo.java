@@ -12,4 +12,9 @@ public class SessionInfo {
     private int timeLeftSeconds;
     private boolean isRace;
     private int safetyCarStatus; // 0 = no safety car, 1 = full, 2 = virtual, 3 = formation lap
+    private boolean drsEnabled;
+    private int weather;
+    private int airTemperature;
+    private int trackTemperature;
+    private java.util.List<WeatherForecastSample> weatherForecast;
 }

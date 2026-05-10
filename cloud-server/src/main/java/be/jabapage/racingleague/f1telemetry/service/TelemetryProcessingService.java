@@ -437,6 +437,14 @@ public class TelemetryProcessingService {
                 if ("SEND".equals(eventData.getEventStringCode())) {
                     log.info("Session Ended event (SEND) received for UID: {}. Triggering result save.", header.getSessionUID());
                     saveResultsFromLiveState(state, header.getSessionUID());
+                } else if ("DRSE".equals(eventData.getEventStringCode())) {
+                    log.info("DRS Enabled event received for league {}", state.getLeagueId());
+                    state.setDrsEnabled(true);
+                    broadcastSessionInfo(state);
+                } else if ("DRSD".equals(eventData.getEventStringCode())) {
+                    log.info("DRS Disabled event received for league {}", state.getLeagueId());
+                    state.setDrsEnabled(false);
+                    broadcastSessionInfo(state);
                 }
                 break;
             case 4: // Participants
@@ -570,6 +578,11 @@ public class TelemetryProcessingService {
                 .timeLeftSeconds(state.getCurrentSession().getSessionTimeLeft())
                 .isRace(isRace)
                 .safetyCarStatus(state.getCurrentSession().getSafetyCarStatus())
+                .drsEnabled(state.isDrsEnabled())
+                .weather(state.getCurrentSession().getWeather())
+                .airTemperature(state.getCurrentSession().getAirTemperature())
+                .trackTemperature(state.getCurrentSession().getTrackTemperature())
+                .weatherForecast(state.getCurrentSession().getWeatherForecastSamples())
                 .build();
     }
 

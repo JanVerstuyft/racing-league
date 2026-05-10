@@ -49,6 +49,7 @@ public class LeagueSessionState {
 
     private long currentSessionUID = -1;
     private long lastPacketTime = 0;
+    private boolean drsEnabled = false;
 
     public LeagueSessionState(Long leagueId) {
         this.leagueId = leagueId;
@@ -76,5 +77,6 @@ public class LeagueSessionState {
         currentCarStatus = null;
         currentSessionUID = -1;
         lastPacketTime = 0;
+        drsEnabled = false;
     }
 }

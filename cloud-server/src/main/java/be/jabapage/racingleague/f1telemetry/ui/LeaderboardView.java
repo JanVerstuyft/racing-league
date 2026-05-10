@@ -8,9 +8,12 @@ import com.vaadin.flow.component.AttachEvent;
 import com.vaadin.flow.component.DetachEvent;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.checkbox.Checkbox;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.icon.Icon;
+import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.router.BeforeEvent;
@@ -34,12 +37,16 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
     private final Grid<DriverBoardState> grid = new Grid<>(DriverBoardState.class, false);
     private final H2 title = new H2("LIVE LEADERBOARD");
     private final Span scStatus = new Span();
+    private final Span drsStatus = new Span();
+    private final Icon weatherIcon = new Icon(VaadinIcon.SUN_O);
+    private final Span weatherTemp = new Span();
     private final Checkbox keepScreenOn = new Checkbox("Keep Screen On");
     private final RouterLink backLink = new RouterLink("← Back to Season", SeasonDetailsView.class, 0L);
     private Registration leaderboardRegistration;
     private Registration sessionInfoRegistration;
     private java.util.Timer heartbeatTimer;
     private Long leagueId;
+    private SessionInfo currentSessionInfo;
 
     public LeaderboardView(Broadcaster broadcaster, SecurityService securityService, be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService telemetryProcessingService) {
         this.broadcaster = broadcaster;
@@ -49,7 +56,17 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
 
         configureGrid();
 
-        HorizontalLayout header = new HorizontalLayout(title, scStatus, keepScreenOn);
+        drsStatus.getStyle().set("margin-left", "var(--lumo-space-m)");
+        drsStatus.getStyle().set("font-weight", "bold");
+
+        HorizontalLayout weatherLayout = new HorizontalLayout(weatherIcon, weatherTemp);
+        weatherLayout.setSpacing(true);
+        weatherLayout.setAlignItems(Alignment.CENTER);
+        weatherLayout.getStyle().set("cursor", "pointer");
+        weatherLayout.getStyle().set("margin-left", "var(--lumo-space-m)");
+        weatherLayout.addClickListener(e -> showWeatherForecast());
+
+        HorizontalLayout header = new HorizontalLayout(title, scStatus, drsStatus, weatherLayout, keepScreenOn);
         header.setAlignItems(Alignment.BASELINE);
         header.setSpacing(true);
         header.expand(title);
@@ -293,6 +310,7 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
     }
 
     private void updateSessionInfo(SessionInfo info) {
+        this.currentSessionInfo = info;
         String titleText = "LIVE LEADERBOARD - " + info.getSessionType().toUpperCase();
         if (info.isRace()) {
             titleText += " | LAP " + info.getCurrentLap() + " / " + info.getTotalLaps();
@@ -313,6 +331,68 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
             scStatus.setText(" | VIRTUAL SAFETY CAR");
             scStatus.addClassName("vsc-active");
         }
+
+        // Update DRS status
+        drsStatus.setText(info.isDrsEnabled() ? " | DRS ENABLED" : " | DRS DISABLED");
+        drsStatus.getStyle().set("color", info.isDrsEnabled() ? "var(--lumo-success-text-color)" : "var(--lumo-error-text-color)");
+
+        // Update Weather
+        updateWeather(info.getWeather(), info.getAirTemperature(), info.getTrackTemperature());
+    }
+
+    private void updateWeather(int weather, int airTemp, int trackTemp) {
+        weatherIcon.setIcon(getWeatherIcon(weather));
+        weatherTemp.setText(airTemp + "°C (Track: " + trackTemp + "°C)");
+    }
+
+    private VaadinIcon getWeatherIcon(int weather) {
+        return switch (weather) {
+            case 0 -> VaadinIcon.SUN_O;
+            case 1 -> VaadinIcon.CLOUD;
+            case 2 -> VaadinIcon.CLOUD;
+            case 3 -> VaadinIcon.UMBRELLA;
+            case 4 -> VaadinIcon.UMBRELLA;
+            case 5 -> VaadinIcon.FLASH;
+            default -> VaadinIcon.QUESTION;
+        };
+    }
+
+    private void showWeatherForecast() {
+        if (currentSessionInfo == null || currentSessionInfo.getWeatherForecast() == null || currentSessionInfo.getWeatherForecast().isEmpty()) {
+            return;
+        }
+
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Weather Forecast");
+
+        VerticalLayout layout = new VerticalLayout();
+        layout.setPadding(false);
+        layout.setSpacing(true);
+
+        // Filter and show only upcoming forecasts (timeOffset > 0)
+        currentSessionInfo.getWeatherForecast().stream()
+                .filter(s -> s.getTimeOffset() > 0)
+                .limit(10)
+                .forEach(sample -> {
+                    HorizontalLayout row = new HorizontalLayout();
+                    row.setAlignItems(Alignment.CENTER);
+                    row.setSpacing(true);
+
+                    Span time = new Span("+" + sample.getTimeOffset() + " min");
+                    time.setWidth("70px");
+                    
+                    Icon icon = new Icon(getWeatherIcon(sample.getWeather()));
+                    Span rain = new Span(sample.getRainPercentage() + "% rain");
+                    rain.setWidth("80px");
+                    
+                    Span temp = new Span(sample.getAirTemperature() + "°C");
+                    
+                    row.add(time, icon, rain, temp);
+                    layout.add(row);
+                });
+
+        dialog.add(layout);
+        dialog.open();
     }
 
     private String formatTime(int totalSeconds) {

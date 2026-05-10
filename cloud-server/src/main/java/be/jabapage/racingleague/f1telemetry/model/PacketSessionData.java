@@ -26,7 +26,7 @@ public class PacketSessionData {
     private int safetyCarStatus;                  // uint8
     private int networkGame;                      // uint8
     private int numWeatherForecastSamples;        // uint8
-    // WeatherForecastSample m_weatherForecastSamples[64] - skipping for now but need to advance buffer
+    private java.util.List<WeatherForecastSample> weatherForecastSamples = new java.util.ArrayList<>();
     private int forecastAccuracy;                 // uint8
     private int aiDifficulty;                     // uint8
     private long seasonLinkIdentifier;            // uint32
@@ -108,8 +108,9 @@ public class PacketSessionData {
         packet.setSafetyCarStatus(buffer.get() & 0xFF);
         packet.setNetworkGame(buffer.get() & 0xFF);
         packet.setNumWeatherForecastSamples(buffer.get() & 0xFF);
-        // Skip WeatherForecastSamples: 64 * 8 bytes = 512 bytes
-        buffer.position(buffer.position() + 512);
+        for (int i = 0; i < 64; i++) {
+            packet.getWeatherForecastSamples().add(WeatherForecastSample.fromByteBuffer(buffer));
+        }
         packet.setForecastAccuracy(buffer.get() & 0xFF);
         packet.setAiDifficulty(buffer.get() & 0xFF);
         packet.setSeasonLinkIdentifier(buffer.getInt() & 0xFFFFFFFFL);
