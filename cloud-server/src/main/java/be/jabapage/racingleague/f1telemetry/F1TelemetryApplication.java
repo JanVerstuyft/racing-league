@@ -9,7 +9,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
 @Theme(value = "racing-league", variant = Lumo.DARK)
-@Push
+@Push(value = com.vaadin.flow.shared.communication.PushMode.AUTOMATIC, transport = com.vaadin.flow.shared.ui.Transport.WEBSOCKET_XHR)
 @org.springframework.scheduling.annotation.EnableScheduling
 @org.springframework.scheduling.annotation.EnableAsync
 public class F1TelemetryApplication implements AppShellConfigurator {

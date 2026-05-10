@@ -537,32 +537,60 @@ public class TelemetryProcessingService {
     }
 
     private void broadcastSessionInfo(LeagueSessionState state) {
-        if (state.getCurrentSession() != null) {
-            String sessionName = SESSION_TYPE_NAMES.getOrDefault(state.getCurrentSession().getSessionType(), "Unknown (" + state.getCurrentSession().getSessionType() + ")");
-            int playerCarIndex = state.getCurrentSession().getHeader().getPlayerCarIndex();
-            int currentLap = 0;
-            if (state.getCurrentLapData() != null && playerCarIndex < state.getCurrentLapData().getLapData().size()) {
-                currentLap = state.getCurrentLapData().getLapData().get(playerCarIndex).getCurrentLapNum();
-            }
-
-            boolean isRace = state.getCurrentSession().getSessionType() >= 15 && state.getCurrentSession().getSessionType() <= 17;
-
-            SessionInfo info = SessionInfo.builder()
-                    .sessionType(sessionName)
-                    .currentLap(currentLap)
-                    .totalLaps(state.getCurrentSession().getTotalLaps())
-                    .timeLeftSeconds(state.getCurrentSession().getSessionTimeLeft())
-                    .isRace(isRace)
-                    .safetyCarStatus(state.getCurrentSession().getSafetyCarStatus())
-                    .build();
-            
+        SessionInfo info = buildSessionInfo(state);
+        if (info != null) {
             broadcaster.broadcastSessionInfo(state.getLeagueId(), info);
         }
     }
 
+    public SessionInfo getSessionInfo(Long leagueId) {
+        return leagueStates.values().stream()
+                .filter(s -> Objects.equals(s.getLeagueId(), leagueId))
+                .findFirst()
+                .map(this::buildSessionInfo)
+                .orElse(null);
+    }
+
+    private SessionInfo buildSessionInfo(LeagueSessionState state) {
+        if (state.getCurrentSession() == null) return null;
+
+        String sessionName = SESSION_TYPE_NAMES.getOrDefault(state.getCurrentSession().getSessionType(), "Unknown (" + state.getCurrentSession().getSessionType() + ")");
+        int playerCarIndex = state.getCurrentSession().getHeader().getPlayerCarIndex();
+        int currentLap = 0;
+        if (state.getCurrentLapData() != null && playerCarIndex < state.getCurrentLapData().getLapData().size()) {
+            currentLap = state.getCurrentLapData().getLapData().get(playerCarIndex).getCurrentLapNum();
+        }
+
+        boolean isRace = state.getCurrentSession().getSessionType() >= 15 && state.getCurrentSession().getSessionType() <= 17;
+
+        return SessionInfo.builder()
+                .sessionType(sessionName)
+                .currentLap(currentLap)
+                .totalLaps(state.getCurrentSession().getTotalLaps())
+                .timeLeftSeconds(state.getCurrentSession().getSessionTimeLeft())
+                .isRace(isRace)
+                .safetyCarStatus(state.getCurrentSession().getSafetyCarStatus())
+                .build();
+    }
+
     private void broadcastLeaderboard(LeagueSessionState state) {
-        if (state.getCurrentParticipants() == null || state.getCurrentLapData() == null || state.getCurrentCarStatus() == null || state.getCurrentSession() == null) return;
-        
+        List<DriverBoardState> board = buildLeaderboard(state);
+        if (board != null) {
+            broadcaster.broadcastLeaderboard(state.getLeagueId(), board);
+        }
+    }
+
+    public List<DriverBoardState> getLeaderboard(Long leagueId) {
+        return leagueStates.values().stream()
+                .filter(s -> Objects.equals(s.getLeagueId(), leagueId))
+                .findFirst()
+                .map(this::buildLeaderboard)
+                .orElse(Collections.emptyList());
+    }
+
+    private List<DriverBoardState> buildLeaderboard(LeagueSessionState state) {
+        if (state.getCurrentParticipants() == null || state.getCurrentLapData() == null || state.getCurrentCarStatus() == null || state.getCurrentSession() == null) return null;
+
         boolean isQualifying = state.getCurrentSession().getSessionType() >= 5 && state.getCurrentSession().getSessionType() <= 14;
 
         List<DriverBoardState> board = new ArrayList<>();
@@ -616,7 +644,7 @@ public class TelemetryProcessingService {
                 driverState.setBestS1(state.getDriverBestS1()[i] > 0 && state.getDriverBestS1()[i] == state.getSessionBestS1());
                 driverState.setBestS2(state.getDriverBestS2()[i] > 0 && state.getDriverBestS2()[i] == state.getSessionBestS2());
                 driverState.setBestS3(state.getDriverBestS3()[i] > 0 && state.getDriverBestS3()[i] == state.getSessionBestS3());
-                
+
                 if (state.getDriverBestLap()[i] > 0 && state.getSessionBestLap() > 0) {
                     driverState.setGapToLeaderBest(formatTime(state.getDriverBestLap()[i] - state.getSessionBestLap()));
                 } else {
@@ -626,18 +654,17 @@ public class TelemetryProcessingService {
                 driverState.setGapToLeader(formatTime(ld.getDeltaToRaceLeaderInMS()));
                 driverState.setGapToFront(formatTime(ld.getDeltaToCarInFrontInMS()));
             }
-            
+
             board.add(driverState);
         }
-        
+
         if (state.isHideAi()) {
             board = board.stream().filter(s -> !s.isAi()).collect(Collectors.toList());
         }
 
         board.sort(Comparator.comparingInt(DriverBoardState::getPosition));
-        broadcaster.broadcastLeaderboard(state.getLeagueId(), board);
+        return board;
     }
-
     private String formatTime(long ms) {
         if (ms <= 0) return "-";
         return String.format("+%.3fs", ms / 1000.0f);
@@ -974,14 +1001,6 @@ public class TelemetryProcessingService {
             return;
         }
 
-        // Check if session already recorded (Search by UID only first, handles multi-pod finishing)
-        Optional<SessionResult> existing = sessionResultRepository.findBySessionUID(sessionUID);
-        if (existing.isPresent()) {
-            log.info("Session UID: {} already recorded as ID: {}. Skipping.", 
-                sessionUID, existing.get().getId());
-            return;
-        }
-
         // Fallback fetch from DB if critical data is missing
         if (state.getCurrentSession() == null || state.getCurrentParticipants() == null) {
             log.info("Session or Participants data missing for UID: {}, trying fallback fetch from DB.", sessionUID);
@@ -1014,6 +1033,17 @@ public class TelemetryProcessingService {
         if (league == null) {
             log.warn("Cannot save results: Activated league ID {} not found in database.", state.getLeagueId());
             return;
+        }
+
+        // Check if session already recorded (Search by UID only first, handles multi-pod finishing)
+        boolean wasOverwritten = false;
+        Optional<SessionResult> existing = sessionResultRepository.findBySessionUID(sessionUID);
+        if (existing.isPresent()) {
+            log.info("Session UID: {} already recorded as ID: {}. Overwriting with Final Classification data.", 
+                sessionUID, existing.get().getId());
+            sessionResultRepository.delete(existing.get());
+            sessionResultRepository.flush();
+            wasOverwritten = true;
         }
 
         // Find or create event
@@ -1103,10 +1133,16 @@ public class TelemetryProcessingService {
 
         // Then update standings if it's a race
         if (isRace) {
-            for (DriverResult driverResult : sessionResult.getDriverResults()) {
-                String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId();
-                boolean isReserve = state.getReserveDrivers().contains(key);
-                updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber());
+            if (wasOverwritten) {
+                // If we overwritten an existing (live-saved) result, we must recalculate everything
+                // to avoid double-counting points in standings.
+                recalculateStandings(league.getId());
+            } else {
+                for (DriverResult driverResult : sessionResult.getDriverResults()) {
+                    String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId();
+                    boolean isReserve = state.getReserveDrivers().contains(key);
+                    updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber());
+                }
             }
         }
 
@@ -1186,9 +1222,14 @@ public class TelemetryProcessingService {
 
             // Link stored lap results
             List<LapResult> laps = lapResultRepository.findBySessionUIDAndCarIndex(sessionUID, i);
+            long totalTimeMs = 0;
             for (LapResult lap : laps) {
                 lap.setDriverResult(driverResult);
                 driverResult.getLapResults().add(lap);
+                if (lap.getLapTimeInMS() != null) totalTimeMs += lap.getLapTimeInMS();
+            }
+            if (totalTimeMs > 0) {
+                driverResult.setTotalTime(totalTimeMs / 1000.0);
             }
 
             // Derive Tyre Stints from Lap Results
@@ -1403,37 +1444,53 @@ public class TelemetryProcessingService {
     public void calculateGaps(SessionResult session) {
         if (session.getDriverResults() == null || session.getDriverResults().isEmpty()) return;
 
-        // Find the winner (Position 1)
-        Optional<DriverResult> winner = session.getDriverResults().stream()
+        boolean isRace = session.getSessionType() >= 15 && session.getSessionType() <= 17;
+
+        // Find the winner/pole setter (Position 1)
+        Optional<DriverResult> leader = session.getDriverResults().stream()
                 .filter(dr -> dr.getPosition() != null && dr.getPosition() == 1)
                 .findFirst();
 
-        if (winner.isPresent()) {
-            DriverResult w = winner.get();
-            w.setGapToLeader("Winner");
+        if (leader.isPresent()) {
+            DriverResult l = leader.get();
+            l.setGapToLeader(isRace ? "Winner" : "Pole");
             
-            Integer winnerLaps = w.getNumLaps();
-            double winnerTime = w.getTotalTime() != null ? w.getTotalTime() : 0;
+            if (isRace) {
+                Integer winnerLaps = l.getNumLaps();
+                double winnerTime = l.getTotalTime() != null ? l.getTotalTime() : 0;
 
-            for (DriverResult dr : session.getDriverResults()) {
-                if (dr.getPosition() != null && dr.getPosition() == 1) continue;
+                for (DriverResult dr : session.getDriverResults()) {
+                    if (dr.getPosition() != null && dr.getPosition() == 1) continue;
 
-                // 1. Check for Lap Gaps first
-                if (winnerLaps != null && dr.getNumLaps() != null && dr.getNumLaps() < winnerLaps) {
-                    int lapGap = winnerLaps - dr.getNumLaps();
-                    dr.setGapToLeader("+" + lapGap + (lapGap == 1 ? " Lap" : " Laps"));
-                } 
-                // 2. Check for Time Gaps if on the same lap
-                else if (dr.getTotalTime() != null && dr.getTotalTime() > 0 && winnerTime > 0) {
-                    double gap = dr.getTotalTime() - winnerTime;
-                    dr.setGapToLeader(String.format("+%.3fs", gap));
-                } 
-                else {
-                    dr.setGapToLeader("-");
+                    // 1. Check for Lap Gaps first
+                    if (winnerLaps != null && dr.getNumLaps() != null && dr.getNumLaps() < winnerLaps) {
+                        int lapGap = winnerLaps - dr.getNumLaps();
+                        dr.setGapToLeader("+" + lapGap + (lapGap == 1 ? " Lap" : " Laps"));
+                    } 
+                    // 2. Check for Time Gaps if on the same lap
+                    else if (dr.getTotalTime() != null && dr.getTotalTime() > 0 && winnerTime > 0) {
+                        double gap = dr.getTotalTime() - winnerTime;
+                        dr.setGapToLeader(String.format("+%.3fs", gap));
+                    } 
+                    else {
+                        dr.setGapToLeader("-");
+                    }
+                }
+            } else {
+                // Qualifying/Practice: Gap to best lap
+                float bestTime = l.getBestLapTime() != null ? l.getBestLapTime() : 0;
+                for (DriverResult dr : session.getDriverResults()) {
+                    if (dr.getPosition() != null && dr.getPosition() == 1) continue;
+                    
+                    if (dr.getBestLapTime() != null && dr.getBestLapTime() > 0 && bestTime > 0) {
+                        dr.setGapToLeader(String.format("+%.3fs", dr.getBestLapTime() - bestTime));
+                    } else {
+                        dr.setGapToLeader("-");
+                    }
                 }
             }
         } else {
-            // No winner found, clear gaps
+            // No leader found, clear gaps
             for (DriverResult dr : session.getDriverResults()) {
                 dr.setGapToLeader("-");
             }

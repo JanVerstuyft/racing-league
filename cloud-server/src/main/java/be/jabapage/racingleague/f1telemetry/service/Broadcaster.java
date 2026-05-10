@@ -15,7 +15,7 @@ import java.util.function.Consumer;
 
 @Service
 public class Broadcaster {
-    private static final Executor EXECUTOR = Executors.newSingleThreadExecutor();
+    private static final Executor EXECUTOR = Executors.newCachedThreadPool();
     private final Map<Long, List<Consumer<List<DriverBoardState>>>> leaderboardListeners = new ConcurrentHashMap<>();
     private final Map<Long, List<Consumer<SessionInfo>>> sessionInfoListeners = new ConcurrentHashMap<>();
 

@@ -7,6 +7,7 @@ import be.jabapage.racingleague.f1telemetry.service.Broadcaster;
 import com.vaadin.flow.component.AttachEvent;
 import com.vaadin.flow.component.DetachEvent;
 import com.vaadin.flow.component.UI;
+import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Span;
@@ -29,24 +30,29 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
 
     private final Broadcaster broadcaster;
     private final SecurityService securityService;
+    private final be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService telemetryProcessingService;
     private final Grid<DriverBoardState> grid = new Grid<>(DriverBoardState.class, false);
     private final H2 title = new H2("LIVE LEADERBOARD");
     private final Span scStatus = new Span();
+    private final Checkbox keepScreenOn = new Checkbox("Keep Screen On");
     private final RouterLink backLink = new RouterLink("← Back to Season", SeasonDetailsView.class, 0L);
     private Registration leaderboardRegistration;
     private Registration sessionInfoRegistration;
+    private java.util.Timer heartbeatTimer;
     private Long leagueId;
 
-    public LeaderboardView(Broadcaster broadcaster, SecurityService securityService) {
+    public LeaderboardView(Broadcaster broadcaster, SecurityService securityService, be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService telemetryProcessingService) {
         this.broadcaster = broadcaster;
         this.securityService = securityService;
+        this.telemetryProcessingService = telemetryProcessingService;
         setSizeFull();
 
         configureGrid();
 
-        HorizontalLayout header = new HorizontalLayout(title, scStatus);
+        HorizontalLayout header = new HorizontalLayout(title, scStatus, keepScreenOn);
         header.setAlignItems(Alignment.BASELINE);
         header.setSpacing(true);
+        header.expand(title);
 
         HorizontalLayout nav = new HorizontalLayout(backLink);
         if (!securityService.getAuthenticatedUser().isPresent()) {
@@ -56,6 +62,8 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         nav.setSpacing(true);
 
         add(nav, header, grid);
+        
+        setupWakeLockLogic();
     }
 
     @Override
@@ -165,6 +173,44 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         grid.getStyle().set("font-family", "monospace");
     }
 
+    private void setupWakeLockLogic() {
+        keepScreenOn.addValueChangeListener(event -> {
+            if (event.getValue()) {
+                getElement().executeJs(
+                    "if ('wakeLock' in navigator) {" +
+                    "  const requestWakeLock = async () => {" +
+                    "    try {" +
+                    "      window.wakeLock = await navigator.wakeLock.request('screen');" +
+                    "      console.log('Wake Lock is active');" +
+                    "    } catch (err) {" +
+                    "      console.error(`${err.name}, ${err.message}`);" +
+                    "    }" +
+                    "  };" +
+                    "  requestWakeLock();" +
+                    "  window.reacquireWakeLock = () => {" +
+                    "    if (document.visibilityState === 'visible' && window.wakeLock !== null) {" +
+                    "      requestWakeLock();" +
+                    "    }" +
+                    "  };" +
+                    "  document.addEventListener('visibilitychange', window.reacquireWakeLock);" +
+                    "} else {" +
+                    "  alert('Wake Lock API not supported on this browser.');" +
+                    "}"
+                );
+            } else {
+                getElement().executeJs(
+                    "if (window.wakeLock) {" +
+                    "  window.wakeLock.release();" +
+                    "  window.wakeLock = null;" +
+                    "}" +
+                    "if (window.reacquireWakeLock) {" +
+                    "  document.removeEventListener('visibilitychange', window.reacquireWakeLock);" +
+                    "}"
+                );
+            }
+        });
+    }
+
     private Grid.Column<DriverBoardState> wearCol;
     private Grid.Column<DriverBoardState> ersCol;
     private List<Grid.Column<DriverBoardState>> raceColumns;
@@ -178,15 +224,42 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         }
         UI ui = attachEvent.getUI();
         leaderboardRegistration = broadcaster.registerLeaderboard(leagueId, data -> {
-            if (ui.isAttached()) {
-                ui.access(() -> updateLeaderboard(data));
+            if (attachEvent.getUI().isAttached()) {
+                attachEvent.getUI().access(() -> {
+                    if (isAttached()) {
+                        updateLeaderboard(data);
+                    }
+                });
             }
         });
         sessionInfoRegistration = broadcaster.registerSessionInfo(leagueId, info -> {
-            if (ui.isAttached()) {
-                ui.access(() -> updateSessionInfo(info));
+            if (attachEvent.getUI().isAttached()) {
+                attachEvent.getUI().access(() -> {
+                    if (isAttached()) {
+                        updateSessionInfo(info);
+                    }
+                });
             }
         });
+
+        // Periodic full refresh (heartbeat) every 10 seconds to recover from missed push events
+        heartbeatTimer = new java.util.Timer();
+        heartbeatTimer.scheduleAtFixedRate(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                if (attachEvent.getUI().isAttached()) {
+                    attachEvent.getUI().access(() -> {
+                        if (isAttached()) {
+                            updateLeaderboard(telemetryProcessingService.getLeaderboard(leagueId));
+                            be.jabapage.racingleague.f1telemetry.model.SessionInfo info = telemetryProcessingService.getSessionInfo(leagueId);
+                            if (info != null) {
+                                updateSessionInfo(info);
+                            }
+                        }
+                    });
+                }
+            }
+        }, 10000, 10000);
     }
 
     @Override
@@ -198,6 +271,10 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         if (sessionInfoRegistration != null) {
             sessionInfoRegistration.remove();
             sessionInfoRegistration = null;
+        }
+        if (heartbeatTimer != null) {
+            heartbeatTimer.cancel();
+            heartbeatTimer = null;
         }
     }
 
