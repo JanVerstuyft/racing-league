@@ -9,7 +9,7 @@
   </parent>
   <groupId>be.jabapage.racingleague</groupId>
   <artifactId>f1-telemetry-parent</artifactId>
-  <version>1.2.0</version>
+  <version>1.2.1-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>f1-telemetry</name>
   <description>F1 25 UDP Telemetry Reader</description>
@@ -25,7 +25,7 @@
 
   <scm>
     <developerConnection>scm:git:ssh://git@github.com:JanVerstuyft/racing-league.git</developerConnection>
-    <tag>1.2.0</tag>
+    <tag>10.0.0</tag>
   </scm>
   <distributionManagement>
     <repository>
