@@ -20,8 +20,10 @@ import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
+import com.vaadin.flow.component.Html;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.notification.Notification;
+import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.tabs.Tab;
@@ -620,33 +622,42 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     }
 
     private void updatePaceData() {
-        List<RacePaceStats> stats = telemetryProcessingService.calculatePureRacePace(currentEventId);
-        
+        List<RacePaceStats> rawStats = telemetryProcessingService.calculatePureRacePace(currentEventId);
+
+        final List<RacePaceStats> stats;
         if (currentEvent.getLeague().isHideAi()) {
-            stats = stats.stream().filter(s -> !s.isAi()).collect(Collectors.toList());
-        }
-        
-        if (stats.isEmpty()) {
-            statsContent.add(new Span("No pace data available (only for Race sessions with drivers > 50% distance)."));
-            return;
+            stats = rawStats.stream().filter(s -> !s.isAi()).collect(Collectors.toList());
+        } else {
+            stats = rawStats;
         }
 
+        if (stats.isEmpty()) {
+            statsContent.add(new Span("No pace data available (only for Race sessions with drivers > 60% distance)."));
+            return;
+        }
+        final double bestPace = stats.get(0).getPureRacePace();
+
+        statsContent.add(new H2("PURE RACE PACE"));
+
         Grid<RacePaceStats> grid = new Grid<>(RacePaceStats.class, false);
-        grid.addColumn(RacePaceStats::getDriverName).setHeader("Driver");
-        grid.addColumn(RacePaceStats::getTeamName).setHeader("Team");
-        grid.addColumn(s -> formatLapTime((float) s.getPureRacePace())).setHeader("Pure Pace");
-        grid.addColumn(s -> String.format("%.2f", s.getSectorPerformance())).setHeader("S.Perf");
-        grid.addColumn(s -> formatLapTime((float) s.getS1Pace())).setHeader("S1");
-        grid.addColumn(s -> formatLapTime((float) s.getS2Pace())).setHeader("S2");
-        grid.addColumn(s -> formatLapTime((float) s.getS3Pace())).setHeader("S3");
-        
+        grid.addColumn(s -> stats.indexOf(s) + 1).setHeader("#").setWidth("50px").setFlexGrow(0);
+        grid.addColumn(RacePaceStats::getDriverName).setHeader("Driver").setAutoWidth(true);
+        grid.addColumn(RacePaceStats::getTeamName).setHeader("Team").setAutoWidth(true);
+        grid.addColumn(s -> {
+            if (s.getPureRacePace() == bestPace) {
+                return formatLapTime((float) s.getPureRacePace());
+            } else {
+                return String.format("+%.3f", s.getPureRacePace() - bestPace);
+            }
+        }).setHeader("PURE TIME").setAutoWidth(true);
+
         grid.addComponentColumn(s -> {
             HorizontalLayout container = new HorizontalLayout();
             s.getTyreUsage().forEach((compound, percent) -> {
                 Span badge = new Span();
                 badge.addClassName("tyre-badge");
                 badge.setText(compound.substring(0, 1));
-                
+
                 switch (compound) {
                     case "Soft" -> badge.addClassName("tyre-soft");
                     case "Medium" -> badge.addClassName("tyre-medium");
@@ -655,22 +666,52 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                     case "Wet" -> badge.addClassName("tyre-wet");
                     default -> badge.addClassName("tyre-unknown");
                 }
-                
+                badge.getStyle().set("width", "20px").set("height", "20px").set("font-size", "10px");
+
                 Span text = new Span(String.format("%.0f%%", percent));
                 text.getStyle().set("font-size", "0.8em");
-                
+
                 HorizontalLayout info = new HorizontalLayout(badge, text);
                 info.setSpacing(false);
                 info.setAlignItems(Alignment.CENTER);
                 container.add(info);
             });
             return container;
-        }).setHeader("Tyre Usage");
+        }).setHeader("Tyre Usage").setAutoWidth(true);
+
+        grid.addComponentColumn(s -> createPerformanceBadge(s.getS1Performance())).setHeader("S1").setWidth("80px");
+        grid.addComponentColumn(s -> createPerformanceBadge(s.getS2Performance())).setHeader("S2").setWidth("80px");
+        grid.addComponentColumn(s -> createPerformanceBadge(s.getS3Performance())).setHeader("S3").setWidth("80px");
 
         grid.setItems(stats);
         grid.setAllRowsVisible(true);
         statsContent.add(grid);
+
+        Html legend = new Html("""
+            <div class="legend-text">
+                <b>Pure laptime</b> - it's combined time of the best sectors in the race. Each sector (S1, S2, S3) is processing independently, 30% of the best race sectors of each driver are fully taken into account. The influence of the next 30% on the final result decreases linearly to 0. Only drivers who have driven at least 60% of the race distance are counted.<br/>
+                <b>Tyre compound usage</b> - is the percentage of tyres that have shown sector times that were used in the pure laptime calculation.<br/>
+                <b>Sector performance</b> - it is the efficiency of driving sectors for each driver relative to others. 10 - equals that only this driver showed all the best sectors. 5 - equals that driver show time corresponding the total average time for all drivers who participate in the rating.<br/>
+                During processing the race distance is divided into 3 segments, and each segment is processed independently, the final result is the weighted average of all segments.
+            </div>
+            """);
+        statsContent.add(legend);
     }
+
+    private Span createPerformanceBadge(double perf) {
+        Span span = new Span(String.format("%.1f", perf).replace('.', ','));
+        if (perf >= 9.0) {
+            span.addClassName("perf-purple");
+        } else if (perf >= 7.0) {
+            span.addClassName("perf-green");
+        } else if (perf >= 4.0) {
+            span.addClassName("perf-yellow");
+        } else {
+            span.addClassName("perf-red");
+        }
+        return span;
+    }
+
 
     private String formatLapTime(float seconds) {
         if (seconds <= 0) return "-";

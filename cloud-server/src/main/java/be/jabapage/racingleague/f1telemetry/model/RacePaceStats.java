@@ -11,6 +11,9 @@ public class RacePaceStats {
     private double pureRacePace; // combined weighted average sectors
     private Map<String, Double> tyreUsage; // Compound Name -> Percentage
     private double sectorPerformance; // 0-10 scale
+    private double s1Performance;
+    private double s2Performance;
+    private double s3Performance;
     private double s1Pace;
     private double s2Pace;
     private double s3Pace;

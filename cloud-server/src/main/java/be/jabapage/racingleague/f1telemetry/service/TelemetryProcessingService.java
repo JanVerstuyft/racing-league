@@ -690,6 +690,9 @@ public class TelemetryProcessingService {
         return String.format("%d:%06.3f", minutes, seconds);
     }
 
+    private record SectorData(long time, String tyre) {}
+    private record WeightedResult(double pace, Map<String, Double> tyreWeights) {}
+
     public List<RacePaceStats> calculatePureRacePace(Long eventId) {
         Event event = eventRepository.findByIdWithResults(eventId).orElse(null);
         if (event == null) return Collections.emptyList();
@@ -706,58 +709,182 @@ public class TelemetryProcessingService {
                 .mapToInt(LapResult::getLapNumber)
                 .max().orElse(0);
 
+        // Find absolute best sectors in the session for performance scoring (Ultimate Lap)
+        double absoluteBestS1 = raceSession.getDriverResults().stream()
+                .flatMap(dr -> dr.getLapResults().stream())
+                .filter(LapResult::getIsValid)
+                .mapToLong(LapResult::getS1InMS)
+                .filter(t -> t > 0)
+                .min().orElse(0) / 1000.0;
+        double absoluteBestS2 = raceSession.getDriverResults().stream()
+                .flatMap(dr -> dr.getLapResults().stream())
+                .filter(LapResult::getIsValid)
+                .mapToLong(LapResult::getS2InMS)
+                .filter(t -> t > 0)
+                .min().orElse(0) / 1000.0;
+        double absoluteBestS3 = raceSession.getDriverResults().stream()
+                .flatMap(dr -> dr.getLapResults().stream())
+                .filter(LapResult::getIsValid)
+                .mapToLong(LapResult::getS3InMS)
+                .filter(t -> t > 0)
+                .min().orElse(0) / 1000.0;
+        double absoluteBestLap = absoluteBestS1 + absoluteBestS2 + absoluteBestS3;
+
         List<RacePaceStats> statsList = new ArrayList<>();
+        int seg1End = maxLaps / 3;
+        int seg2End = 2 * maxLaps / 3;
+
         for (DriverResult dr : raceSession.getDriverResults()) {
             List<LapResult> validLaps = dr.getLapResults().stream()
                     .filter(LapResult::getIsValid)
                     .collect(Collectors.toList());
 
-            // Only drivers who driven at least 50%
-            if (dr.getLapResults().size() < maxLaps * 0.5) continue;
+            // Only drivers who driven at least 60%
+            if (dr.getLapResults().size() < maxLaps * 0.6) continue;
 
             RacePaceStats stats = new RacePaceStats();
             stats.setDriverName(dr.getDriverName());
             stats.setAi(dr.isAi());
             stats.setTeamName(dr.getTeamName());
 
-            double s1 = calculateWeightedSector(validLaps.stream().mapToLong(LapResult::getS1InMS).toArray());
-            double s2 = calculateWeightedSector(validLaps.stream().mapToLong(LapResult::getS2InMS).toArray());
-            double s3 = calculateWeightedSector(validLaps.stream().mapToLong(LapResult::getS3InMS).toArray());
+            // Process segments independently
+            List<LapResult> seg1Laps = validLaps.stream().filter(l -> l.getLapNumber() <= seg1End).toList();
+            List<LapResult> seg2Laps = validLaps.stream().filter(l -> l.getLapNumber() > seg1End && l.getLapNumber() <= seg2End).toList();
+            List<LapResult> seg3Laps = validLaps.stream().filter(l -> l.getLapNumber() > seg2End).toList();
+
+            Map<String, Double> tyreWeightAggregator = new HashMap<>();
+            
+            double s1 = processSectorWithSegments(seg1Laps, seg2Laps, seg3Laps, LapResult::getS1InMS, tyreWeightAggregator);
+            double s2 = processSectorWithSegments(seg1Laps, seg2Laps, seg3Laps, LapResult::getS2InMS, tyreWeightAggregator);
+            double s3 = processSectorWithSegments(seg1Laps, seg2Laps, seg3Laps, LapResult::getS3InMS, tyreWeightAggregator);
 
             stats.setS1Pace(s1 / 1000.0);
             stats.setS2Pace(s2 / 1000.0);
             stats.setS3Pace(s3 / 1000.0);
             stats.setPureRacePace((s1 + s2 + s3) / 1000.0);
 
-            // Tyre usage (percentage of tyres in top 60% sectors - simplified to valid laps here)
-            Map<String, Long> compoundCounts = validLaps.stream()
-                    .collect(Collectors.groupingBy(l -> TYRE_COMPOUNDS.getOrDefault(l.getTyreCompound(), "U"), Collectors.counting()));
-            long totalValid = validLaps.size();
+            // Tyre usage (percentage based on weight contribution)
+            double totalWeightSum = tyreWeightAggregator.values().stream().mapToDouble(Double::doubleValue).sum();
             Map<String, Double> tyreUsage = new HashMap<>();
-            compoundCounts.forEach((k, v) -> tyreUsage.put(k, (double) v / totalValid * 100.0));
+            if (totalWeightSum > 0) {
+                for (Map.Entry<String, Double> entry : tyreWeightAggregator.entrySet()) {
+                    tyreUsage.put(entry.getKey(), (entry.getValue() / totalWeightSum) * 100.0);
+                }
+            }
             stats.setTyreUsage(tyreUsage);
 
             statsList.add(stats);
         }
 
-        // Sector performance calculation
-        if (!statsList.isEmpty()) {
-            double bestPace = statsList.stream().mapToDouble(RacePaceStats::getPureRacePace).min().orElse(0);
-            double avgPace = statsList.stream().mapToDouble(RacePaceStats::getPureRacePace).average().orElse(0);
-            
-            for (RacePaceStats s : statsList) {
-                if (avgPace == bestPace) {
-                    s.setSectorPerformance(10.0);
-                } else {
-                    double perf = 10.0 - 5.0 * (s.getPureRacePace() - bestPace) / (avgPace - bestPace);
-                    s.setSectorPerformance(Math.max(0, Math.min(10.0, perf)));
-                }
-            }
-        }
+        // Performance calculations relative to Ultimate Lap (10.0) and Session Average (5.0)
+        calculatePerformances(statsList, absoluteBestLap, absoluteBestS1, absoluteBestS2, absoluteBestS3);
 
         return statsList.stream()
                 .sorted(Comparator.comparingDouble(RacePaceStats::getPureRacePace))
                 .collect(Collectors.toList());
+    }
+
+    private void calculatePerformances(List<RacePaceStats> statsList, double bestLap, double bestS1, double bestS2, double bestS3) {
+        if (statsList.isEmpty()) return;
+
+        // Overall
+        calculateSinglePerformance(statsList, RacePaceStats::getPureRacePace, RacePaceStats::setSectorPerformance, bestLap);
+        // S1
+        calculateSinglePerformance(statsList, RacePaceStats::getS1Pace, RacePaceStats::setS1Performance, bestS1);
+        // S2
+        calculateSinglePerformance(statsList, RacePaceStats::getS2Pace, RacePaceStats::setS2Performance, bestS2);
+        // S3
+        calculateSinglePerformance(statsList, RacePaceStats::getS3Pace, RacePaceStats::setS3Performance, bestS3);
+    }
+
+    private void calculateSinglePerformance(List<RacePaceStats> statsList, java.util.function.ToDoubleFunction<RacePaceStats> getter, java.util.function.BiConsumer<RacePaceStats, Double> setter, double best) {
+        double avg = statsList.stream().mapToDouble(getter).filter(v -> v > 0).average().orElse(0);
+        
+        for (RacePaceStats s : statsList) {
+            double val = getter.applyAsDouble(s);
+            if (val <= 0 || best <= 0) {
+                setter.accept(s, 0.0);
+                continue;
+            }
+            // If avg <= best (unlikely), everyone gets 10.0
+            if (avg <= best) {
+                setter.accept(s, 10.0);
+            } else {
+                // Formula: 10.0 is Ultimate Best, 5.0 is Average Pure Pace
+                double perf = 10.0 - 5.0 * (val - best) / (avg - best);
+                setter.accept(s, Math.max(0, Math.min(10.0, perf)));
+            }
+        }
+    }
+
+    private double processSectorWithSegments(List<LapResult> s1, List<LapResult> s2, List<LapResult> s3, java.util.function.ToLongFunction<LapResult> sectorGetter, Map<String, Double> tyreWeightAggregator) {
+        List<WeightedResult> results = new ArrayList<>();
+        
+        results.add(calculateWeightedSector(s1.stream().map(l -> new SectorData(sectorGetter.applyAsLong(l), String.valueOf(l.getTyreCompound()))).toList()));
+        results.add(calculateWeightedSector(s2.stream().map(l -> new SectorData(sectorGetter.applyAsLong(l), String.valueOf(l.getTyreCompound()))).toList()));
+        results.add(calculateWeightedSector(s3.stream().map(l -> new SectorData(sectorGetter.applyAsLong(l), String.valueOf(l.getTyreCompound()))).toList()));
+
+        double totalPace = 0;
+        int count = 0;
+        for (WeightedResult wr : results) {
+            if (wr.pace() > 0) {
+                totalPace += wr.pace();
+                count++;
+                wr.tyreWeights().forEach((k, v) -> tyreWeightAggregator.put(k, tyreWeightAggregator.getOrDefault(k, 0.0) + v));
+            }
+        }
+        
+        return count > 0 ? totalPace / count : 0;
+    }
+
+    private WeightedResult calculateWeightedSector(List<SectorData> data) {
+        // Filter out zero times
+        List<SectorData> filtered = data.stream().filter(d -> d.time() > 0).collect(Collectors.toList());
+        if (filtered.isEmpty()) return new WeightedResult(0, Collections.emptyMap());
+        
+        filtered.sort(Comparator.comparingLong(SectorData::time));
+
+        int n = filtered.size();
+        // Legend: 30% best fully taken, next 30% decreases linearly to 0.
+        double n30 = n * 0.3;
+        double n60 = n * 0.6;
+        
+        double totalWeight = 0;
+        double weightedSum = 0;
+        Map<String, Double> tyreWeights = new HashMap<>();
+
+        for (int i = 0; i < n; i++) {
+            double weight = 0;
+            int rank = i + 1; // 1-based index
+
+            if (rank <= n30) {
+                weight = 1.0;
+            } else if (rank <= n60) {
+                // Linear decay from 1.0 to 0.0 across the second 30%
+                if (n60 > n30) {
+                    weight = (n60 - rank) / (n60 - n30);
+                    if (weight < 0) weight = 0;
+                } else {
+                    weight = 0;
+                }
+            } else {
+                weight = 0;
+            }
+
+            if (weight > 0) {
+                weightedSum += filtered.get(i).time() * weight;
+                totalWeight += weight;
+                
+                try {
+                    String compound = TYRE_COMPOUNDS.getOrDefault(Integer.valueOf(filtered.get(i).tyre()), "U");
+                    tyreWeights.put(compound, tyreWeights.getOrDefault(compound, 0.0) + weight);
+                } catch (NumberFormatException e) {
+                    // Ignore
+                }
+            }
+        }
+
+        return new WeightedResult(totalWeight > 0 ? weightedSum / totalWeight : 0, tyreWeights);
     }
 
     public List<ConsistencyStats> calculateConsistency(Long eventId) {
@@ -972,36 +1099,6 @@ public class TelemetryProcessingService {
         return allStints.stream()
                 .sorted(Comparator.comparingInt(LongestStintStats::getLaps).reversed())
                 .collect(Collectors.toList());
-    }
-
-    private double calculateWeightedSector(long[] times) {
-        if (times.length == 0) return 0;
-        Arrays.sort(times);
-        
-        int n = times.length;
-        double n30 = n * 0.3;
-        double totalWeight = 0;
-        double weightedSum = 0;
-
-        for (int i = 0; i < n; i++) {
-            double weight = 0;
-            int rank = i + 1; // 1-based index
-
-            if (rank <= n30) {
-                weight = 1.0;
-            } else if (rank <= 2 * n30) {
-                weight = 1.0 - (rank - n30) / n30;
-            } else {
-                weight = 0;
-            }
-
-            if (weight > 0) {
-                weightedSum += times[i] * weight;
-                totalWeight += weight;
-            }
-        }
-
-        return totalWeight > 0 ? weightedSum / totalWeight : times[0];
     }
 
     @Transactional

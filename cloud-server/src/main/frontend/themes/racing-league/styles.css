@@ -61,3 +61,17 @@ vaadin-grid::part(warning-danger) {
     color: #ff9900;
     font-weight: bold;
 }
+
+.perf-purple { color: #b339f4; font-weight: bold; }
+.perf-green { color: #33ff33; font-weight: bold; }
+.perf-yellow { color: #ffff33; font-weight: bold; }
+.perf-red { color: #ff3333; font-weight: bold; }
+
+.legend-text {
+    font-size: 0.8em;
+    color: #aaa;
+    margin-top: 20px;
+    line-height: 1.4;
+    border-top: 1px solid #444;
+    padding-top: 10px;
+}
