@@ -10,10 +10,27 @@ The central hub for managing racing leagues and visualizing live race data.
 - **Multi-Tenant**: Each user has an isolated environment keyed by UUID tokens.
 
 ## Configuration
-Configuration is handled in `src/main/resources/application.properties`.
+Configuration is handled via Spring profiles.
 
-- `server.port`: Defaults to `8080`.
-- `spring.datasource.url`: Defaults to H2 in-memory database.
+- **Local Development**: Uses a local PostgreSQL database.
+- **Production**: Uses the Supabase PostgreSQL database.
+
+### Running Locally
+1. Start the local database:
+   ```bash
+   cd cloud-server
+   docker-compose up -d
+   ```
+2. Run the application with the `local` profile:
+   ```bash
+   mvn spring-boot:run -Dspring-boot.run.profiles=local
+   ```
+
+### Running in Production
+Run the application with the `prod` profile:
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=prod
+```
 
 ## API Endpoints
 - `POST /api/telemetry/{token}`: Public endpoint for receiving telemetry data from the local collector.
