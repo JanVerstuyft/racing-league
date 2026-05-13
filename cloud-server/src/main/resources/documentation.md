@@ -1,10 +1,9 @@
 # Racing League Documentation
 
 ## Table of Contents
-- [1. Local Collector Setup](#1-local-collector-setup)
-    - [Collector Application](#collector-application)
-    - [F1 25 Game Settings](#f1-25-game-settings)
-    - [Local UDP Forwarding (Optional)](#local-udp-forwarding-optional)
+- [1. Collector Setup](#1-collector-setup)
+    - [1a. Local Collector Setup](#1a-local-collector-setup)
+    - [1b. Android Collector Setup](#1b-android-collector-setup)
 - [2. Managing Drivers & Names](#2-managing-drivers--names)
 - [3. Public Pages](#3-public-pages)
 - [4. Race Statistics & Analytics](#4-race-statistics--analytics)
@@ -13,7 +12,8 @@
     - [Consistency Rating](#consistency-rating)
 - [5. Season Settings](#5-season-settings)
 
-## 1. Local Collector Setup
+## 1. Collector Setup
+### 1a. Local Collector Setup
 The Local Collector is a desktop application that forwards data from your F1 game to this cloud server. It provides a graphical interface for easy configuration.
 You need Java 21 Runtime environment to run the application.  You can download it from [here](https://github.com/JanVerstuyft/racing-league/releases).
 
@@ -36,6 +36,27 @@ If you use a mobile dashboard (like RS Dash) or SimHub, the Local Collector can 
 * Check 'Enable Local UDP Forwarding'.
 * Set 'UDP Forward Host' to the IP address of your phone or secondary PC.
 * Set 'UDP Forward Port' to the port expected by your app (usually 20777).
+
+## 1b. Android Collector Setup
+The Android Collector is a mobile app that acts as a bridge between your F1 game and the cloud server. This is ideal if you play on a console or prefer using a secondary mobile device.
+
+### Collector Application
+1. Install and launch the F1 Telemetry Collector app on your Android device.
+2. Navigate to the **Settings** tab.
+3. **UDP Listener Settings:** Ensure the 'UDP Port' matches your game settings (default is 20777).
+4. **Cloud Forwarding:** 
+    * Enable 'Cloud Forwarding'.
+    * Paste your 'Cloud Telemetry Token' (found on your Season page) into the 'Cloud UUID' field.
+5. **Local Forwarding (Optional):** If you use another dashboard app on the same device or network, you can enable local forwarding here.
+6. Return to the **Dashboard** tab and click **Start Collector**.
+7. Note the **IP Address** displayed on the Dashboard.
+
+### F1 25 Game Settings
+* Go to Settings > Telemetry Settings.
+* Set UDP Telemetry to 'On'.
+* Set **UDP IP Address** to the IP shown in the Android App Dashboard.
+* Set **UDP Port** to the port configured in the app (default 20777).
+* Set UDP Format to '2025'.
 
 ## 2. Managing Drivers & Names
 When a driver joins a session for the first time, they are automatically 'discovered' and added to the 'Drivers' tab in your Season details.
