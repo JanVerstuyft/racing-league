@@ -84,6 +84,33 @@ public class TiersTab extends VerticalLayout {
         }).setHeader("Live");
 
         grid.addComponentColumn(tier -> {
+            HorizontalLayout actions = new HorizontalLayout();
+            
+            Button editBtn = new Button("Edit", e -> {
+                com.vaadin.flow.component.dialog.Dialog dialog = new com.vaadin.flow.component.dialog.Dialog();
+                dialog.setHeaderTitle("Rename Tier");
+                
+                TextField nameEdit = new TextField("New Name");
+                nameEdit.setValue(tier.getName());
+                nameEdit.setWidthFull();
+                
+                Button saveBtn = new Button("Save", ev -> {
+                    if (!nameEdit.getValue().trim().isEmpty()) {
+                        tier.setName(nameEdit.getValue().trim());
+                        tierRepository.save(tier);
+                        onTiersChanged.run();
+                        dialog.close();
+                        Notification.show("Tier renamed", 3000, Notification.Position.TOP_CENTER);
+                    }
+                });
+                saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+                
+                dialog.add(nameEdit);
+                dialog.getFooter().add(new Button("Cancel", ev -> dialog.close()), saveBtn);
+                dialog.open();
+            });
+            editBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+
             Button deleteBtn = new Button("Delete", e -> {
                 ConfirmDialog dialog = new ConfirmDialog();
                 dialog.setHeader("Delete Tier?");
@@ -99,7 +126,9 @@ public class TiersTab extends VerticalLayout {
                 dialog.open();
             });
             deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
-            return deleteBtn;
+            
+            actions.add(editBtn, deleteBtn);
+            return actions;
         }).setHeader("Actions").setKey("Actions");
     }
 

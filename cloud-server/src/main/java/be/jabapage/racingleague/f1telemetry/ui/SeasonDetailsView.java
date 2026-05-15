@@ -116,44 +116,50 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
     @Override
     public void setParameter(BeforeEvent event, Long parameter) {
-        league = leagueRepository.findById(parameter).orElseThrow();
-        seasonName.setText("Season: " + league.getName());
-        
-        raceWeekendsTab.setLeague(league);
-        standingsTab.setLeague(league);
-        driversTab.setLeague(league);
-        pointsTab.setLeague(league);
-        settingsTab.setLeague(league);
-        tiersTab.setLeague(league);
+        leagueRepository.findById(parameter).ifPresentOrElse(l -> {
+            this.league = l;
+            seasonName.setText("Season: " + league.getName());
+            
+            raceWeekendsTab.setLeague(league);
+            standingsTab.setLeague(league);
+            driversTab.setLeague(league);
+            pointsTab.setLeague(league);
+            settingsTab.setLeague(league);
+            tiersTab.setLeague(league);
 
-        refreshTiers();
-        if (initialLoad) {
-            if (targetTierId != null) {
-                final Long lookFor = targetTierId;
-                league.getTiers().stream()
-                        .filter(t -> t.getId().equals(lookFor))
-                        .findFirst()
-                        .ifPresent(tierComboBox::setValue);
-            } else if (!league.getTiers().isEmpty()) {
-                tierComboBox.setValue(league.getTiers().get(0));
+            refreshTiers();
+            if (initialLoad) {
+                if (targetTierId != null) {
+                    final Long lookFor = targetTierId;
+                    league.getTiers().stream()
+                            .filter(t -> t.getId().equals(lookFor))
+                            .findFirst()
+                            .ifPresent(tierComboBox::setValue);
+                } else if (!league.getTiers().isEmpty()) {
+                    tierComboBox.setValue(league.getTiers().get(0));
+                }
+                initialLoad = false;
             }
-            initialLoad = false;
-        }
+        }, () -> {
+            event.forwardTo(SeasonListView.class);
+        });
     }
 
     private void refreshTiers() {
         if (league == null) return;
-        league = leagueRepository.findByIdWithTiers(league.getId()).orElseThrow();
-        tierComboBox.setItems(league.getTiers());
-        
-        if (selectedTier != null && !league.getTiers().contains(selectedTier)) {
-            // Previously selected tier was deleted, fallback to first available or null
-            selectedTier = league.getTiers().isEmpty() ? null : league.getTiers().get(0);
-            tierComboBox.setValue(selectedTier);
-        } else {
-            updateLiveLink();
-            updateData();
-        }
+        leagueRepository.findByIdWithTiers(league.getId()).ifPresent(l -> {
+            this.league = l;
+            tierComboBox.setItems(league.getTiers());
+            
+            if (selectedTier != null && !league.getTiers().contains(selectedTier)) {
+                // Previously selected tier was deleted, fallback to first available or null
+                selectedTier = league.getTiers().isEmpty() ? null : league.getTiers().get(0);
+                tierComboBox.setValue(selectedTier);
+            } else {
+                updateLiveLink();
+                updateData();
+            }
+        });
     }
 
     private void updateLiveLink() {
