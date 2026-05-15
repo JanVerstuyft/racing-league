@@ -1,55 +1,111 @@
 package be.jabapage.racingleague.f1telemetry.service;
 
-import be.jabapage.racingleague.f1telemetry.entity.*;
-import be.jabapage.racingleague.f1telemetry.model.*;
-import be.jabapage.racingleague.f1telemetry.repository.*;
+import be.jabapage.racingleague.f1telemetry.entity.DriverMapping;
+import be.jabapage.racingleague.f1telemetry.entity.DriverResult;
+import be.jabapage.racingleague.f1telemetry.entity.DriverStanding;
+import be.jabapage.racingleague.f1telemetry.entity.Event;
+import be.jabapage.racingleague.f1telemetry.entity.LapResult;
+import be.jabapage.racingleague.f1telemetry.entity.League;
 import be.jabapage.racingleague.f1telemetry.entity.LiveState;
+import be.jabapage.racingleague.f1telemetry.entity.SessionPointConfig;
+import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
+import be.jabapage.racingleague.f1telemetry.entity.TeamStanding;
+import be.jabapage.racingleague.f1telemetry.entity.TyreStint;
+import be.jabapage.racingleague.f1telemetry.model.CarDamageData;
+import be.jabapage.racingleague.f1telemetry.model.CarStatusData;
+import be.jabapage.racingleague.f1telemetry.model.ConsistencyStats;
+import be.jabapage.racingleague.f1telemetry.model.DriverBoardState;
+import be.jabapage.racingleague.f1telemetry.model.FinalClassificationData;
+import be.jabapage.racingleague.f1telemetry.model.LapData;
+import be.jabapage.racingleague.f1telemetry.model.LongestStintStats;
+import be.jabapage.racingleague.f1telemetry.model.PacketCarDamageData;
+import be.jabapage.racingleague.f1telemetry.model.PacketCarStatusData;
+import be.jabapage.racingleague.f1telemetry.model.PacketEventData;
+import be.jabapage.racingleague.f1telemetry.model.PacketFinalClassificationData;
+import be.jabapage.racingleague.f1telemetry.model.PacketHeader;
+import be.jabapage.racingleague.f1telemetry.model.PacketLapData;
+import be.jabapage.racingleague.f1telemetry.model.PacketParticipantsData;
+import be.jabapage.racingleague.f1telemetry.model.PacketSessionData;
+import be.jabapage.racingleague.f1telemetry.model.ParticipantData;
+import be.jabapage.racingleague.f1telemetry.model.RacePaceStats;
+import be.jabapage.racingleague.f1telemetry.model.SessionInfo;
+import be.jabapage.racingleague.f1telemetry.repository.DriverMappingRepository;
+import be.jabapage.racingleague.f1telemetry.repository.DriverResultRepository;
+import be.jabapage.racingleague.f1telemetry.repository.DriverStandingRepository;
+import be.jabapage.racingleague.f1telemetry.repository.EventRepository;
+import be.jabapage.racingleague.f1telemetry.repository.LapResultRepository;
+import be.jabapage.racingleague.f1telemetry.repository.LeagueRepository;
 import be.jabapage.racingleague.f1telemetry.repository.LiveStateRepository;
-import tools.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
+import be.jabapage.racingleague.f1telemetry.repository.SessionPointConfigRepository;
+import be.jabapage.racingleague.f1telemetry.repository.SessionResultRepository;
+import be.jabapage.racingleague.f1telemetry.repository.TeamStandingRepository;
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 @Service
 public class TelemetryProcessingService {
 
-    @Autowired
-    private LeagueRepository leagueRepository;
-    @Autowired
-    private SessionResultRepository sessionResultRepository;
-    @Autowired
-    private DriverStandingRepository driverStandingRepository;
-    @Autowired
-    private TeamStandingRepository teamStandingRepository;
-    @Autowired
-    private EventRepository eventRepository;
-    @Autowired
-    private DriverResultRepository driverResultRepository;
-    @Autowired
-    private LapResultRepository lapResultRepository;
-    @Autowired
-    private DriverMappingRepository driverMappingRepository;
-    @Autowired
-    private LiveStateRepository liveStateRepository;
-    @Autowired
-    private SessionPointConfigRepository sessionPointConfigRepository;
-    @Autowired
-    private Broadcaster broadcaster;
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final LeagueRepository leagueRepository;
+    private final SessionResultRepository sessionResultRepository;
+    private final DriverStandingRepository driverStandingRepository;
+    private final TeamStandingRepository teamStandingRepository;
+    private final EventRepository eventRepository;
+    private final DriverResultRepository driverResultRepository;
+    private final LapResultRepository lapResultRepository;
+    private final DriverMappingRepository driverMappingRepository;
+    private final LiveStateRepository liveStateRepository;
+    private final SessionPointConfigRepository sessionPointConfigRepository;
+    private final Broadcaster broadcaster;
+    private final ObjectMapper objectMapper;
 
     private final Map<String, LeagueSessionState> leagueStates = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<Long, LocalDateTime> lastLocalUpdate = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<Long, Long> lastSavedMap = new java.util.concurrent.ConcurrentHashMap<>();
 
-    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 1000)
+    public TelemetryProcessingService(LeagueRepository leagueRepository,
+                                      SessionResultRepository sessionResultRepository,
+                                      DriverStandingRepository driverStandingRepository,
+                                      TeamStandingRepository teamStandingRepository,
+                                      EventRepository eventRepository,
+                                      DriverResultRepository driverResultRepository,
+                                      LapResultRepository lapResultRepository,
+                                      DriverMappingRepository driverMappingRepository,
+                                      LiveStateRepository liveStateRepository,
+                                      SessionPointConfigRepository sessionPointConfigRepository,
+                                      Broadcaster broadcaster,
+                                      ObjectMapper objectMapper) {
+        this.leagueRepository = leagueRepository;
+        this.sessionResultRepository = sessionResultRepository;
+        this.driverStandingRepository = driverStandingRepository;
+        this.teamStandingRepository = teamStandingRepository;
+        this.eventRepository = eventRepository;
+        this.driverResultRepository = driverResultRepository;
+        this.lapResultRepository = lapResultRepository;
+        this.driverMappingRepository = driverMappingRepository;
+        this.liveStateRepository = liveStateRepository;
+        this.sessionPointConfigRepository = sessionPointConfigRepository;
+        this.broadcaster = broadcaster;
+        this.objectMapper = objectMapper;
+    }
+
+    @Scheduled(fixedDelay = 1000)
     public void syncDistributedState() {
         Set<Long> activeLeagueIds = getActiveLeagueIds();
         if (activeLeagueIds.isEmpty()) return;
