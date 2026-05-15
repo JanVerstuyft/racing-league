@@ -46,12 +46,16 @@ public class PointsTab extends VerticalLayout {
     private final List<SessionPointConfig> currentEditingConfigs = new ArrayList<>();
     private boolean pointsChanged = false;
 
+    private final Runnable refreshCallback;
+
     public PointsTab(SessionPointConfigRepository sessionPointConfigRepository,
                      TelemetryProcessingService telemetryProcessingService,
-                     SecurityService securityService) {
+                     SecurityService securityService,
+                     Runnable refreshCallback) {
         this.sessionPointConfigRepository = sessionPointConfigRepository;
         this.telemetryProcessingService = telemetryProcessingService;
         this.securityService = securityService;
+        this.refreshCallback = refreshCallback;
 
         setSizeFull();
         configureGrid();
@@ -286,6 +290,7 @@ public class PointsTab extends VerticalLayout {
         sessionPointConfigRepository.saveAll(currentEditingConfigs);
 
         telemetryProcessingService.recalculateStandings(league.getId());
+        if (refreshCallback != null) refreshCallback.run();
         updateData();
         Notification.show("Points saved and standings recalculated", 3000, Notification.Position.TOP_CENTER);
         pointsChanged = false;
@@ -307,6 +312,7 @@ public class PointsTab extends VerticalLayout {
                     .toList();
             sessionPointConfigRepository.deleteAll(toDelete);
             telemetryProcessingService.recalculateStandings(league.getId());
+            if (refreshCallback != null) refreshCallback.run();
             selectedSessionType = null;
             updateData();
             Notification.show("Overrides removed", 3000, Notification.Position.TOP_CENTER);

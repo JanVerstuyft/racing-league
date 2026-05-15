@@ -14,7 +14,7 @@ import java.util.Arrays;
 @lombok.AllArgsConstructor
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public class LeagueSessionState {
-    private Long leagueId;
+    private Long tierId;
     private boolean hideAi;
     private boolean showTyreWear;
     private boolean showErs;
@@ -51,8 +51,8 @@ public class LeagueSessionState {
     private long lastPacketTime = 0;
     private boolean drsEnabled = false;
 
-    public LeagueSessionState(Long leagueId) {
-        this.leagueId = leagueId;
+    public LeagueSessionState(Long tierId) {
+        this.tierId = tierId;
         reset();
     }
 

@@ -2,7 +2,9 @@ package be.jabapage.racingleague.f1telemetry.ui.tabs;
 
 import be.jabapage.racingleague.f1telemetry.entity.DriverMapping;
 import be.jabapage.racingleague.f1telemetry.entity.League;
+import be.jabapage.racingleague.f1telemetry.entity.Tier;
 import be.jabapage.racingleague.f1telemetry.repository.DriverMappingRepository;
+import be.jabapage.racingleague.f1telemetry.repository.TierRepository;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
 import be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService;
 import com.vaadin.flow.component.button.Button;
@@ -26,18 +28,22 @@ import java.util.stream.Collectors;
 public class DriversTab extends VerticalLayout {
 
     private final DriverMappingRepository driverMappingRepository;
+    private final TierRepository tierRepository;
     private final TelemetryProcessingService telemetryProcessingService;
     private final SecurityService securityService;
 
     private League league;
+    private Tier tier;
     private final Grid<DriverMapping> mappingGrid = new Grid<>(DriverMapping.class, false);
     private final Button addManualDriverBtn = new Button("Add Manual Driver");
     private final Button deleteSelectedMappingsBtn = new Button("Delete Selected");
 
     public DriversTab(DriverMappingRepository driverMappingRepository,
+                        TierRepository tierRepository,
                         TelemetryProcessingService telemetryProcessingService,
                         SecurityService securityService) {
         this.driverMappingRepository = driverMappingRepository;
+        this.tierRepository = tierRepository;
         this.telemetryProcessingService = telemetryProcessingService;
         this.securityService = securityService;
 
@@ -52,7 +58,7 @@ public class DriversTab extends VerticalLayout {
         deleteSelectedMappingsBtn.addClickListener(e -> deleteSelectedMappings());
 
         add(new HorizontalLayout(new H3("Driver Name Overrides"), addManualDriverBtn, deleteSelectedMappingsBtn),
-                new Span("Drivers are automatically discovered when they join a session. Edit the 'Display Name' to override how they appear in the leaderboard and standings."),
+                new Span("Drivers are managed per tier. Use the editor to override display names, mark as reserve, or move drivers between tiers (Promote/Demote)."),
                 mappingGrid);
 
         addManualDriverBtn.addClickListener(e -> showAddManualDriverDialog());
@@ -61,7 +67,8 @@ public class DriversTab extends VerticalLayout {
     private void configureGrid() {
         mappingGrid.addColumn(DriverMapping::getTelemetryName).setHeader("Telemetry Name");
         mappingGrid.addColumn(DriverMapping::getRaceNumber).setHeader("Race #");
-        mappingGrid.addColumn(DriverMapping::getDriverId).setHeader("Driver ID");
+
+        Grid.Column<DriverMapping> tierColumn = mappingGrid.addColumn(m -> m.getTier() != null ? m.getTier().getName() : "").setHeader("Tier");
 
         Grid.Column<DriverMapping> reserveColumn = mappingGrid.addComponentColumn(item -> {
             Checkbox cb = new Checkbox(item.isReserve());
@@ -76,6 +83,12 @@ public class DriversTab extends VerticalLayout {
         editor.setBinder(binder);
         editor.setBuffered(true);
 
+        com.vaadin.flow.component.combobox.ComboBox<Tier> tierField = new com.vaadin.flow.component.combobox.ComboBox<>();
+        tierField.setItemLabelGenerator(Tier::getName);
+        tierField.setWidthFull();
+        binder.forField(tierField).bind(DriverMapping::getTier, DriverMapping::setTier);
+        tierColumn.setEditorComponent(tierField);
+
         TextField overrideField = new TextField();
         overrideField.setWidthFull();
         binder.forField(overrideField).bind(DriverMapping::getOverriddenName, DriverMapping::setOverriddenName);
@@ -88,11 +101,20 @@ public class DriversTab extends VerticalLayout {
         Button saveButton = new Button("Save", e -> {
             try {
                 DriverMapping item = editor.getItem();
+                Tier oldTier = tier;
                 editor.save();
                 driverMappingRepository.save(item);
-                telemetryProcessingService.refreshDriverMappings(league.getId());
+                
+                // Refresh mappings for both tiers if changed
+                if (item.getTier() != null) {
+                    telemetryProcessingService.refreshDriverMappings(item.getTier().getId());
+                }
+                if (oldTier != null && !oldTier.equals(item.getTier())) {
+                    telemetryProcessingService.refreshDriverMappings(oldTier.getId());
+                }
+                
                 telemetryProcessingService.recalculateStandings(league.getId());
-                Notification.show("Driver name and standings updated!", 3000, Notification.Position.TOP_CENTER);
+                Notification.show("Driver updated and standings recalculated!", 3000, Notification.Position.TOP_CENTER);
                 updateData();
             } finally {
                 e.getSource().setEnabled(true);
@@ -111,6 +133,9 @@ public class DriversTab extends VerticalLayout {
             editButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_SMALL);
             editButton.addClickListener(e -> {
                 if (editor.isOpen()) editor.cancel();
+                if (league != null) {
+                    tierField.setItems(tierRepository.findByLeagueId(league.getId()));
+                }
                 mappingGrid.getEditor().editItem(item);
             });
 
@@ -173,9 +198,9 @@ public class DriversTab extends VerticalLayout {
     }
 
     private void showAddManualDriverDialog() {
-        if (league == null) return;
+        if (tier == null) return;
         com.vaadin.flow.component.dialog.Dialog dialog = new com.vaadin.flow.component.dialog.Dialog();
-        dialog.setHeaderTitle("Add Manual Driver");
+        dialog.setHeaderTitle("Add Manual Driver to " + tier.getName());
 
         TextField nameField = new TextField("Display Name");
         nameField.setWidthFull();
@@ -195,7 +220,7 @@ public class DriversTab extends VerticalLayout {
                 return;
             }
             DriverMapping mapping = new DriverMapping();
-            mapping.setLeague(league);
+            mapping.setTier(tier);
             mapping.setOverriddenName(nameField.getValue());
             mapping.setTelemetryName(telemetryNameField.getValue().isEmpty() ? nameField.getValue() : telemetryNameField.getValue());
             mapping.setRaceNumber(raceNumField.getValue() != null ? raceNumField.getValue() : 0);
@@ -218,9 +243,17 @@ public class DriversTab extends VerticalLayout {
         updateData();
     }
 
+    public void setTier(Tier tier) {
+        this.tier = tier;
+        updateData();
+    }
+
     public void updateData() {
-        if (league == null) return;
-        mappingGrid.setItems(driverMappingRepository.findByLeague(league).stream()
+        if (tier == null) {
+            mappingGrid.setItems(Collections.emptyList());
+            return;
+        }
+        mappingGrid.setItems(driverMappingRepository.findByTier(tier).stream()
                 .sorted(Comparator.comparing(m -> m.getOverriddenName() != null ? m.getOverriddenName() : m.getTelemetryName()))
                 .collect(Collectors.toList()));
     }

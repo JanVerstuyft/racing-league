@@ -2,6 +2,7 @@ package be.jabapage.racingleague.f1telemetry.ui.tabs;
 
 import be.jabapage.racingleague.f1telemetry.entity.Event;
 import be.jabapage.racingleague.f1telemetry.entity.League;
+import be.jabapage.racingleague.f1telemetry.entity.Tier;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
 import be.jabapage.racingleague.f1telemetry.repository.EventRepository;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
@@ -17,8 +18,10 @@ import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.router.QueryParameters;
 import com.vaadin.flow.router.RouterLink;
 
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public class RaceWeekendsTab extends VerticalLayout {
@@ -28,6 +31,7 @@ public class RaceWeekendsTab extends VerticalLayout {
     private final SecurityService securityService;
     
     private League league;
+    private Tier tier;
     private final Grid<Event> eventGrid = new Grid<>(Event.class, false);
     private final Button addManualWeekendBtn = new Button("Add Manual Weekend");
 
@@ -49,8 +53,11 @@ public class RaceWeekendsTab extends VerticalLayout {
     private void configureGrid() {
         eventGrid.addColumn(Event::getEventName).setHeader("Event");
         eventGrid.addColumn(event -> {
-            return event.getSessionResults().stream()
-                    .map(SessionResult::getSessionType)
+            java.util.stream.Stream<SessionResult> stream = event.getSessionResults().stream();
+            if (tier != null) {
+                stream = stream.filter(sr -> tier.equals(sr.getTier()));
+            }
+            return stream.map(SessionResult::getSessionType)
                     .map(type -> TelemetryProcessingService.SESSION_TYPE_NAMES.getOrDefault(type, "S" + type))
                     .distinct()
                     .collect(Collectors.joining(", "));
@@ -144,6 +151,11 @@ public class RaceWeekendsTab extends VerticalLayout {
         this.league = league;
         boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
         addManualWeekendBtn.setVisible(loggedIn);
+        updateData();
+    }
+
+    public void setTier(Tier tier) {
+        this.tier = tier;
         updateData();
     }
 

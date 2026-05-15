@@ -2,6 +2,7 @@ package be.jabapage.racingleague.f1telemetry.ui.tabs;
 
 import be.jabapage.racingleague.f1telemetry.entity.DriverStanding;
 import be.jabapage.racingleague.f1telemetry.entity.League;
+import be.jabapage.racingleague.f1telemetry.entity.Tier;
 import be.jabapage.racingleague.f1telemetry.entity.TeamStanding;
 import be.jabapage.racingleague.f1telemetry.repository.DriverStandingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.TeamStandingRepository;
@@ -115,10 +116,17 @@ public class StandingsTab extends VerticalLayout {
         updateData();
     }
 
+    private Tier tier;
+
+    public void setTier(Tier tier) {
+        this.tier = tier;
+        updateData();
+    }
+
     public void updateData() {
         if (league == null) return;
 
-        List<DriverStanding> standings = driverStandingRepository.findByLeague(league);
+        List<DriverStanding> standings = tier != null ? driverStandingRepository.findByTier(tier) : java.util.Collections.emptyList();
         if (league.isHideAi()) {
             standings = standings.stream().filter(s -> !s.isAi()).toList();
         }
@@ -127,7 +135,14 @@ public class StandingsTab extends VerticalLayout {
                 .sorted(Comparator.comparing((DriverStanding ds) -> ds.getPoints() != null ? ds.getPoints() : 0).reversed())
                 .collect(Collectors.toList()));
 
-        teamGrid.setItems(teamStandingRepository.findByLeague(league).stream()
+        List<TeamStanding> teamStandings;
+        if (tier != null) {
+            teamStandings = teamStandingRepository.findByTier(tier);
+        } else {
+            teamStandings = teamStandingRepository.findByLeagueAndTierIsNull(league);
+        }
+        
+        teamGrid.setItems(teamStandings.stream()
                 .sorted(Comparator.comparing((TeamStanding ts) -> ts.getPoints() != null ? ts.getPoints() : 0).reversed())
                 .collect(Collectors.toList()));
     }

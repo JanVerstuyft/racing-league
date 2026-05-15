@@ -16,7 +16,10 @@ public interface LeagueRepository extends JpaRepository<League, Long> {
            "WHERE l.id = :id")
     Optional<League> findByIdWithEvents(@Param("id") Long id);
 
-    Optional<League> findByToken(String token);
+    @Query("SELECT DISTINCT l FROM League l " +
+           "LEFT JOIN FETCH l.tiers " +
+           "WHERE l.id = :id")
+    Optional<League> findByIdWithTiers(@Param("id") Long id);
 
     java.util.List<be.jabapage.racingleague.f1telemetry.entity.League> findByUser(be.jabapage.racingleague.f1telemetry.entity.User user);
 }

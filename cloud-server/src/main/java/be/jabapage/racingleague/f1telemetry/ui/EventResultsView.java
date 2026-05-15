@@ -2,6 +2,7 @@ package be.jabapage.racingleague.f1telemetry.ui;
 
 import be.jabapage.racingleague.f1telemetry.entity.DriverResult;
 import be.jabapage.racingleague.f1telemetry.entity.Event;
+import be.jabapage.racingleague.f1telemetry.entity.Tier;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
 import be.jabapage.racingleague.f1telemetry.model.RacePaceStats;
 import be.jabapage.racingleague.f1telemetry.model.LongestStintStats;
@@ -30,9 +31,12 @@ import com.vaadin.flow.component.tabs.Tab;
 import com.vaadin.flow.component.tabs.Tabs;
 import com.vaadin.flow.component.textfield.NumberField;
 import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.router.BeforeEnterEvent;
+import com.vaadin.flow.router.BeforeEnterObserver;
 import com.vaadin.flow.router.BeforeEvent;
 import com.vaadin.flow.router.HasUrlParameter;
 import com.vaadin.flow.router.PageTitle;
+import com.vaadin.flow.router.QueryParameters;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.router.RouterLink;
 import com.vaadin.flow.server.auth.AnonymousAllowed;
@@ -56,6 +60,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     private final SecurityService securityService;
 
     private final H2 eventHeader = new H2();
+    private final ComboBox<Tier> tierComboBox = new ComboBox<>("Tier");
     private final RouterLink backToSeason = new RouterLink("Back to Season", SeasonDetailsView.class, 0L);
     
     private final VerticalLayout resultsContainer = new VerticalLayout();
@@ -129,7 +134,16 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         nav.add(new RouterLink("Documentation", DocumentationView.class));
         nav.setSpacing(true);
 
-        add(nav, eventHeader, mainTabs, resultsContainer, statsContainer);
+        tierComboBox.setItemLabelGenerator(Tier::getName);
+        tierComboBox.setClearButtonVisible(false);
+        tierComboBox.addValueChangeListener(e -> {
+            refreshEvent();
+        });
+
+        HorizontalLayout headerLayout = new HorizontalLayout(eventHeader, tierComboBox);
+        headerLayout.setAlignItems(Alignment.BASELINE);
+
+        add(nav, headerLayout, mainTabs, resultsContainer, statsContainer);
         
         configureManualEntry();
     }
@@ -144,18 +158,23 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             Dialog dialog = new Dialog();
             dialog.setHeaderTitle("Add Manual Session");
 
+            ComboBox<Tier> tierCombo = new ComboBox<>("Tier");
+            tierCombo.setItems(currentEvent.getLeague().getTiers());
+            tierCombo.setItemLabelGenerator(Tier::getName);
+            tierCombo.setWidthFull();
+
             ComboBox<Integer> typeCombo = new ComboBox<>("Session Type");
             typeCombo.setItems(java.util.stream.IntStream.rangeClosed(1, 18).boxed().toList());
             typeCombo.setItemLabelGenerator(id -> TelemetryProcessingService.SESSION_TYPE_NAMES.getOrDefault(id, "Session " + id));
             typeCombo.setWidthFull();
 
-            VerticalLayout layout = new VerticalLayout(typeCombo);
+            VerticalLayout layout = new VerticalLayout(tierCombo, typeCombo);
             dialog.add(layout);
 
             Button saveBtn = new Button("Add", ev -> {
                 if (typeCombo.getValue() == null) return;
                 SessionResult sr = new SessionResult();
-                sr.setLeague(currentEvent.getLeague());
+                sr.setTier(tierCombo.getValue());
                 sr.setEvent(currentEvent);
                 sr.setTrackId(currentEvent.getTrackId());
                 sr.setSessionType(typeCombo.getValue());
@@ -180,7 +199,11 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             dialog.setHeaderTitle("Add Result to " + TelemetryProcessingService.SESSION_TYPE_NAMES.getOrDefault(session.getSessionType(), "Session"));
 
             ComboBox<DriverMapping> driverCombo = new ComboBox<>("Driver");
-            driverCombo.setItems(driverMappingRepository.findByLeague(currentEvent.getLeague()));
+            if (session.getTier() != null) {
+                driverCombo.setItems(driverMappingRepository.findByTier(session.getTier()));
+            } else {
+                driverCombo.setItems(driverMappingRepository.findAll()); // Fallback
+            }
             driverCombo.setItemLabelGenerator(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty() ? m.getOverriddenName() : m.getTelemetryName());
             driverCombo.setWidthFull();
 
@@ -301,7 +324,12 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     }
 
     private List<SessionResult> getOrderedSessions() {
-        List<SessionResult> sessions = new ArrayList<>(currentEvent.getSessionResults());
+        java.util.stream.Stream<SessionResult> stream = currentEvent.getSessionResults().stream();
+        Tier selected = tierComboBox.getValue();
+        if (selected != null) {
+            stream = stream.filter(s -> s.getTier() != null && s.getTier().getId().equals(selected.getId()));
+        }
+        List<SessionResult> sessions = stream.collect(Collectors.toList());
         Map<Integer, Integer> sortOrder = Map.ofEntries(
                 Map.entry(1, 1), Map.entry(2, 2), Map.entry(3, 3), Map.entry(4, 4),
                 Map.entry(5, 5), Map.entry(6, 6), Map.entry(7, 7), Map.entry(8, 8), Map.entry(9, 9),
@@ -319,7 +347,16 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         eventRepository.findByIdWithResults(parameter).ifPresentOrElse(e -> {
             this.currentEvent = e;
             eventHeader.setText("Event: " + currentEvent.getEventName());
+            
+            List<Tier> tiers = currentEvent.getLeague().getTiers().stream().distinct().toList();
+            tierComboBox.setItems(tiers);
+            
+            if (!tiers.isEmpty() && tierComboBox.getValue() == null) {
+                tierComboBox.setValue(tiers.get(0));
+            }
+
             backToSeason.setRoute(SeasonDetailsView.class, currentEvent.getLeague().getId());
+            
             setupSessionTabs();
             updateSessionContent();
         }, () -> {

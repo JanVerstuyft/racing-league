@@ -1,7 +1,9 @@
 package be.jabapage.racingleague.f1telemetry.ui;
 
+import be.jabapage.racingleague.f1telemetry.entity.Tier;
 import be.jabapage.racingleague.f1telemetry.model.DriverBoardState;
 import be.jabapage.racingleague.f1telemetry.model.SessionInfo;
+import be.jabapage.racingleague.f1telemetry.repository.TierRepository;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
 import be.jabapage.racingleague.f1telemetry.service.Broadcaster;
 import com.vaadin.flow.component.AttachEvent;
@@ -33,6 +35,7 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
 
     private final Broadcaster broadcaster;
     private final SecurityService securityService;
+    private final TierRepository tierRepository;
     private final be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService telemetryProcessingService;
     private final Grid<DriverBoardState> grid = new Grid<>(DriverBoardState.class, false);
     private final H2 title = new H2("LIVE LEADERBOARD");
@@ -45,12 +48,13 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
     private Registration leaderboardRegistration;
     private Registration sessionInfoRegistration;
     private java.util.Timer heartbeatTimer;
-    private Long leagueId;
+    private Long tierId;
     private SessionInfo currentSessionInfo;
 
-    public LeaderboardView(Broadcaster broadcaster, SecurityService securityService, be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService telemetryProcessingService) {
+    public LeaderboardView(Broadcaster broadcaster, SecurityService securityService, TierRepository tierRepository, be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService telemetryProcessingService) {
         this.broadcaster = broadcaster;
         this.securityService = securityService;
+        this.tierRepository = tierRepository;
         this.telemetryProcessingService = telemetryProcessingService;
         setSizeFull();
 
@@ -85,8 +89,10 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
 
     @Override
     public void setParameter(BeforeEvent event, Long parameter) {
-        this.leagueId = parameter;
-        backLink.setRoute(SeasonDetailsView.class, leagueId);
+        this.tierId = parameter;
+        tierRepository.findById(tierId).ifPresent(tier -> {
+            backLink.setRoute(SeasonDetailsView.class, tier.getLeague().getId());
+        });
     }
 
     private void configureGrid() {
@@ -192,7 +198,9 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
 
     private void setupWakeLockLogic() {
         keepScreenOn.addValueChangeListener(event -> {
-            if (event.getValue()) {
+            boolean checked = event.getValue();
+            getElement().executeJs("localStorage.setItem('keepScreenOn', $0)", checked);
+            if (checked) {
                 getElement().executeJs(
                     "if ('wakeLock' in navigator) {" +
                     "  const requestWakeLock = async () => {" +
@@ -211,7 +219,7 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
                     "  };" +
                     "  document.addEventListener('visibilitychange', window.reacquireWakeLock);" +
                     "} else {" +
-                    "  alert('Wake Lock API not supported on this browser.');" +
+                    "  console.log('Wake Lock API not supported on this browser.');" +
                     "}"
                 );
             } else {
@@ -235,12 +243,23 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
 
     @Override
     protected void onAttach(AttachEvent attachEvent) {
-        if (leagueId == null) {
-            title.setText("NO LEAGUE SELECTED");
+        if (tierId == null) {
+            title.setText("NO TIER SELECTED");
             return;
         }
+
+        // Read preference from browser local storage
+        getElement().executeJs("return localStorage.getItem('keepScreenOn')").then(String.class, val -> {
+            if ("false".equals(val)) {
+                keepScreenOn.setValue(false);
+            } else {
+                // Default to true if not set or explicitly true
+                keepScreenOn.setValue(true);
+            }
+        });
+
         UI ui = attachEvent.getUI();
-        leaderboardRegistration = broadcaster.registerLeaderboard(leagueId, data -> {
+        leaderboardRegistration = broadcaster.registerLeaderboard(tierId, data -> {
             if (attachEvent.getUI().isAttached()) {
                 attachEvent.getUI().access(() -> {
                     if (isAttached()) {
@@ -249,7 +268,7 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
                 });
             }
         });
-        sessionInfoRegistration = broadcaster.registerSessionInfo(leagueId, info -> {
+        sessionInfoRegistration = broadcaster.registerSessionInfo(tierId, info -> {
             if (attachEvent.getUI().isAttached()) {
                 attachEvent.getUI().access(() -> {
                     if (isAttached()) {
@@ -267,8 +286,8 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
                 if (attachEvent.getUI().isAttached()) {
                     attachEvent.getUI().access(() -> {
                         if (isAttached()) {
-                            updateLeaderboard(telemetryProcessingService.getLeaderboard(leagueId));
-                            be.jabapage.racingleague.f1telemetry.model.SessionInfo info = telemetryProcessingService.getSessionInfo(leagueId);
+                            updateLeaderboard(telemetryProcessingService.getLeaderboard(tierId));
+                            be.jabapage.racingleague.f1telemetry.model.SessionInfo info = telemetryProcessingService.getSessionInfo(tierId);
                             if (info != null) {
                                 updateSessionInfo(info);
                             }

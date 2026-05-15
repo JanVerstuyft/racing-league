@@ -13,7 +13,7 @@ import java.util.Set;
 @Setter
 @Entity
 @Table(name = "session_result", uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"session_uid", "session_type"})
+    @UniqueConstraint(name = "uk_session_type_tier", columnNames = {"session_uid", "session_type", "tier_id"})
 })
 public class SessionResult {
     @Id
@@ -21,8 +21,8 @@ public class SessionResult {
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "league_id")
-    private League league;
+    @JoinColumn(name = "tier_id")
+    private Tier tier;
 
     @ManyToOne
     @JoinColumn(name = "event_id")

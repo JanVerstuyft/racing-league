@@ -42,8 +42,9 @@ public class LeagueController {
     @GetMapping("/{id}/standings/drivers")
     public List<DriverStanding> getDriverStandings(@PathVariable Long id) {
         return leagueRepository.findById(id)
-                .map(league -> league.getDriverStandings().stream()
-                        .sorted(Comparator.comparingInt(DriverStanding::getPoints).reversed())
+                .map(league -> league.getTiers().stream()
+                        .flatMap(tier -> tier.getDriverStandings().stream())
+                        .sorted(Comparator.comparingInt((DriverStanding ds) -> ds.getPoints() != null ? ds.getPoints() : 0).reversed())
                         .collect(Collectors.toList()))
                 .orElseThrow();
     }
@@ -52,7 +53,8 @@ public class LeagueController {
     public List<TeamStanding> getTeamStandings(@PathVariable Long id) {
         return leagueRepository.findById(id)
                 .map(league -> league.getTeamStandings().stream()
-                        .sorted(Comparator.comparingInt(TeamStanding::getPoints).reversed())
+                        .filter(ts -> ts.getTier() == null)
+                        .sorted(Comparator.comparingInt((TeamStanding ts) -> ts.getPoints() != null ? ts.getPoints() : 0).reversed())
                         .collect(Collectors.toList()))
                 .orElseThrow();
     }

@@ -17,6 +17,8 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     Optional<Event> findByLeagueAndTrackId(League league, String trackId);
 
     @Query("SELECT DISTINCT e FROM Event e " +
+           "LEFT JOIN FETCH e.league l " +
+           "LEFT JOIN FETCH l.tiers " +
            "LEFT JOIN FETCH e.sessionResults sr " +
            "LEFT JOIN FETCH sr.driverResults " +
            "WHERE e.id = :id")

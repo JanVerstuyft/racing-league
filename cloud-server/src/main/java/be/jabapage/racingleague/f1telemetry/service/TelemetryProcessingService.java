@@ -6,6 +6,7 @@ import be.jabapage.racingleague.f1telemetry.entity.DriverStanding;
 import be.jabapage.racingleague.f1telemetry.entity.Event;
 import be.jabapage.racingleague.f1telemetry.entity.LapResult;
 import be.jabapage.racingleague.f1telemetry.entity.League;
+import be.jabapage.racingleague.f1telemetry.entity.Tier;
 import be.jabapage.racingleague.f1telemetry.entity.LiveState;
 import be.jabapage.racingleague.f1telemetry.entity.SessionPointConfig;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
@@ -35,6 +36,7 @@ import be.jabapage.racingleague.f1telemetry.repository.DriverStandingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.EventRepository;
 import be.jabapage.racingleague.f1telemetry.repository.LapResultRepository;
 import be.jabapage.racingleague.f1telemetry.repository.LeagueRepository;
+import be.jabapage.racingleague.f1telemetry.repository.TierRepository;
 import be.jabapage.racingleague.f1telemetry.repository.LiveStateRepository;
 import be.jabapage.racingleague.f1telemetry.repository.SessionPointConfigRepository;
 import be.jabapage.racingleague.f1telemetry.repository.SessionResultRepository;
@@ -63,6 +65,7 @@ import tools.jackson.databind.ObjectMapper;
 public class TelemetryProcessingService {
 
     private final LeagueRepository leagueRepository;
+    private final TierRepository tierRepository;
     private final SessionResultRepository sessionResultRepository;
     private final DriverStandingRepository driverStandingRepository;
     private final TeamStandingRepository teamStandingRepository;
@@ -80,6 +83,7 @@ public class TelemetryProcessingService {
     private final Map<Long, Long> lastSavedMap = new java.util.concurrent.ConcurrentHashMap<>();
 
     public TelemetryProcessingService(LeagueRepository leagueRepository,
+                                      TierRepository tierRepository,
                                       SessionResultRepository sessionResultRepository,
                                       DriverStandingRepository driverStandingRepository,
                                       TeamStandingRepository teamStandingRepository,
@@ -92,6 +96,7 @@ public class TelemetryProcessingService {
                                       Broadcaster broadcaster,
                                       ObjectMapper objectMapper) {
         this.leagueRepository = leagueRepository;
+        this.tierRepository = tierRepository;
         this.sessionResultRepository = sessionResultRepository;
         this.driverStandingRepository = driverStandingRepository;
         this.teamStandingRepository = teamStandingRepository;
@@ -114,11 +119,11 @@ public class TelemetryProcessingService {
         List<LiveState> updates = liveStateRepository.findAllById(activeLeagueIds);
         
         for (LiveState remote : updates) {
-            LocalDateTime local = lastLocalUpdate.get(remote.getLeagueId());
+            LocalDateTime local = lastLocalUpdate.get(remote.getTierId());
             if (local == null || remote.getLastUpdated().isAfter(local)) {
                 // Update memory cache for UDP processing
                 leagueStates.entrySet().stream()
-                        .filter(entry -> Objects.equals(entry.getValue().getLeagueId(), remote.getLeagueId()))
+                        .filter(entry -> Objects.equals(entry.getValue().getTierId(), remote.getTierId()))
                         .findFirst()
                         .ifPresentOrElse(entry -> {
                             try {
@@ -134,7 +139,7 @@ public class TelemetryProcessingService {
 
                                 if (remoteIsNewerSession || !localIsActivelyReceiving) {
                                     entry.setValue(remoteState);
-                                    log.debug("Sync: Updated state for league {} (Remote is newer or local is idle)", remote.getLeagueId());
+                                    log.debug("Sync: Updated state for league {} (Remote is newer or local is idle)", remote.getTierId());
                                 } else {
                                     // Merge critical fields if missing locally
                                     boolean merged = false;
@@ -147,14 +152,15 @@ public class TelemetryProcessingService {
                                         merged = true;
                                     }
                                     if (merged) {
-                                        log.info("Sync: Merged missing Session/Participants for league {} from DB", remote.getLeagueId());
+                                        log.info("Sync: Merged missing Session/Participants for league {} from DB", remote.getTierId());
                                     }
                                 }
 
-                                lastLocalUpdate.put(remote.getLeagueId(), remote.getLastUpdated());
+                                lastLocalUpdate.put(remote.getTierId(), remote.getLastUpdated());
                                 
-                                leagueRepository.findById(remote.getLeagueId()).ifPresent(l -> {
-                                    refreshDriverMappings(entry.getValue(), l);
+                                tierRepository.findById(remote.getTierId()).ifPresent(t -> {
+                                    refreshDriverMappings(entry.getValue(), t);
+                                    League l = t.getLeague();
                                     entry.getValue().setHideAi(l.isHideAi());
                                     entry.getValue().setShowTyreWear(l.isShowTyreWear());
                                     entry.getValue().setShowErs(l.isShowErs());
@@ -163,11 +169,11 @@ public class TelemetryProcessingService {
                                 broadcastLeaderboard(entry.getValue());
                                 broadcastSessionInfo(entry.getValue());
                             } catch (Exception e) {
-                                log.error("Sync: Failed to update league {}: {}", remote.getLeagueId(), e.getMessage());
+                                log.error("Sync: Failed to update league {}: {}", remote.getTierId(), e.getMessage());
                             }
                         }, () -> {
                             // If we don't have it in memory but someone is listening, broadcast to them
-                            if (broadcaster.hasListeners(remote.getLeagueId())) {
+                            if (broadcaster.hasListeners(remote.getTierId())) {
                                 loadAndBroadcast(remote);
                             }
                         });
@@ -179,8 +185,8 @@ public class TelemetryProcessingService {
         Set<Long> activeIds = new HashSet<>();
         // Add IDs from active UDP sessions
         leagueStates.values().forEach(s -> {
-            if (s.getLeagueId() != null && s.getLeagueId() != -1) {
-                activeIds.add(s.getLeagueId());
+            if (s.getTierId() != null && s.getTierId() != -1) {
+                activeIds.add(s.getTierId());
             }
         });
         // Add IDs from active UI listeners (e.g., people watching the dashboard)
@@ -193,10 +199,11 @@ public class TelemetryProcessingService {
             String json = decompress(remote.getCompressedState());
             if (json.isEmpty()) return;
             LeagueSessionState state = objectMapper.readValue(json, LeagueSessionState.class);
-            lastLocalUpdate.put(remote.getLeagueId(), remote.getLastUpdated());
+            lastLocalUpdate.put(remote.getTierId(), remote.getLastUpdated());
             
-            leagueRepository.findById(remote.getLeagueId()).ifPresent(l -> {
-                refreshDriverMappings(state, l);
+            tierRepository.findById(remote.getTierId()).ifPresent(t -> {
+                League l = t.getLeague();
+                refreshDriverMappings(state, t);
                 state.setHideAi(l.isHideAi());
                 state.setShowTyreWear(l.isShowTyreWear());
                 state.setShowErs(l.isShowErs());
@@ -208,40 +215,41 @@ public class TelemetryProcessingService {
                 broadcastSessionInfo(state);
             });
         } catch (Exception e) {
-            log.error("Failed to load and broadcast league {}: {}", remote.getLeagueId(), e.getMessage());
+            log.error("Failed to load and broadcast league {}: {}", remote.getTierId(), e.getMessage());
         }
     }
 
     private LeagueSessionState getOrCreateState(String token) {
         return leagueStates.computeIfAbsent(token, t -> {
-            Optional<League> league = leagueRepository.findByToken(t);
-            if (league.isPresent()) {
+            Optional<Tier> tierOptional = tierRepository.findByToken(t);
+            if (tierOptional.isPresent()) {
                 // Try to load from DB first
-                League l = league.get();
-                Optional<LiveState> liveState = liveStateRepository.findById(l.getId());
+                Tier tier = tierOptional.get();
+                League l = tier.getLeague();
+                Optional<LiveState> liveState = liveStateRepository.findById(tier.getId());
                 if (liveState.isPresent()) {
                     try {
                         String json = decompress(liveState.get().getCompressedState());
                         if (!json.isEmpty()) {
                             LeagueSessionState state = objectMapper.readValue(json, LeagueSessionState.class);
                             // Refresh transient mappings
-                            refreshDriverMappings(state, l);
+                            refreshDriverMappings(state, tier);
                             state.setHideAi(l.isHideAi());
                             state.setShowTyreWear(l.isShowTyreWear());
                             state.setShowErs(l.isShowErs());
-                            log.info("Loaded live state for league {} from database", l.getId());
+                            log.info("Loaded live state for tier {} from database", tier.getId());
                             return state;
                         }
                     } catch (Exception e) {
-                        log.error("Failed to deserialize live state for league {}: {}", l.getId(), e.getMessage());
+                        log.error("Failed to deserialize live state for tier {}: {}", tier.getId(), e.getMessage());
                     }
                 }
 
-                LeagueSessionState state = new LeagueSessionState(l.getId());
+                LeagueSessionState state = new LeagueSessionState(tier.getId());
                 state.setHideAi(l.isHideAi());
                 state.setShowTyreWear(l.isShowTyreWear());
                 state.setShowErs(l.isShowErs());
-                refreshDriverMappings(state, l);
+                refreshDriverMappings(state, tier);
                 return state;
             } else if ("default".equals(t)) {
                 // Fallback for default token if no league found
@@ -252,14 +260,14 @@ public class TelemetryProcessingService {
     }
 
     private void saveState(LeagueSessionState state) {
-        if (state.getLeagueId() == null || state.getLeagueId() == -1) return;
+        if (state.getTierId() == null || state.getTierId() == -1) return;
 
         long now = System.currentTimeMillis();
-        long lastSaved = lastSavedMap.getOrDefault(state.getLeagueId(), 0L);
+        long lastSaved = lastSavedMap.getOrDefault(state.getTierId(), 0L);
 
         // Throttle DB writes to once per 1000ms
         if (now - lastSaved > 1000) {
-            lastSavedMap.put(state.getLeagueId(), now);
+            lastSavedMap.put(state.getTierId(), now);
             performAsyncSave(state);
         }
     }
@@ -269,16 +277,16 @@ public class TelemetryProcessingService {
         try {
             LocalDateTime now = LocalDateTime.now();
             LiveState liveState = new LiveState();
-            liveState.setLeagueId(state.getLeagueId());
+            liveState.setTierId(state.getTierId());
             liveState.setLastUpdated(now);
             
             String json = objectMapper.writeValueAsString(state);
             liveState.setCompressedState(compress(json));
             
             liveStateRepository.save(liveState);
-            lastLocalUpdate.put(state.getLeagueId(), now);
+            lastLocalUpdate.put(state.getTierId(), now);
         } catch (Exception e) {
-            log.error("Failed to persist live state for league {}: {}", state.getLeagueId(), e.getMessage());
+            log.error("Failed to persist live state for league {}: {}", state.getTierId(), e.getMessage());
         }
     }
 
@@ -308,24 +316,24 @@ public class TelemetryProcessingService {
 
     public void refreshHideAiSetting(Long leagueId) {
         leagueStates.values().stream()
-                .filter(s -> Objects.equals(s.getLeagueId(), leagueId))
+                .filter(s -> Objects.equals(s.getTierId(), leagueId))
                 .findFirst()
                 .ifPresent(state -> {
                     leagueRepository.findById(leagueId).ifPresent(league -> state.setHideAi(league.isHideAi()));
                 });
     }
 
-    public void refreshDriverMappings(Long leagueId) {
+    public void refreshDriverMappings(Long tierId) {
         leagueStates.values().stream()
-                .filter(s -> Objects.equals(s.getLeagueId(), leagueId))
+                .filter(s -> Objects.equals(s.getTierId(), tierId))
                 .findFirst()
                 .ifPresent(state -> {
-                    leagueRepository.findById(leagueId).ifPresent(league -> refreshDriverMappings(state, league));
+                    tierRepository.findById(tierId).ifPresent(tier -> refreshDriverMappings(state, tier));
                 });
     }
 
-    private void refreshDriverMappings(LeagueSessionState state, League league) {
-        List<DriverMapping> mappings = driverMappingRepository.findByLeague(league);
+    private void refreshDriverMappings(LeagueSessionState state, Tier tier) {
+        List<DriverMapping> mappings = driverMappingRepository.findByTier(tier);
         state.getDriverNameOverrides().clear();
         state.getReserveDrivers().clear();
         for (DriverMapping mapping : mappings) {
@@ -339,9 +347,8 @@ public class TelemetryProcessingService {
         }
     }
 
-    private int getPointsForPosition(League league, int sessionType, int position) {
+    private int getPointsForPosition(List<SessionPointConfig> configs, int sessionType, int position) {
         // Check for custom point configuration for this session type and position
-        List<SessionPointConfig> configs = sessionPointConfigRepository.findByLeague(league);
         Optional<SessionPointConfig> config = configs.stream()
                 .filter(c -> c.getSessionType() == sessionType && c.getPosition() == position)
                 .findFirst();
@@ -361,7 +368,7 @@ public class TelemetryProcessingService {
     }
 
     private String getDriverName(LeagueSessionState state, ParticipantData p) {
-        String key = p.getName() + "|" + p.getRaceNumber() + "|" + p.getDriverId();
+        String key = (p.getName() != null ? p.getName() : "") + "|" + p.getRaceNumber() + "|" + p.getDriverId();
         String overridden = state.getDriverNameOverrides().get(key);
         if (overridden != null && !overridden.isEmpty()) return overridden;
 
@@ -405,41 +412,55 @@ public class TelemetryProcessingService {
     );
 
     private void autoDiscoverDrivers(LeagueSessionState state, PacketParticipantsData participants) {
-        if (state.getLeagueId() == null || state.getLeagueId() == -1) return;
+        if (state.getTierId() == null || state.getTierId() == -1) return;
 
-        League league = leagueRepository.findById(state.getLeagueId()).orElse(null);
-        if (league == null) return;
+        Tier tier = tierRepository.findById(state.getTierId()).orElse(null);
+        if (tier == null) return;
 
         boolean changed = false;
         for (int i = 0; i < participants.getParticipants().size(); i++) {
             ParticipantData p = participants.getParticipants().get(i);
-            if (p.getName() == null || p.getName().isEmpty()) continue;
+            
+            // Allow discovery even with empty names for humans, BUT skip if it looks like an uninitialized slot
+            if (p.getAiControlled() == 1 && (p.getName() == null || p.getName().trim().isEmpty())) continue;
+            
+            // If it's a human slot but name is empty AND race number is 0, it's likely uninitialized
+            if (p.getAiControlled() == 0 && (p.getName() == null || p.getName().trim().isEmpty()) && p.getRaceNumber() == 0) continue;
 
             // Track if this car was EVER controlled by a human during this session.
-            // In online races, if a human DNFs/Retires, aiControlled might switch to 1.
             if (p.getAiControlled() == 0 && i < state.getIsHuman().length) {
                 state.getIsHuman()[i] = true;
             }
 
-            String key = p.getName() + "|" + p.getRaceNumber() + "|" + p.getDriverId();
+            String telemetryName = p.getName() != null ? p.getName() : "";
+            String key = telemetryName + "|" + p.getRaceNumber() + "|" + p.getDriverId();
             if (state.getDriverNameOverrides().containsKey(key)) continue;
 
             // Check if we already have a mapping (even without override)
-            Optional<DriverMapping> mapping = driverMappingRepository.findByLeagueAndTelemetryNameAndRaceNumberAndDriverId(league, p.getName(), p.getRaceNumber(), p.getDriverId());
+            Optional<DriverMapping> mapping = driverMappingRepository.findByTierAndTelemetryNameAndRaceNumberAndDriverId(tier, telemetryName, p.getRaceNumber(), p.getDriverId());
             if (mapping.isEmpty()) {
                 DriverMapping newMapping = new DriverMapping();
-                newMapping.setLeague(league);
-                newMapping.setTelemetryName(p.getName());
+                newMapping.setTier(tier);
+                newMapping.setTelemetryName(telemetryName);
                 newMapping.setRaceNumber(p.getRaceNumber());
                 newMapping.setDriverId(p.getDriverId());
+                
+                // If name is missing or "Player", set a default display name
+                if (telemetryName.trim().isEmpty() || "Player".equalsIgnoreCase(telemetryName.trim())) {
+                    String displayName = "Player #" + p.getRaceNumber();
+                    newMapping.setOverriddenName(displayName);
+                    state.getDriverNameOverrides().put(key, displayName);
+                } else {
+                    state.getDriverNameOverrides().put(key, "");
+                }
+                
                 driverMappingRepository.save(newMapping);
-                // Add to cache with empty override to avoid re-checking
-                state.getDriverNameOverrides().put(key, "");
                 changed = true;
-                log.info("Auto-discovered new driver in league {}: {} (#{}, ID: {})", league.getId(), p.getName(), p.getRaceNumber(), p.getDriverId());
+                log.info("Auto-discovered new driver in tier {}: {} (#{}, ID: {})", tier.getId(), telemetryName, p.getRaceNumber(), p.getDriverId());
             } else {
                 // Already in DB, add to cache to avoid re-checking DB
-                state.getDriverNameOverrides().put(key, mapping.get().getOverriddenName() != null ? mapping.get().getOverriddenName() : "");
+                String displayName = mapping.get().getOverriddenName() != null ? mapping.get().getOverriddenName() : "";
+                state.getDriverNameOverrides().put(key, displayName);
                 if (mapping.get().isReserve()) {
                     state.getReserveDrivers().add(key);
                 }
@@ -466,7 +487,7 @@ public class TelemetryProcessingService {
         long packetSessionUID = header.getSessionUID();
 
         if (header.getPacketId() == 8) {
-            log.info("Incoming Packet 8 (Final Classification) for UID: {} (League: {})", packetSessionUID, state.getLeagueId());
+            log.info("Incoming Packet 8 (Final Classification) for UID: {} (League: {})", packetSessionUID, state.getTierId());
         }
 
         // Reset session-specific state if session UID changed OR if there was a long gap
@@ -476,17 +497,17 @@ public class TelemetryProcessingService {
         if (sessionChanged || timeout) {
             log.info("{} detected for league {}, resetting live tracking state. (New UID: {}, Old UID: {}, Gap: {}ms)",
                 timeout ? "Timeout" : "Session change",
-                state.getLeagueId(),
+                state.getTierId(),
                 packetSessionUID, state.getCurrentSessionUID(), (now - state.getLastPacketTime()));
             
             // If it was a real session that just ended/timed out, save what we have before resetting?
             // Usually SEND or Final Classification handles this, but this is a safety net.
             
             state.reset();
-            clearState(state.getLeagueId());
+            clearState(state.getTierId());
             state.setCurrentSessionUID(packetSessionUID);
             // Clear the live UI
-            broadcaster.broadcastLeaderboard(state.getLeagueId(), Collections.emptyList());
+            broadcaster.broadcastLeaderboard(state.getTierId(), Collections.emptyList());
         }
         state.setLastPacketTime(now);
 
@@ -517,11 +538,11 @@ public class TelemetryProcessingService {
                     log.info("Session Ended event (SEND) received for UID: {}. Triggering result save.", header.getSessionUID());
                     saveResultsFromLiveState(state, header.getSessionUID());
                 } else if ("DRSE".equals(eventData.getEventStringCode())) {
-                    log.info("DRS Enabled event received for league {}", state.getLeagueId());
+                    log.info("DRS Enabled event received for league {}", state.getTierId());
                     state.setDrsEnabled(true);
                     broadcastSessionInfo(state);
                 } else if ("DRSD".equals(eventData.getEventStringCode())) {
-                    log.info("DRS Disabled event received for league {}", state.getLeagueId());
+                    log.info("DRS Disabled event received for league {}", state.getTierId());
                     state.setDrsEnabled(false);
                     broadcastSessionInfo(state);
                 }
@@ -542,7 +563,7 @@ public class TelemetryProcessingService {
             case 8: // Final Classification
                 PacketFinalClassificationData classification = PacketFinalClassificationData.fromByteBuffer(buffer, header);
                 handleFinalClassification(state, classification);
-                clearState(state.getLeagueId());
+                clearState(state.getTierId());
                 break;
             default:
                 break;
@@ -626,13 +647,13 @@ public class TelemetryProcessingService {
     private void broadcastSessionInfo(LeagueSessionState state) {
         SessionInfo info = buildSessionInfo(state);
         if (info != null) {
-            broadcaster.broadcastSessionInfo(state.getLeagueId(), info);
+            broadcaster.broadcastSessionInfo(state.getTierId(), info);
         }
     }
 
     public SessionInfo getSessionInfo(Long leagueId) {
         return leagueStates.values().stream()
-                .filter(s -> Objects.equals(s.getLeagueId(), leagueId))
+                .filter(s -> Objects.equals(s.getTierId(), leagueId))
                 .findFirst()
                 .map(this::buildSessionInfo)
                 .orElse(null);
@@ -668,13 +689,13 @@ public class TelemetryProcessingService {
     private void broadcastLeaderboard(LeagueSessionState state) {
         List<DriverBoardState> board = buildLeaderboard(state);
         if (board != null) {
-            broadcaster.broadcastLeaderboard(state.getLeagueId(), board);
+            broadcaster.broadcastLeaderboard(state.getTierId(), board);
         }
     }
 
     public List<DriverBoardState> getLeaderboard(Long leagueId) {
         return leagueStates.values().stream()
-                .filter(s -> Objects.equals(s.getLeagueId(), leagueId))
+                .filter(s -> Objects.equals(s.getTierId(), leagueId))
                 .findFirst()
                 .map(this::buildLeaderboard)
                 .orElse(Collections.emptyList());
@@ -692,9 +713,14 @@ public class TelemetryProcessingService {
                 i >= state.getCurrentCarStatus().getCarStatusData().size()) break;
 
             ParticipantData p = state.getCurrentParticipants().getParticipants().get(i);
-            if (p.getName() == null || p.getName().isEmpty()) continue;
-
             LapData ld = state.getCurrentLapData().getLapData().get(i);
+            
+            // Skip empty/inactive slots
+            if (ld.getResultStatus() <= 1) continue;
+
+            // Don't skip players without name if they are active, use fallback instead
+            if (p.getAiControlled() == 1 && (p.getName() == null || p.getName().isEmpty())) continue;
+
             CarStatusData csd = state.getCurrentCarStatus().getCarStatusData().get(i);
 
             DriverBoardState driverState = new DriverBoardState();
@@ -1185,7 +1211,7 @@ public class TelemetryProcessingService {
         long sessionUID = classification.getHeader().getSessionUID();
         log.info("Received Final Classification packet (packet 8) for session UID: {}", sessionUID);
         
-        if (state.getLeagueId() == null || state.getLeagueId() == -1) {
+        if (state.getTierId() == null || state.getTierId() == -1) {
             log.warn("Cannot save results: No valid league associated with state.");
             return;
         }
@@ -1193,7 +1219,7 @@ public class TelemetryProcessingService {
         // Fallback fetch from DB if critical data is missing
         if (state.getCurrentSession() == null || state.getCurrentParticipants() == null) {
             log.info("Session or Participants data missing for UID: {}, trying fallback fetch from DB.", sessionUID);
-            liveStateRepository.findById(state.getLeagueId()).ifPresent(remote -> {
+            liveStateRepository.findById(state.getTierId()).ifPresent(remote -> {
                 try {
                     String json = decompress(remote.getCompressedState());
                     if (!json.isEmpty()) {
@@ -1201,7 +1227,7 @@ public class TelemetryProcessingService {
                         if (remoteState.getCurrentSessionUID() == sessionUID) {
                             if (state.getCurrentSession() == null) state.setCurrentSession(remoteState.getCurrentSession());
                             if (state.getCurrentParticipants() == null) state.setCurrentParticipants(remoteState.getCurrentParticipants());
-                            log.info("Successfully recovered missing data from database for league {}", state.getLeagueId());
+                            log.info("Successfully recovered missing data from database for league {}", state.getTierId());
                         }
                     }
                 } catch (Exception e) {
@@ -1218,18 +1244,19 @@ public class TelemetryProcessingService {
             return;
         }
 
-        League league = leagueRepository.findByIdWithEvents(state.getLeagueId()).orElse(null);
+        Tier tier = tierRepository.findById(state.getTierId()).orElse(null);
+        League league = tier != null ? tier.getLeague() : null;
         if (league == null) {
-            log.warn("Cannot save results: Activated league ID {} not found in database.", state.getLeagueId());
+            log.warn("Cannot save results: Activated league ID {} not found in database.", state.getTierId());
             return;
         }
 
-        // Check if session already recorded (Search by UID only first, handles multi-pod finishing)
+        // Check if session already recorded for this specific tier
         boolean wasOverwritten = false;
-        Optional<SessionResult> existing = sessionResultRepository.findBySessionUID(sessionUID);
+        Optional<SessionResult> existing = sessionResultRepository.findBySessionUIDAndTier(sessionUID, tier);
         if (existing.isPresent()) {
-            log.info("Session UID: {} already recorded as ID: {}. Overwriting with Final Classification data.", 
-                sessionUID, existing.get().getId());
+            log.info("Session UID: {} for Tier: {} already recorded as ID: {}. Overwriting with Final Classification data.", 
+                sessionUID, tier.getName(), existing.get().getId());
             sessionResultRepository.delete(existing.get());
             sessionResultRepository.flush();
             wasOverwritten = true;
@@ -1251,7 +1278,7 @@ public class TelemetryProcessingService {
             classification.getNumCars(), sessionUID, state.getCurrentSession().getSessionType());
 
         SessionResult sessionResult = new SessionResult();
-        sessionResult.setLeague(league);
+        sessionResult.setTier(tier);
         sessionResult.setEvent(event);
         sessionResult.setSessionUID(classification.getHeader().getSessionUID());
         sessionResult.setSessionType(state.getCurrentSession().getSessionType());
@@ -1259,9 +1286,10 @@ public class TelemetryProcessingService {
 
         boolean isRace = state.getCurrentSession().getSessionType() >= 15 && state.getCurrentSession().getSessionType() <= 17;
 
+        List<SessionPointConfig> pointConfigs = sessionPointConfigRepository.findByLeague(league);
         for (int i = 0; i < classification.getNumCars(); i++) {
             FinalClassificationData data = classification.getClassificationData().get(i);
-            if (data.getResultStatus() == 0) continue; // Inactive/Invalid
+            if (data.getResultStatus() <= 1) continue; // Inactive/Invalid
 
             ParticipantData participant = state.getCurrentParticipants().getParticipants().get(i);
             
@@ -1275,7 +1303,7 @@ public class TelemetryProcessingService {
             driverResult.setTeamName(TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(data.getPosition());
             driverResult.setNumLaps(data.getNumLaps());
-            driverResult.setPointsAwarded(getPointsForPosition(league, state.getCurrentSession().getSessionType(), data.getPosition()));
+            driverResult.setPointsAwarded(getPointsForPosition(pointConfigs, state.getCurrentSession().getSessionType(), data.getPosition()));
             driverResult.setGridPosition(data.getGridPosition());
             driverResult.setBestLapTime(data.getBestLapTimeInMS() / 1000.0f);
             driverResult.setTotalTime(data.getTotalRaceTime());
@@ -1331,7 +1359,7 @@ public class TelemetryProcessingService {
                 for (DriverResult driverResult : sessionResult.getDriverResults()) {
                     String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId();
                     boolean isReserve = state.getReserveDrivers().contains(key);
-                    updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
+                    updateStandings(tier, league, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
                 }
             }
         }
@@ -1342,20 +1370,22 @@ public class TelemetryProcessingService {
 
     @Transactional
     public void saveResultsFromLiveState(LeagueSessionState state, long sessionUID) {
-        if (state.getLeagueId() == null || state.getLeagueId() == -1 || state.getCurrentSession() == null || state.getCurrentParticipants() == null || state.getCurrentLapData() == null) {
+        if (state.getTierId() == null || state.getTierId() == -1 || state.getCurrentSession() == null || state.getCurrentParticipants() == null || state.getCurrentLapData() == null) {
             log.warn("Cannot save live results: Missing critical context (League, Session, Participants or LapData)");
             return;
         }
 
-        // Check if session already recorded
+        // Check if session already recorded for this tier
         int sessionType = state.getCurrentSession().getSessionType();
-        Optional<SessionResult> existing = sessionResultRepository.findBySessionUIDAndSessionType(sessionUID, sessionType);
+        Tier tier = tierRepository.findById(state.getTierId()).orElse(null);
+        if (tier == null) return;
+
+        Optional<SessionResult> existing = sessionResultRepository.findBySessionUIDAndTier(sessionUID, tier);
         if (existing.isPresent()) {
-            return; // Already saved (maybe by Packet 8 that arrived just before SEND)
+            return; // Already saved
         }
 
-        League league = leagueRepository.findByIdWithEvents(state.getLeagueId()).orElse(null);
-        if (league == null) return;
+        League league = tier.getLeague();
 
         String trackIdStr = String.valueOf(state.getCurrentSession().getTrackId());
         Event event = eventRepository.findByLeagueAndTrackId(league, trackIdStr)
@@ -1368,7 +1398,7 @@ public class TelemetryProcessingService {
                 });
 
         SessionResult sessionResult = new SessionResult();
-        sessionResult.setLeague(league);
+        sessionResult.setTier(tier);
         sessionResult.setEvent(event);
         sessionResult.setSessionUID(sessionUID);
         sessionResult.setSessionType(sessionType);
@@ -1378,7 +1408,8 @@ public class TelemetryProcessingService {
 
         for (int i = 0; i < state.getCurrentParticipants().getParticipants().size(); i++) {
             ParticipantData participant = state.getCurrentParticipants().getParticipants().get(i);
-            if (participant.getName() == null || participant.getName().isEmpty()) continue;
+            // Don't skip players without name, use fallback instead
+            if (participant.getAiControlled() == 1 && (participant.getName() == null || participant.getName().isEmpty())) continue;
 
             if (i >= state.getCurrentLapData().getLapData().size()) break;
             LapData ld = state.getCurrentLapData().getLapData().get(i);
@@ -1403,7 +1434,8 @@ public class TelemetryProcessingService {
             driverResult.setWarnings(ld.getTotalWarnings());
             
             // Assign points
-            driverResult.setPointsAwarded(getPointsForPosition(league, sessionType, ld.getCarPosition()));
+            List<SessionPointConfig> pointConfigs = sessionPointConfigRepository.findByLeague(league);
+            driverResult.setPointsAwarded(getPointsForPosition(pointConfigs, sessionType, ld.getCarPosition()));
 
             // Link stored lap results
             List<LapResult> laps = lapResultRepository.findBySessionUIDAndCarIndex(sessionUID, i);
@@ -1478,11 +1510,11 @@ public class TelemetryProcessingService {
             for (DriverResult driverResult : sessionResult.getDriverResults()) {
                 String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId();
                 boolean isReserve = state.getReserveDrivers().contains(key);
-                updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
+                updateStandings(tier, league, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
             }
         }
 
-        clearState(state.getLeagueId());
+        clearState(state.getTierId());
 
         log.info("Saved Fallback {} results (from live state) for session UID: {} in event: {}", 
                 isRace ? "Race" : "Qualifying", sessionUID, event.getEventName());
@@ -1493,20 +1525,23 @@ public class TelemetryProcessingService {
         League league = leagueRepository.findByIdWithEvents(leagueId).orElse(null);
         if (league == null) return;
 
-        List<DriverMapping> mappings = driverMappingRepository.findByLeague(league);
-        Map<String, String> nameMap = mappings.stream()
-                .filter(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty())
-                .collect(Collectors.toMap(
-                        m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId(),
-                        DriverMapping::getOverriddenName,
-                        (existing, replacement) -> existing
-                ));
-
         java.util.Set<SessionResult> allSessions = league.getEvents().stream()
                 .flatMap(e -> e.getSessionResults().stream())
                 .collect(java.util.stream.Collectors.toSet());
 
         for (SessionResult session : allSessions) {
+            Tier tier = session.getTier();
+            if (tier == null) continue;
+
+            List<DriverMapping> mappings = driverMappingRepository.findByTier(tier);
+            Map<String, String> nameMap = mappings.stream()
+                    .filter(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty())
+                    .collect(Collectors.toMap(
+                            m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId(),
+                            DriverMapping::getOverriddenName,
+                            (existing, replacement) -> existing
+                    ));
+
             for (DriverResult result : session.getDriverResults()) {
                 if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
                     String key = result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId();
@@ -1525,33 +1560,39 @@ public class TelemetryProcessingService {
         League league = leagueRepository.findByIdWithEvents(leagueId).orElse(null);
         if (league == null) return;
 
-        // Load all mappings for this league
-        List<DriverMapping> mappings = driverMappingRepository.findByLeague(league);
-        Map<String, String> nameMap = mappings.stream()
-                .filter(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty())
-                .collect(Collectors.toMap(
-                        m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId(),
-                        DriverMapping::getOverriddenName,
-                        (existing, replacement) -> existing
-                ));
-
-        java.util.Set<String> reserveSet = mappings.stream()
-                .filter(DriverMapping::isReserve)
-                .map(m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId())
-                .collect(Collectors.toSet());
-
         // Clear existing standings
-        driverStandingRepository.deleteAll(driverStandingRepository.findByLeague(league));
-        teamStandingRepository.deleteAll(teamStandingRepository.findByLeague(league));
+        for (Tier tier : tierRepository.findByLeagueId(league.getId())) {
+            driverStandingRepository.deleteAll(driverStandingRepository.findByTier(tier));
+            teamStandingRepository.deleteAll(teamStandingRepository.findByTier(tier));
+        }
+        teamStandingRepository.deleteAll(teamStandingRepository.findByLeagueAndTierIsNull(league));
 
         List<SessionPointConfig> pointConfigs = sessionPointConfigRepository.findByLeague(league);
 
-        // Get all sessions from events - Use a Set to avoid duplicates if hibernate join fetch returned duplicates
+        // Get all sessions from events
         java.util.Set<SessionResult> allSessions = league.getEvents().stream()
                 .flatMap(e -> e.getSessionResults().stream())
-                .collect(java.util.stream.Collectors.toSet());
+                .sorted(Comparator.comparing(SessionResult::getId))
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
 
         for (SessionResult session : allSessions) {
+            Tier tier = session.getTier();
+            if (tier == null) continue;
+
+            List<DriverMapping> mappings = driverMappingRepository.findByTier(tier);
+            Map<String, String> nameMap = mappings.stream()
+                    .filter(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty())
+                    .collect(Collectors.toMap(
+                            m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId(),
+                            DriverMapping::getOverriddenName,
+                            (existing, replacement) -> existing
+                    ));
+
+            java.util.Set<String> reserveSet = mappings.stream()
+                    .filter(DriverMapping::isReserve)
+                    .map(m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId())
+                    .collect(Collectors.toSet());
+
             boolean isRace = session.getSessionType() >= 15 && session.getSessionType() <= 17;
             
             // Recalculate gaps for each session
@@ -1578,7 +1619,7 @@ public class TelemetryProcessingService {
                 }
 
                 // Re-evaluate points based on current configuration
-                int finishPoints = getPointsForPosition(league, session.getSessionType(), result.getPosition());
+                int finishPoints = getPointsForPosition(pointConfigs, session.getSessionType(), result.getPosition());
                 
                 // Bonus points
                 int bonusPoints = 0;
@@ -1594,43 +1635,40 @@ public class TelemetryProcessingService {
                         if (fastestLapTime != null && fastestLapTime.equals(result.getBestLapTime())) {
                             bonusPoints += (conf.getFastestLapPoints() != null ? conf.getFastestLapPoints() : 0);
                         }
-                        // No penalty bonus
-                        if ((result.getPenalties() == null || result.getPenalties() == 0) && (result.getWarnings() == null || result.getWarnings() == 0)) {
+                        // No penalty bonus - only check for actual time penalties
+                        if (result.getPenalties() == null || result.getPenalties() == 0) {
                             bonusPoints += (conf.getNoPenaltyPoints() != null ? conf.getNoPenaltyPoints() : 0);
                         }
                     }
                 }
 
                 result.setPointsAwarded(finishPoints + bonusPoints);
+                driverResultRepository.save(result);
 
-                // Only update standings if points were awarded
+                // Update standings
+                boolean isReserve = false;
+                Integer raceNumber = result.getRaceNumber();
+                if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
+                    isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId());
+                }
+                
                 if (result.getPointsAwarded() != null && result.getPointsAwarded() > 0) {
-                    boolean isReserve = false;
-                    Integer raceNumber = result.getRaceNumber();
-                    if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
-                        isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId());
-                    }
-                    updateStandings(league, result, isReserve, raceNumber, isRace);
+                    updateStandings(tier, league, result, isReserve, raceNumber, isRace);
                 } else if (isRace) {
                     // Still need to update standings for races for Wins/Podiums even if 0 points
-                    boolean isReserve = false;
-                    Integer raceNumber = result.getRaceNumber();
-                    if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
-                        isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId());
-                    }
-                    updateStandings(league, result, isReserve, raceNumber, true);
+                    updateStandings(tier, league, result, isReserve, raceNumber, true);
                 }
             }
         }
         log.info("Recalculated standings for league: {}", league.getName());
     }
 
-    private void updateStandings(League league, DriverResult result, boolean isReserve, Integer raceNumber, boolean isRaceSession) {
+    private void updateStandings(Tier tier, League league, DriverResult result, boolean isReserve, Integer raceNumber, boolean isRaceSession) {
         // Update Driver Standings
-        DriverStanding ds = driverStandingRepository.findByLeagueAndDriverName(league, result.getDriverName())
+        DriverStanding ds = driverStandingRepository.findByTierAndDriverName(tier, result.getDriverName())
                 .orElseGet(() -> {
                     DriverStanding newDs = new DriverStanding();
-                    newDs.setLeague(league);
+                    newDs.setTier(tier);
                     newDs.setDriverName(result.getDriverName());
                     newDs.setPoints(0);
                     newDs.setWins(0);
@@ -1659,8 +1697,21 @@ public class TelemetryProcessingService {
         }
         driverStandingRepository.save(ds);
 
-        // Update Team Standings
-        TeamStanding ts = teamStandingRepository.findByLeagueAndTeamName(league, result.getTeamName())
+        // Update Team Standings (Tier level)
+        TeamStanding tierTs = teamStandingRepository.findByTierAndTeamName(tier, result.getTeamName())
+                .orElseGet(() -> {
+                    TeamStanding newTs = new TeamStanding();
+                    newTs.setLeague(league);
+                    newTs.setTier(tier);
+                    newTs.setTeamName(result.getTeamName());
+                    newTs.setPoints(0);
+                    return newTs;
+                });
+        tierTs.setPoints((tierTs.getPoints() != null ? tierTs.getPoints() : 0) + result.getPointsAwarded());
+        teamStandingRepository.save(tierTs);
+
+        // Update Team Standings (Overall level)
+        TeamStanding overallTs = teamStandingRepository.findByLeagueAndTierIsNullAndTeamName(league, result.getTeamName())
                 .orElseGet(() -> {
                     TeamStanding newTs = new TeamStanding();
                     newTs.setLeague(league);
@@ -1668,8 +1719,8 @@ public class TelemetryProcessingService {
                     newTs.setPoints(0);
                     return newTs;
                 });
-        ts.setPoints((ts.getPoints() != null ? ts.getPoints() : 0) + result.getPointsAwarded());
-        teamStandingRepository.save(ts);
+        overallTs.setPoints((overallTs.getPoints() != null ? overallTs.getPoints() : 0) + result.getPointsAwarded());
+        teamStandingRepository.save(overallTs);
     }
 
     public void calculateGaps(SessionResult session) {

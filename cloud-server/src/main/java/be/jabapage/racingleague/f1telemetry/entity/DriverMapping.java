@@ -15,8 +15,8 @@ public class DriverMapping {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "league_id")
-    private League league;
+    @JoinColumn(name = "tier_id")
+    private Tier tier;
 
     @Column(name = "telemetry_name")
     private String telemetryName;

@@ -15,8 +15,8 @@ public class DriverStanding {
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "league_id")
-    private League league;
+    @JoinColumn(name = "tier_id")
+    private Tier tier;
 
     @Column(name = "driver_name")
     private String driverName;

@@ -18,6 +18,10 @@ public class TeamStanding {
     @JoinColumn(name = "league_id")
     private League league;
 
+    @ManyToOne
+    @JoinColumn(name = "tier_id", nullable = true)
+    private Tier tier;
+
     @Column(name = "team_name")
     private String teamName;
     private Integer points;
