@@ -11,6 +11,7 @@
     - [Longest Stints](#longest-stints)
     - [Consistency Rating](#consistency-rating)
 - [5. Season Settings](#5-season-settings)
+- [6. Points configuration overrides](#6-points-configuration-overrides)
 
 ## 1. Collector Setup
 ### 1a. Local Collector Setup
@@ -100,3 +101,12 @@ League administrators can customize the live leaderboard behavior via the **Sett
 * **Hide AI Drivers:** If enabled, AI drivers will be filtered out from the standings and the live leaderboard.
 * **Show Tyre Wear:** Displays the current maximum tyre wear percentage for each driver on the live leaderboard.
 * **Show ERS:** Displays the current ERS battery percentage for each driver on the live leaderboard. When a driver is actively using ERS (Overtake mode), the value is highlighted in bold yellow.
+
+## 6. Points Configuration Overrides
+League administrators can customize the points awarded for any session type via the **Points** tab in the Season Details view.
+
+* **Standard System:** By default, the system uses the standard F1 point system (25, 18, 15, 12, 10, 8, 6, 4, 2, 1) only for **Race** sessions.
+* **Custom Overrides:** You can define custom points for any finishing position in any session type.
+    * **Example (Pole Position):** Add an override for 'Qualifying 3' or 'Short Qualifying', Position 1, with 1 point.
+    * **Example (Sprint):** Add overrides for positions 1-8 for 'Sprint' sessions if needed.
+* **Standings Integration:** Any points awarded via custom overrides are automatically added to the driver and team standings.

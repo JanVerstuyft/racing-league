@@ -39,6 +39,8 @@ public class TelemetryProcessingService {
     @Autowired
     private LiveStateRepository liveStateRepository;
     @Autowired
+    private SessionPointConfigRepository sessionPointConfigRepository;
+    @Autowired
     private Broadcaster broadcaster;
     @Autowired
     private ObjectMapper objectMapper;
@@ -279,6 +281,27 @@ public class TelemetryProcessingService {
                 state.getReserveDrivers().add(key);
             }
         }
+    }
+
+    private int getPointsForPosition(League league, int sessionType, int position) {
+        // Check for custom point configuration for this session type and position
+        List<SessionPointConfig> configs = sessionPointConfigRepository.findByLeague(league);
+        Optional<SessionPointConfig> config = configs.stream()
+                .filter(c -> c.getSessionType() == sessionType && c.getPosition() == position)
+                .findFirst();
+
+        if (config.isPresent()) {
+            return config.get().getPoints();
+        }
+
+        // Fallback to standard F1 points for Race sessions (15, 16, 17)
+        boolean isRace = sessionType >= 15 && sessionType <= 17;
+        if (isRace && position >= 1 && position <= 10) {
+            int[] pointsMap = {0, 25, 18, 15, 12, 10, 8, 6, 4, 2, 1};
+            return pointsMap[position];
+        }
+
+        return 0;
     }
 
     private String getDriverName(LeagueSessionState state, ParticipantData p) {
@@ -1196,7 +1219,7 @@ public class TelemetryProcessingService {
             driverResult.setTeamName(TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(data.getPosition());
             driverResult.setNumLaps(data.getNumLaps());
-            driverResult.setPointsAwarded(data.getPoints());
+            driverResult.setPointsAwarded(getPointsForPosition(league, state.getCurrentSession().getSessionType(), data.getPosition()));
             driverResult.setGridPosition(data.getGridPosition());
             driverResult.setBestLapTime(data.getBestLapTimeInMS() / 1000.0f);
             driverResult.setTotalTime(data.getTotalRaceTime());
@@ -1241,8 +1264,9 @@ public class TelemetryProcessingService {
         // Calculate gaps
         calculateGaps(sessionResult);
 
-        // Then update standings if it's a race
-        if (isRace) {
+        // Then update standings if points were awarded or it's a race
+        boolean hasPoints = sessionResult.getDriverResults().stream().anyMatch(dr -> dr.getPointsAwarded() != null && dr.getPointsAwarded() > 0);
+        if (isRace || hasPoints) {
             if (wasOverwritten) {
                 // If we overwritten an existing (live-saved) result, we must recalculate everything
                 // to avoid double-counting points in standings.
@@ -1251,7 +1275,7 @@ public class TelemetryProcessingService {
                 for (DriverResult driverResult : sessionResult.getDriverResults()) {
                     String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId();
                     boolean isReserve = state.getReserveDrivers().contains(key);
-                    updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber());
+                    updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
                 }
             }
         }
@@ -1322,13 +1346,8 @@ public class TelemetryProcessingService {
             driverResult.setPenalties(ld.getPenalties());
             driverResult.setWarnings(ld.getTotalWarnings());
             
-            // Assign points for Race sessions based on standard F1 system
-            if (isRace && ld.getCarPosition() >= 1 && ld.getCarPosition() <= 10) {
-                int[] pointsMap = {0, 25, 18, 15, 12, 10, 8, 6, 4, 2, 1};
-                driverResult.setPointsAwarded(pointsMap[ld.getCarPosition()]);
-            } else {
-                driverResult.setPointsAwarded(0);
-            }
+            // Assign points
+            driverResult.setPointsAwarded(getPointsForPosition(league, sessionType, ld.getCarPosition()));
 
             // Link stored lap results
             List<LapResult> laps = lapResultRepository.findBySessionUIDAndCarIndex(sessionUID, i);
@@ -1398,11 +1417,12 @@ public class TelemetryProcessingService {
         // Calculate gaps
         calculateGaps(sessionResult);
 
-        if (isRace) {
+        boolean hasPoints = sessionResult.getDriverResults().stream().anyMatch(dr -> dr.getPointsAwarded() != null && dr.getPointsAwarded() > 0);
+        if (isRace || hasPoints) {
             for (DriverResult driverResult : sessionResult.getDriverResults()) {
                 String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId();
                 boolean isReserve = state.getReserveDrivers().contains(key);
-                updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber());
+                updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
             }
         }
 
@@ -1468,6 +1488,8 @@ public class TelemetryProcessingService {
         driverStandingRepository.deleteAll(driverStandingRepository.findByLeague(league));
         teamStandingRepository.deleteAll(teamStandingRepository.findByLeague(league));
 
+        List<SessionPointConfig> pointConfigs = sessionPointConfigRepository.findByLeague(league);
+
         // Get all sessions from events - Use a Set to avoid duplicates if hibernate join fetch returned duplicates
         java.util.Set<SessionResult> allSessions = league.getEvents().stream()
                 .flatMap(e -> e.getSessionResults().stream())
@@ -1478,6 +1500,13 @@ public class TelemetryProcessingService {
             
             // Recalculate gaps for each session
             calculateGaps(session);
+
+            // Find fastest lap for this session
+            final Float fastestLapTime = session.getDriverResults().stream()
+                    .map(DriverResult::getBestLapTime)
+                    .filter(t -> t != null && t > 0)
+                    .min(Float::compare)
+                    .orElse(null);
             
             for (DriverResult result : session.getDriverResults()) {
                 // Determine the correct name to use
@@ -1492,21 +1521,55 @@ public class TelemetryProcessingService {
                     result.setDriverName(nameToUse);
                 }
 
-                // Only update standings if it's a race
-                if (isRace) {
+                // Re-evaluate points based on current configuration
+                int finishPoints = getPointsForPosition(league, session.getSessionType(), result.getPosition());
+                
+                // Bonus points
+                int bonusPoints = 0;
+                Optional<SessionPointConfig> sessionConfig = pointConfigs.stream()
+                        .filter(c -> c.getSessionType().equals(session.getSessionType()))
+                        .findFirst();
+                
+                if (sessionConfig.isPresent()) {
+                    SessionPointConfig conf = sessionConfig.get();
+                    // Bonuses are only awarded if the driver scored points from their finishing position
+                    if (finishPoints > 0) {
+                        // Fastest lap bonus
+                        if (fastestLapTime != null && fastestLapTime.equals(result.getBestLapTime())) {
+                            bonusPoints += (conf.getFastestLapPoints() != null ? conf.getFastestLapPoints() : 0);
+                        }
+                        // No penalty bonus
+                        if ((result.getPenalties() == null || result.getPenalties() == 0) && (result.getWarnings() == null || result.getWarnings() == 0)) {
+                            bonusPoints += (conf.getNoPenaltyPoints() != null ? conf.getNoPenaltyPoints() : 0);
+                        }
+                    }
+                }
+
+                result.setPointsAwarded(finishPoints + bonusPoints);
+
+                // Only update standings if points were awarded
+                if (result.getPointsAwarded() != null && result.getPointsAwarded() > 0) {
                     boolean isReserve = false;
                     Integer raceNumber = result.getRaceNumber();
                     if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
                         isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId());
                     }
-                    updateStandings(league, result, isReserve, raceNumber);
+                    updateStandings(league, result, isReserve, raceNumber, isRace);
+                } else if (isRace) {
+                    // Still need to update standings for races for Wins/Podiums even if 0 points
+                    boolean isReserve = false;
+                    Integer raceNumber = result.getRaceNumber();
+                    if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
+                        isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId());
+                    }
+                    updateStandings(league, result, isReserve, raceNumber, true);
                 }
             }
         }
         log.info("Recalculated standings for league: {}", league.getName());
     }
 
-    private void updateStandings(League league, DriverResult result, boolean isReserve, Integer raceNumber) {
+    private void updateStandings(League league, DriverResult result, boolean isReserve, Integer raceNumber, boolean isRaceSession) {
         // Update Driver Standings
         DriverStanding ds = driverStandingRepository.findByLeagueAndDriverName(league, result.getDriverName())
                 .orElseGet(() -> {
@@ -1534,8 +1597,10 @@ public class TelemetryProcessingService {
         }
 
         ds.setPoints((ds.getPoints() != null ? ds.getPoints() : 0) + result.getPointsAwarded());
-        if (result.getPosition() != null && result.getPosition() == 1) ds.setWins((ds.getWins() != null ? ds.getWins() : 0) + 1);
-        if (result.getPosition() != null && result.getPosition() <= 3) ds.setPodiums((ds.getPodiums() != null ? ds.getPodiums() : 0) + 1);
+        if (isRaceSession) {
+            if (result.getPosition() != null && result.getPosition() == 1) ds.setWins((ds.getWins() != null ? ds.getWins() : 0) + 1);
+            if (result.getPosition() != null && result.getPosition() <= 3) ds.setPodiums((ds.getPodiums() != null ? ds.getPodiums() : 0) + 1);
+        }
         driverStandingRepository.save(ds);
 
         // Update Team Standings

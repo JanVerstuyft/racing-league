@@ -57,6 +57,9 @@ public class League {
     @OneToMany(mappedBy = "league", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private java.util.Set<Event> events = new java.util.LinkedHashSet<>();
 
+    @OneToMany(mappedBy = "league", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private List<SessionPointConfig> sessionPointConfigs = new ArrayList<>();
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
