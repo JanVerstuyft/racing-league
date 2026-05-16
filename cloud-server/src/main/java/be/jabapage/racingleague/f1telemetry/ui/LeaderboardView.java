@@ -90,7 +90,7 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
     @Override
     public void setParameter(BeforeEvent event, Long parameter) {
         this.tierId = parameter;
-        tierRepository.findById(tierId).ifPresent(tier -> {
+        tierRepository.findByIdWithLeague(tierId).ifPresent(tier -> {
             backLink.setRoute(SeasonDetailsView.class, tier.getLeague().getId());
         });
     }

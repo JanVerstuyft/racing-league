@@ -111,6 +111,7 @@ public class TelemetryProcessingService {
     }
 
     @Scheduled(fixedDelay = 1000)
+    @Transactional
     public void syncDistributedState() {
         Set<Long> activeLeagueIds = getActiveLeagueIds();
         if (activeLeagueIds.isEmpty()) return;
@@ -158,7 +159,7 @@ public class TelemetryProcessingService {
 
                                 lastLocalUpdate.put(remote.getTierId(), remote.getLastUpdated());
                                 
-                                tierRepository.findById(remote.getTierId()).ifPresent(t -> {
+                                tierRepository.findByIdWithLeague(remote.getTierId()).ifPresent(t -> {
                                     refreshDriverMappings(entry.getValue(), t);
                                     League l = t.getLeague();
                                     entry.getValue().setHideAi(l.isHideAi());
@@ -194,14 +195,15 @@ public class TelemetryProcessingService {
         return activeIds;
     }
 
-    private void loadAndBroadcast(LiveState remote) {
+    @Transactional
+    protected void loadAndBroadcast(LiveState remote) {
         try {
             String json = decompress(remote.getCompressedState());
             if (json.isEmpty()) return;
             LeagueSessionState state = objectMapper.readValue(json, LeagueSessionState.class);
             lastLocalUpdate.put(remote.getTierId(), remote.getLastUpdated());
             
-            tierRepository.findById(remote.getTierId()).ifPresent(t -> {
+            tierRepository.findByIdWithLeague(remote.getTierId()).ifPresent(t -> {
                 League l = t.getLeague();
                 refreshDriverMappings(state, t);
                 state.setHideAi(l.isHideAi());
@@ -328,7 +330,7 @@ public class TelemetryProcessingService {
                 .filter(s -> Objects.equals(s.getTierId(), tierId))
                 .findFirst()
                 .ifPresent(state -> {
-                    tierRepository.findById(tierId).ifPresent(tier -> refreshDriverMappings(state, tier));
+                    tierRepository.findByIdWithLeague(tierId).ifPresent(tier -> refreshDriverMappings(state, tier));
                 });
     }
 
@@ -414,7 +416,7 @@ public class TelemetryProcessingService {
     private void autoDiscoverDrivers(LeagueSessionState state, PacketParticipantsData participants) {
         if (state.getTierId() == null || state.getTierId() == -1) return;
 
-        Tier tier = tierRepository.findById(state.getTierId()).orElse(null);
+        Tier tier = tierRepository.findByIdWithLeague(state.getTierId()).orElse(null);
         if (tier == null) return;
 
         boolean changed = false;
@@ -476,6 +478,7 @@ public class TelemetryProcessingService {
         return p.getAiControlled() == 1;
     }
 
+    @Transactional
     public synchronized void processPacket(String token, PacketHeader header, ByteBuffer buffer) {
         LeagueSessionState state = getOrCreateState(token);
         if (state == null) {
@@ -500,9 +503,7 @@ public class TelemetryProcessingService {
                 state.getTierId(),
                 packetSessionUID, state.getCurrentSessionUID(), (now - state.getLastPacketTime()));
             
-            // If it was a real session that just ended/timed out, save what we have before resetting?
-            // Usually SEND or Final Classification handles this, but this is a safety net.
-            
+
             state.reset();
             clearState(state.getTierId());
             state.setCurrentSessionUID(packetSessionUID);
@@ -522,7 +523,6 @@ public class TelemetryProcessingService {
 
         switch (header.getPacketId()) {
             case 1: // Session
-                state.setCurrentSession(PacketSessionData.fromByteBuffer(buffer, header));
                 broadcastSessionInfo(state);
                 break;
             case 2: // Lap Data
@@ -1244,7 +1244,7 @@ public class TelemetryProcessingService {
             return;
         }
 
-        Tier tier = tierRepository.findById(state.getTierId()).orElse(null);
+        Tier tier = tierRepository.findByIdWithLeague(state.getTierId()).orElse(null);
         League league = tier != null ? tier.getLeague() : null;
         if (league == null) {
             log.warn("Cannot save results: Activated league ID {} not found in database.", state.getTierId());
@@ -1253,11 +1253,26 @@ public class TelemetryProcessingService {
 
         // Check if session already recorded for this specific tier
         boolean wasOverwritten = false;
-        Optional<SessionResult> existing = sessionResultRepository.findBySessionUIDAndTier(sessionUID, tier);
-        if (existing.isPresent()) {
-            log.info("Session UID: {} for Tier: {} already recorded as ID: {}. Overwriting with Final Classification data.", 
-                sessionUID, tier.getName(), existing.get().getId());
-            sessionResultRepository.delete(existing.get());
+        List<SessionResult> existing = sessionResultRepository.findAllBySessionUIDAndTier(sessionUID, tier);
+        if (!existing.isEmpty()) {
+            log.info("Session UID: {} for Tier: {} already recorded ({} session(s)). Overwriting with Final Classification data.", 
+                sessionUID, tier.getName(), existing.size());
+            
+            // Preserve LapResults: detach them from DriverResults so they aren't deleted by cascade
+            List<LapResult> allLaps = lapResultRepository.findBySessionUID(sessionUID);
+            for (LapResult lap : allLaps) {
+                lap.setDriverResult(null);
+            }
+            lapResultRepository.saveAllAndFlush(allLaps);
+
+            // Also clear the sets in the entities we are about to delete
+            for (SessionResult sr : existing) {
+                for (DriverResult dr : sr.getDriverResults()) {
+                    dr.getLapResults().clear();
+                }
+            }
+            
+            sessionResultRepository.deleteAll(existing);
             sessionResultRepository.flush();
             wasOverwritten = true;
         }
@@ -1287,6 +1302,8 @@ public class TelemetryProcessingService {
         boolean isRace = state.getCurrentSession().getSessionType() >= 15 && state.getCurrentSession().getSessionType() <= 17;
 
         List<SessionPointConfig> pointConfigs = sessionPointConfigRepository.findByLeague(league);
+        Map<Integer, DriverResult> driverResultMap = new HashMap<>();
+
         for (int i = 0; i < classification.getNumCars(); i++) {
             FinalClassificationData data = classification.getClassificationData().get(i);
             if (data.getResultStatus() <= 1) continue; // Inactive/Invalid
@@ -1312,8 +1329,20 @@ public class TelemetryProcessingService {
             if (state.getCurrentLapData() != null && i < state.getCurrentLapData().getLapData().size()) {
                 driverResult.setWarnings(state.getCurrentLapData().getLapData().get(i).getTotalWarnings());
             }
+            
+            sessionResult.getDriverResults().add(driverResult);
+            driverResultMap.put(i, driverResult);
+        }
 
-            // Link stored lap results
+        // Save everything first to ensure IDs are generated and relations are persisted
+        sessionResultRepository.saveAndFlush(sessionResult);
+
+        // Now link stored lap results and process Tyre Stints
+        for (Map.Entry<Integer, DriverResult> entry : driverResultMap.entrySet()) {
+            int i = entry.getKey();
+            DriverResult driverResult = entry.getValue();
+            FinalClassificationData data = classification.getClassificationData().get(i);
+
             List<LapResult> laps = lapResultRepository.findBySessionUIDAndCarIndex(classification.getHeader().getSessionUID(), i);
             for (LapResult lap : laps) {
                 lap.setDriverResult(driverResult);
@@ -1338,11 +1367,9 @@ public class TelemetryProcessingService {
                 lastEndLap = endLap;
                 driverResult.getTyreStints().add(stint);
             }
-            
-            sessionResult.getDriverResults().add(driverResult);
         }
 
-        // Save everything first to ensure IDs are generated and relations are persisted
+        // Save again with laps and stints linked
         sessionResultRepository.saveAndFlush(sessionResult);
 
         // Calculate gaps
@@ -1377,7 +1404,7 @@ public class TelemetryProcessingService {
 
         // Check if session already recorded for this tier
         int sessionType = state.getCurrentSession().getSessionType();
-        Tier tier = tierRepository.findById(state.getTierId()).orElse(null);
+        Tier tier = tierRepository.findByIdWithLeague(state.getTierId()).orElse(null);
         if (tier == null) return;
 
         Optional<SessionResult> existing = sessionResultRepository.findBySessionUIDAndTier(sessionUID, tier);
@@ -1405,6 +1432,9 @@ public class TelemetryProcessingService {
         sessionResult.setTrackId(trackIdStr);
 
         boolean isRace = sessionType >= 15 && sessionType <= 17;
+
+        Map<Integer, DriverResult> driverResultMap = new HashMap<>();
+        List<SessionPointConfig> pointConfigs = sessionPointConfigRepository.findByLeague(league);
 
         for (int i = 0; i < state.getCurrentParticipants().getParticipants().size(); i++) {
             ParticipantData participant = state.getCurrentParticipants().getParticipants().get(i);
@@ -1434,8 +1464,19 @@ public class TelemetryProcessingService {
             driverResult.setWarnings(ld.getTotalWarnings());
             
             // Assign points
-            List<SessionPointConfig> pointConfigs = sessionPointConfigRepository.findByLeague(league);
             driverResult.setPointsAwarded(getPointsForPosition(pointConfigs, sessionType, ld.getCarPosition()));
+            
+            sessionResult.getDriverResults().add(driverResult);
+            driverResultMap.put(i, driverResult);
+        }
+
+        // Save everything first to ensure IDs are generated and relations are persisted
+        sessionResultRepository.saveAndFlush(sessionResult);
+
+        // Now link stored lap results and derive Tyre Stints
+        for (Map.Entry<Integer, DriverResult> entry : driverResultMap.entrySet()) {
+            int i = entry.getKey();
+            DriverResult driverResult = entry.getValue();
 
             // Link stored lap results
             List<LapResult> laps = lapResultRepository.findBySessionUIDAndCarIndex(sessionUID, i);
@@ -1496,8 +1537,6 @@ public class TelemetryProcessingService {
                     }
                 }
             }
-            
-            sessionResult.getDriverResults().add(driverResult);
         }
 
         sessionResultRepository.saveAndFlush(sessionResult);

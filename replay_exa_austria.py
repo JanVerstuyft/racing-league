@@ -70,5 +70,5 @@ def replay_session(file_path, target_url):
 
 if __name__ == "__main__":
     RECORDING_FILE = "data/exa_austria.bin"
-    CLOUD_URL = "https://racingleague.jabapage.be/api/telemetry/26c5b212-ebd6-49b2-a134-d7fbf1d4f77e"
+    CLOUD_URL = "https://racingleague.jabapage.be/api/telemetry/04e2e214-5a81-40e1-9803-be5a7e9a392a"
     replay_session(RECORDING_FILE, CLOUD_URL)
