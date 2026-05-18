@@ -1,0 +1,200 @@
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001_initial_schema.xml" author="jan">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="app_user"/>
+            </not>
+        </preConditions>
+        <createTable tableName="driver_result">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="driver_result_pkey1"/>
+            </column>
+            <column name="is_ai" type="BOOLEAN"/>
+            <column name="best_lap_time" type="FLOAT4"/>
+            <column name="driver_id" type="INTEGER"/>
+            <column name="driver_name" type="VARCHAR(255)"/>
+            <column name="gap_to_leader" type="VARCHAR(255)"/>
+            <column name="grid_position" type="INTEGER"/>
+            <column name="num_laps" type="INTEGER"/>
+            <column defaultValueNumeric="0" name="penalties" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="points_awarded" type="INTEGER"/>
+            <column name="position" type="INTEGER"/>
+            <column name="race_number" type="INTEGER"/>
+            <column defaultValueNumeric="0" name="result_status" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="team_name" type="VARCHAR(255)"/>
+            <column name="telemetry_name" type="VARCHAR(255)"/>
+            <column name="total_time" type="FLOAT8"/>
+            <column defaultValueNumeric="0" name="warnings" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="session_result_id" type="BIGINT"/>
+        </createTable>
+        <createTable tableName="app_user">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="app_user_pkey"/>
+            </column>
+            <column name="password" type="VARCHAR(255)"/>
+            <column name="username" type="VARCHAR(255)"/>
+        </createTable>
+        <createTable tableName="session_result">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="session_result_pkey1"/>
+            </column>
+            <column name="session_type" type="INTEGER"/>
+            <column name="session_uid" type="BIGINT"/>
+            <column name="track_id" type="VARCHAR(255)"/>
+            <column name="event_id" type="BIGINT"/>
+            <column name="league_id" type="BIGINT"/>
+        </createTable>
+        <addUniqueConstraint columnNames="username" constraintName="uk3k4cplvh82srueuttfkwnylq0" tableName="app_user"/>
+        <addUniqueConstraint columnNames="session_uid, session_type" constraintName="uk9xym3lw5woboaw1pciliq9rt9"
+                             tableName="session_result"/>
+        <createTable tableName="driver_mapping">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="driver_mapping_pkey1"/>
+            </column>
+            <column name="driver_id" type="INTEGER"/>
+            <column name="overridden_name" type="VARCHAR(255)"/>
+            <column name="race_number" type="INTEGER"/>
+            <column name="is_reserve" type="BOOLEAN"/>
+            <column name="telemetry_name" type="VARCHAR(255)"/>
+            <column name="league_id" type="BIGINT"/>
+        </createTable>
+        <createTable tableName="driver_standing">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="driver_standing_pkey1"/>
+            </column>
+            <column name="is_ai" type="BOOLEAN"/>
+            <column name="driver_name" type="VARCHAR(255)"/>
+            <column name="podiums" type="INTEGER"/>
+            <column name="points" type="INTEGER"/>
+            <column name="race_number" type="INTEGER"/>
+            <column name="is_reserve" type="BOOLEAN"/>
+            <column name="team_name" type="VARCHAR(255)"/>
+            <column name="wins" type="INTEGER"/>
+            <column name="league_id" type="BIGINT"/>
+        </createTable>
+        <createTable tableName="event">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="event_pkey1"/>
+            </column>
+            <column name="event_name" type="VARCHAR(255)"/>
+            <column name="track_id" type="VARCHAR(255)"/>
+            <column name="league_id" type="BIGINT"/>
+        </createTable>
+        <createTable tableName="lap_result">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="lap_result_pkey1"/>
+            </column>
+            <column name="car_index" type="INTEGER"/>
+            <column name="is_valid" type="BOOLEAN"/>
+            <column name="lap_number" type="INTEGER"/>
+            <column name="lap_time_inms" type="BIGINT"/>
+            <column name="pit_stop_count" type="INTEGER"/>
+            <column name="s1_inms" type="BIGINT"/>
+            <column name="s2_inms" type="BIGINT"/>
+            <column name="s3_inms" type="BIGINT"/>
+            <column name="sessionuid" type="BIGINT"/>
+            <column name="tyre_compound" type="INTEGER"/>
+            <column name="driver_result_id" type="BIGINT"/>
+        </createTable>
+        <createTable tableName="league">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="league_pkey1"/>
+            </column>
+            <column name="hide_ai" type="BOOLEAN"/>
+            <column name="name" type="VARCHAR(255)"/>
+            <column name="show_ers" type="BOOLEAN"/>
+            <column name="show_tyre_wear" type="BOOLEAN"/>
+            <column name="token" type="VARCHAR(255)"/>
+            <column name="user_id" type="BIGINT"/>
+        </createTable>
+        <createTable tableName="live_state">
+            <column name="league_id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="live_state_pkey1"/>
+            </column>
+            <column name="compressed_state" type="BYTEA"/>
+            <column name="last_updated" type="TIMESTAMP WITHOUT TIME ZONE"/>
+        </createTable>
+        <createTable tableName="session_point_config">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="session_point_config_pkey1"/>
+            </column>
+            <column name="fastest_lap_points" type="INTEGER"/>
+            <column name="no_penalty_points" type="INTEGER"/>
+            <column name="points" type="INTEGER"/>
+            <column name="position" type="INTEGER"/>
+            <column name="session_type" type="INTEGER"/>
+            <column name="league_id" type="BIGINT"/>
+        </createTable>
+        <createTable tableName="team_standing">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="team_standing_pkey1"/>
+            </column>
+            <column name="points" type="INTEGER"/>
+            <column name="team_name" type="VARCHAR(255)"/>
+            <column name="league_id" type="BIGINT"/>
+        </createTable>
+        <createTable tableName="tyre_stint">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="tyre_stint_pkey1"/>
+            </column>
+            <column name="end_lap" type="INTEGER"/>
+            <column name="laps" type="INTEGER"/>
+            <column name="stint_order" type="INTEGER"/>
+            <column name="tyre_compound" type="INTEGER"/>
+            <column name="driver_result_id" type="BIGINT"/>
+        </createTable>
+        <addForeignKeyConstraint baseColumnNames="league_id" baseTableName="event"
+                                 constraintName="fk2oontqepc8mddwomq8jdynrrg" deferrable="false"
+                                 initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION"
+                                 referencedColumnNames="id" referencedTableName="league" validate="true"/>
+        <addForeignKeyConstraint baseColumnNames="league_id" baseTableName="driver_mapping"
+                                 constraintName="fk3g2hjrnwlf87llvcccjp0lli0" deferrable="false"
+                                 initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION"
+                                 referencedColumnNames="id" referencedTableName="league" validate="true"/>
+        <addForeignKeyConstraint baseColumnNames="session_result_id" baseTableName="driver_result"
+                                 constraintName="fk611jkoc8uuqeouo68skpesl2e" deferrable="false"
+                                 initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION"
+                                 referencedColumnNames="id" referencedTableName="session_result" validate="true"/>
+        <addForeignKeyConstraint baseColumnNames="driver_result_id" baseTableName="lap_result"
+                                 constraintName="fk9d0k0smodwhce8ws5p6mvsefm" deferrable="false"
+                                 initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION"
+                                 referencedColumnNames="id" referencedTableName="driver_result" validate="true"/>
+        <addForeignKeyConstraint baseColumnNames="league_id" baseTableName="driver_standing"
+                                 constraintName="fk9djuh29w9shgfyexdhs78607p" deferrable="false"
+                                 initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION"
+                                 referencedColumnNames="id" referencedTableName="league" validate="true"/>
+        <addForeignKeyConstraint baseColumnNames="event_id" baseTableName="session_result"
+                                 constraintName="fka8plxybccekgy7tt878ees5ni" deferrable="false"
+                                 initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION"
+                                 referencedColumnNames="id" referencedTableName="event" validate="true"/>
+        <addForeignKeyConstraint baseColumnNames="league_id" baseTableName="session_result"
+                                 constraintName="fkj79ir99stwfvvlcda7etn044d" deferrable="false"
+                                 initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION"
+                                 referencedColumnNames="id" referencedTableName="league" validate="true"/>
+        <addForeignKeyConstraint baseColumnNames="league_id" baseTableName="session_point_config"
+                                 constraintName="fkm5nuadm2s7nok7id0s2r66rh" deferrable="false"
+                                 initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION"
+                                 referencedColumnNames="id" referencedTableName="league" validate="true"/>
+        <addForeignKeyConstraint baseColumnNames="driver_result_id" baseTableName="tyre_stint"
+                                 constraintName="fkq57awxufoql6ugwgpovhwq57r" deferrable="false"
+                                 initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION"
+                                 referencedColumnNames="id" referencedTableName="driver_result" validate="true"/>
+        <addForeignKeyConstraint baseColumnNames="league_id" baseTableName="team_standing"
+                                 constraintName="fkqc9ewgwrtyai45vdm3upn3d8u" deferrable="false"
+                                 initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION"
+                                 referencedColumnNames="id" referencedTableName="league" validate="true"/>
+        <addForeignKeyConstraint baseColumnNames="user_id" baseTableName="league"
+                                 constraintName="fksd5262777a4xue6r3vjqbhs4f" deferrable="false"
+                                 initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION"
+                                 referencedColumnNames="id" referencedTableName="app_user" validate="true"/>
+    </changeSet>
+</databaseChangeLog>
