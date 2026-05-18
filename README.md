@@ -48,7 +48,33 @@ A multi-tenant racing league management system designed for F1 25. This project 
 
 ---
 
+## Database Model
+
+```mermaid
+erDiagram
+    app_user ||--o{ league : "owns"
+    league ||--o{ tier : "contains"
+    league ||--o{ event : "has"
+    league ||--o{ driver_mapping : "defines names"
+    league ||--o{ driver_standing : "tracks"
+    league ||--o{ team_standing : "tracks"
+    league ||--o{ session_point_config : "scoring"
+    league ||--|| live_state : "current status"
+    
+    tier ||--o{ session_result : "group"
+    tier ||--o{ driver_mapping : "belongs to"
+    tier ||--o{ driver_standing : "belongs to"
+    tier ||--o{ team_standing : "belongs to"
+    
+    event ||--o{ session_result : "records"
+    
+    session_result ||--o{ driver_result : "results"
+    driver_result ||--o{ lap_result : "laps"
+    driver_result ||--o{ tyre_stint : "stints"
+```
+
 ## Development
 - **Java**: 21
 - **Framework**: Spring Boot 4.0, Vaadin 25
-- **Database**: H2 (In-memory by default)
+- **Database**: PostgreSQL 16 (Managed via Liquibase)
+- **Containerization**: Docker Compose for local database, Jib for cloud deployment
