@@ -59,7 +59,7 @@ def replay_session(file_path, target_url):
                     print(f"Processed {packet_count} packets...")
                 
                 # No delay - let it run at network speed
-                # time.sleep(0.001)
+                time.sleep(0.1)
                 
         except KeyboardInterrupt:
             print("\nReplay interrupted by user.")
@@ -70,5 +70,5 @@ def replay_session(file_path, target_url):
 
 if __name__ == "__main__":
     RECORDING_FILE = "data/exa_austria.bin"
-    CLOUD_URL = "https://racingleague.jabapage.be/api/telemetry/26c5b212-ebd6-49b2-a134-d7fbf1d4f77e"
+    CLOUD_URL = "https://racingleague.jabapage.be/api/telemetry/c65228cd-6a6b-450d-8bb1-c208a3bdad6e"
     replay_session(RECORDING_FILE, CLOUD_URL)
