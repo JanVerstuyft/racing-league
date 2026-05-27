@@ -1170,7 +1170,10 @@ public class TelemetryProcessingService {
         if (existing.isPresent()) {
             log.info("Session UID: {} already recorded as ID: {}. Overwriting with Final Classification data.", 
                 sessionUID, existing.get().getId());
-            sessionResultRepository.delete(existing.get());
+            SessionResult oldSession = existing.get();
+            oldSession.setSessionUID(null);
+            sessionResultRepository.saveAndFlush(oldSession);
+            sessionResultRepository.delete(oldSession);
             sessionResultRepository.flush();
             wasOverwritten = true;
         }
