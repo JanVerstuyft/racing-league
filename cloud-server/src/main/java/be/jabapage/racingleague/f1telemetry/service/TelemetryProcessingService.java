@@ -1218,7 +1218,7 @@ public class TelemetryProcessingService {
             driverResult.setPointsAwarded(getPointsForPosition(league, state.getCurrentSession().getSessionType(), data.getPosition()));
             driverResult.setGridPosition(data.getGridPosition());
             driverResult.setBestLapTime(data.getBestLapTimeInMS() / 1000.0f);
-            driverResult.setTotalTime(data.getTotalRaceTime());
+            driverResult.setTotalTime(data.getTotalRaceTime() + data.getPenaltiesTime());
             driverResult.setResultStatus(data.getResultStatus());
             driverResult.setPenalties(data.getPenaltiesTime());
             if (state.getCurrentLapData() != null && i < state.getCurrentLapData().getLapData().size()) {
