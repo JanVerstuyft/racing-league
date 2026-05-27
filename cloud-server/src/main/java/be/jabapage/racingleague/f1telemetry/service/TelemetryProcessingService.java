@@ -502,19 +502,9 @@ public class TelemetryProcessingService {
 
             // Update sector times if they are valid in current lap
             if (ld.getSector() == 1 && ld.getSector1TimeInMS() > 0) {
-                long s1 = ld.getSector1TimeInMS();
-                state.getLastS1()[carIndex] = s1;
-                if (ld.getCurrentLapInvalid() == 0) {
-                    if (s1 < state.getDriverBestS1()[carIndex] || state.getDriverBestS1()[carIndex] == 0) state.getDriverBestS1()[carIndex] = s1;
-                    if (s1 < state.getSessionBestS1()) state.setSessionBestS1(s1);
-                }
+                state.getLastS1()[carIndex] = ld.getSector1TimeInMS();
             } else if (ld.getSector() == 2 && ld.getSector2TimeInMS() > 0) {
-                long s2 = ld.getSector2TimeInMS();
-                state.getLastS2()[carIndex] = s2;
-                if (ld.getCurrentLapInvalid() == 0) {
-                    if (s2 < state.getDriverBestS2()[carIndex] || state.getDriverBestS2()[carIndex] == 0) state.getDriverBestS2()[carIndex] = s2;
-                    if (s2 < state.getSessionBestS2()) state.setSessionBestS2(s2);
-                }
+                state.getLastS2()[carIndex] = ld.getSector2TimeInMS();
             }
 
             // Track if current lap becomes invalid
@@ -529,11 +519,19 @@ public class TelemetryProcessingService {
                 long s2 = state.getLastS2()[carIndex];
                 long s3 = lastLapTime - s1 - s2;
 
-                // Update best lap and S3
+                // Update best lap and sectors
                 if (!state.getLapInvalid()[carIndex] && lastLapTime > 0) {
                     if (lastLapTime < state.getDriverBestLap()[carIndex] || state.getDriverBestLap()[carIndex] == 0) state.getDriverBestLap()[carIndex] = lastLapTime;
                     if (lastLapTime < state.getSessionBestLap()) state.setSessionBestLap(lastLapTime);
                     
+                    if (s1 > 0) {
+                        if (s1 < state.getDriverBestS1()[carIndex] || state.getDriverBestS1()[carIndex] == 0) state.getDriverBestS1()[carIndex] = s1;
+                        if (s1 < state.getSessionBestS1()) state.setSessionBestS1(s1);
+                    }
+                    if (s2 > 0) {
+                        if (s2 < state.getDriverBestS2()[carIndex] || state.getDriverBestS2()[carIndex] == 0) state.getDriverBestS2()[carIndex] = s2;
+                        if (s2 < state.getSessionBestS2()) state.setSessionBestS2(s2);
+                    }
                     if (s3 > 0) {
                         if (s3 < state.getDriverBestS3()[carIndex] || state.getDriverBestS3()[carIndex] == 0) state.getDriverBestS3()[carIndex] = s3;
                         if (s3 < state.getSessionBestS3()) state.setSessionBestS3(s3);
@@ -554,15 +552,13 @@ public class TelemetryProcessingService {
                 result.setPitStopCount(ld.getNumPitStops());
 
                 lapResultRepository.save(result);
+                state.getLapInvalid()[carIndex] = false;
             }
 
             // Update state
             state.getLastLapNum()[carIndex] = ld.getCurrentLapNum();
             if (state.getCurrentCarStatus() != null && carIndex < state.getCurrentCarStatus().getCarStatusData().size()) {
                 state.getLastTyre()[carIndex] = state.getCurrentCarStatus().getCarStatusData().get(carIndex).getVisualTyreCompound();
-            }
-            if (ld.getSector() == 0) { // New lap started
-                state.getLapInvalid()[carIndex] = false;
             }
         }
     }

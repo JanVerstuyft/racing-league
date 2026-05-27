@@ -364,9 +364,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 .orElse(0.0f);
 
         // Calculate session best sectors for highlighting
-        long sessionBestS1 = driverResults.stream().flatMap(dr -> dr.getLapResults().stream()).mapToLong(l -> l.getS1InMS() != null ? l.getS1InMS() : Long.MAX_VALUE).min().orElse(Long.MAX_VALUE);
-        long sessionBestS2 = driverResults.stream().flatMap(dr -> dr.getLapResults().stream()).mapToLong(l -> l.getS2InMS() != null ? l.getS2InMS() : Long.MAX_VALUE).min().orElse(Long.MAX_VALUE);
-        long sessionBestS3 = driverResults.stream().flatMap(dr -> dr.getLapResults().stream()).mapToLong(l -> l.getS3InMS() != null ? l.getS3InMS() : Long.MAX_VALUE).min().orElse(Long.MAX_VALUE);
+        long sessionBestS1 = driverResults.stream().flatMap(dr -> dr.getLapResults().stream()).filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS1InMS() != null ? l.getS1InMS() : Long.MAX_VALUE).min().orElse(Long.MAX_VALUE);
+        long sessionBestS2 = driverResults.stream().flatMap(dr -> dr.getLapResults().stream()).filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS2InMS() != null ? l.getS2InMS() : Long.MAX_VALUE).min().orElse(Long.MAX_VALUE);
+        long sessionBestS3 = driverResults.stream().flatMap(dr -> dr.getLapResults().stream()).filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS3InMS() != null ? l.getS3InMS() : Long.MAX_VALUE).min().orElse(Long.MAX_VALUE);
 
         Grid<DriverResult> grid = new Grid<>(DriverResult.class, false);
         grid.addColumn(dr -> dr.getPosition() != null ? dr.getPosition() : "-").setHeader("Pos").setWidth("60px").setFlexGrow(0);
@@ -411,26 +411,26 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             grid.addColumn(dr -> dr.getGapToLeader() != null ? dr.getGapToLeader() : "-").setHeader("Gap");
 
             grid.addColumn(dr -> {
-                long bestS1 = dr.getLapResults().stream().mapToLong(l -> l.getS1InMS() != null ? l.getS1InMS() : Long.MAX_VALUE).min().orElse(0);
+                long bestS1 = dr.getLapResults().stream().filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS1InMS() != null ? l.getS1InMS() : Long.MAX_VALUE).min().orElse(0);
                 return formatLapTime(bestS1 / 1000.0f);
             }).setHeader("S1").setPartNameGenerator(dr -> {
-                long bestS1 = dr.getLapResults().stream().mapToLong(l -> l.getS1InMS() != null ? l.getS1InMS() : Long.MAX_VALUE).min().orElse(0);
+                long bestS1 = dr.getLapResults().stream().filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS1InMS() != null ? l.getS1InMS() : Long.MAX_VALUE).min().orElse(0);
                 return (bestS1 > 0 && bestS1 == sessionBestS1) ? "best-sector" : null;
             });
 
             grid.addColumn(dr -> {
-                long bestS2 = dr.getLapResults().stream().mapToLong(l -> l.getS2InMS() != null ? l.getS2InMS() : Long.MAX_VALUE).min().orElse(0);
+                long bestS2 = dr.getLapResults().stream().filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS2InMS() != null ? l.getS2InMS() : Long.MAX_VALUE).min().orElse(0);
                 return formatLapTime(bestS2 / 1000.0f);
             }).setHeader("S2").setPartNameGenerator(dr -> {
-                long bestS2 = dr.getLapResults().stream().mapToLong(l -> l.getS2InMS() != null ? l.getS2InMS() : Long.MAX_VALUE).min().orElse(0);
+                long bestS2 = dr.getLapResults().stream().filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS2InMS() != null ? l.getS2InMS() : Long.MAX_VALUE).min().orElse(0);
                 return (bestS2 > 0 && bestS2 == sessionBestS2) ? "best-sector" : null;
             });
 
             grid.addColumn(dr -> {
-                long bestS3 = dr.getLapResults().stream().mapToLong(l -> l.getS3InMS() != null ? l.getS3InMS() : Long.MAX_VALUE).min().orElse(0);
+                long bestS3 = dr.getLapResults().stream().filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS3InMS() != null ? l.getS3InMS() : Long.MAX_VALUE).min().orElse(0);
                 return formatLapTime(bestS3 / 1000.0f);
             }).setHeader("S3").setPartNameGenerator(dr -> {
-                long bestS3 = dr.getLapResults().stream().mapToLong(l -> l.getS3InMS() != null ? l.getS3InMS() : Long.MAX_VALUE).min().orElse(0);
+                long bestS3 = dr.getLapResults().stream().filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS3InMS() != null ? l.getS3InMS() : Long.MAX_VALUE).min().orElse(0);
                 return (bestS3 > 0 && bestS3 == sessionBestS3) ? "best-sector" : null;
             });
         }
