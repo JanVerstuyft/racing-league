@@ -24,10 +24,10 @@ public class LeagueSessionState {
     private PacketCarStatusData currentCarStatus;
     private PacketCarDamageData currentCarDamageData;
 
-    // Mapping: "telemetryName|raceNumber|driverId" -> "overriddenName"
+    // Mapping: "telemetryName|raceNumber|driverId|country" -> "overriddenName"
     private final java.util.Map<String, String> driverNameOverrides = new java.util.concurrent.ConcurrentHashMap<>();
 
-    // Set of "telemetryName|raceNumber|driverId" for reserve drivers
+    // Set of "telemetryName|raceNumber|driverId|country" for reserve drivers
     private final java.util.Set<String> reserveDrivers = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private final int[] lastLapNum = new int[22];

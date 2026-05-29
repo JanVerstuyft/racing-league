@@ -294,7 +294,7 @@ public class TelemetryProcessingService {
         state.getDriverNameOverrides().clear();
         state.getReserveDrivers().clear();
         for (DriverMapping mapping : mappings) {
-            String key = mapping.getTelemetryName() + "|" + mapping.getRaceNumber() + "|" + mapping.getDriverId();
+            String key = mapping.getTelemetryName() + "|" + mapping.getRaceNumber() + "|" + mapping.getDriverId() + "|" + mapping.getCountry();
             if (mapping.getOverriddenName() != null && !mapping.getOverriddenName().isEmpty()) {
                 state.getDriverNameOverrides().put(key, mapping.getOverriddenName());
             }
@@ -326,7 +326,7 @@ public class TelemetryProcessingService {
     }
 
     private String getDriverName(LeagueSessionState state, ParticipantData p) {
-        String key = p.getName() + "|" + p.getRaceNumber() + "|" + p.getDriverId();
+        String key = p.getName() + "|" + p.getRaceNumber() + "|" + p.getDriverId() + "|" + CountryProvider.getCountryInfo(p.getNationality()).getName();
         String overridden = state.getDriverNameOverrides().get(key);
         if (overridden != null && !overridden.isEmpty()) return overridden;
 
@@ -386,11 +386,12 @@ public class TelemetryProcessingService {
                 state.getIsHuman()[i] = true;
             }
 
-            String key = p.getName() + "|" + p.getRaceNumber() + "|" + p.getDriverId();
+            String country = CountryProvider.getCountryInfo(p.getNationality()).getName();
+            String key = p.getName() + "|" + p.getRaceNumber() + "|" + p.getDriverId() + "|" + country;
             if (state.getDriverNameOverrides().containsKey(key)) continue;
 
             // Check if we already have a mapping (even without override)
-            Optional<DriverMapping> mapping = driverMappingRepository.findByLeagueAndTelemetryNameAndRaceNumberAndDriverId(league, p.getName(), p.getRaceNumber(), p.getDriverId());
+            Optional<DriverMapping> mapping = driverMappingRepository.findByLeagueAndTelemetryNameAndRaceNumberAndDriverIdAndCountry(league, p.getName(), p.getRaceNumber(), p.getDriverId(), country);
             if (mapping.isEmpty()) {
                 DriverMapping newMapping = new DriverMapping();
                 newMapping.setLeague(league);
@@ -1331,7 +1332,7 @@ public class TelemetryProcessingService {
                 recalculateStandings(league.getId());
             } else {
                 for (DriverResult driverResult : sessionResult.getDriverResults()) {
-                    String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId();
+                    String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId() + "|" + driverResult.getCountry();
                     boolean isReserve = state.getReserveDrivers().contains(key);
                     updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
                 }
@@ -1479,7 +1480,7 @@ public class TelemetryProcessingService {
         boolean hasPoints = sessionResult.getDriverResults().stream().anyMatch(dr -> dr.getPointsAwarded() != null && dr.getPointsAwarded() > 0);
         if (isRace || hasPoints) {
             for (DriverResult driverResult : sessionResult.getDriverResults()) {
-                String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId();
+                String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId() + "|" + driverResult.getCountry();
                 boolean isReserve = state.getReserveDrivers().contains(key);
                 updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
             }
@@ -1500,7 +1501,7 @@ public class TelemetryProcessingService {
         Map<String, String> nameMap = mappings.stream()
                 .filter(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty())
                 .collect(Collectors.toMap(
-                        m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId(),
+                        m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId() + "|" + m.getCountry(),
                         DriverMapping::getOverriddenName,
                         (existing, replacement) -> existing
                 ));
@@ -1512,7 +1513,7 @@ public class TelemetryProcessingService {
         for (SessionResult session : allSessions) {
             for (DriverResult result : session.getDriverResults()) {
                 if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
-                    String key = result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId();
+                    String key = result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry();
                     String nameToUse = nameMap.getOrDefault(key, result.getTelemetryName());
                     if (!nameToUse.equals(result.getDriverName())) {
                         result.setDriverName(nameToUse);
@@ -1533,14 +1534,14 @@ public class TelemetryProcessingService {
         Map<String, String> nameMap = mappings.stream()
                 .filter(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty())
                 .collect(Collectors.toMap(
-                        m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId(),
+                        m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId() + "|" + m.getCountry(),
                         DriverMapping::getOverriddenName,
                         (existing, replacement) -> existing
                 ));
 
         java.util.Set<String> reserveSet = mappings.stream()
                 .filter(DriverMapping::isReserve)
-                .map(m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId())
+                .map(m -> m.getTelemetryName() + "|" + m.getRaceNumber() + "|" + m.getDriverId() + "|" + m.getCountry())
                 .collect(Collectors.toSet());
 
         // Clear existing standings
@@ -1571,7 +1572,7 @@ public class TelemetryProcessingService {
                 // Determine the correct name to use
                 String nameToUse = result.getDriverName();
                 if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
-                    String key = result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId();
+                    String key = result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry();
                     nameToUse = nameMap.getOrDefault(key, result.getTelemetryName());
                 }
 
@@ -1611,7 +1612,7 @@ public class TelemetryProcessingService {
                     boolean isReserve = false;
                     Integer raceNumber = result.getRaceNumber();
                     if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
-                        isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId());
+                        isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry());
                     }
                     updateStandings(league, result, isReserve, raceNumber, isRace);
                 } else if (isRace) {
@@ -1619,7 +1620,7 @@ public class TelemetryProcessingService {
                     boolean isReserve = false;
                     Integer raceNumber = result.getRaceNumber();
                     if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
-                        isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId());
+                        isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry());
                     }
                     updateStandings(league, result, isReserve, raceNumber, true);
                 }

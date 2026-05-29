@@ -12,4 +12,5 @@ import java.util.Optional;
 public interface DriverMappingRepository extends JpaRepository<DriverMapping, Long> {
     List<DriverMapping> findByLeague(League league);
     Optional<DriverMapping> findByLeagueAndTelemetryNameAndRaceNumberAndDriverId(League league, String telemetryName, Integer raceNumber, Integer driverId);
+    Optional<DriverMapping> findByLeagueAndTelemetryNameAndRaceNumberAndDriverIdAndCountry(League league, String telemetryName, Integer raceNumber, Integer driverId, String country);
 }
