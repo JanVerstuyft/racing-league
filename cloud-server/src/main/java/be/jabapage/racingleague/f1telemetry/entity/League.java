@@ -29,6 +29,9 @@ public class League {
     @Column(name = "show_ers")
     private Boolean showErs = false;
 
+    @Column(name = "min_laps_pct", nullable = false)
+    private Integer minLapsPct = 60;
+
     public boolean isHideAi() {
         return hideAi != null && hideAi;
     }

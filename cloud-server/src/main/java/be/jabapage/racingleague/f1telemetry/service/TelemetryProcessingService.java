@@ -773,13 +773,16 @@ public class TelemetryProcessingService {
         int seg1End = maxLaps / 3;
         int seg2End = 2 * maxLaps / 3;
 
+        League league = event.getLeague();
+        double thresholdPct = (league.getMinLapsPct() != null ? league.getMinLapsPct() : 60) / 100.0;
+
         for (DriverResult dr : raceSession.getDriverResults()) {
             List<LapResult> validLaps = dr.getLapResults().stream()
                     .filter(LapResult::getIsValid)
-                    .collect(Collectors.toList());
+                    .toList();
 
-            // Only drivers who driven at least 60%
-            if (dr.getLapResults().size() < maxLaps * 0.6) continue;
+            // Only drivers who completed the minimum percentage threshold
+            if (dr.getLapResults().size() < maxLaps * thresholdPct) continue;
 
             RacePaceStats stats = new RacePaceStats();
             stats.setDriverName(dr.getDriverName());
@@ -935,9 +938,21 @@ public class TelemetryProcessingService {
                 .findFirst().orElse(null);
         if (raceSession == null) return Collections.emptyList();
 
+        // Calculate total race distance (max laps driven)
+        int maxLaps = raceSession.getDriverResults().stream()
+                .flatMap(dr -> dr.getLapResults().stream())
+                .mapToInt(LapResult::getLapNumber)
+                .max().orElse(0);
+
+        League league = event.getLeague();
+        double thresholdPct = (league.getMinLapsPct() != null ? league.getMinLapsPct() : 60) / 100.0;
+
         List<ConsistencyStats> statsList = new ArrayList<>();
 
         for (DriverResult dr : raceSession.getDriverResults()) {
+            // Only drivers who completed the minimum percentage threshold
+            if (dr.getLapResults().size() < maxLaps * thresholdPct) continue;
+
             List<LapResult> laps = dr.getLapResults().stream()
                     .filter(LapResult::getIsValid)
                     .sorted(Comparator.comparingInt(LapResult::getLapNumber))

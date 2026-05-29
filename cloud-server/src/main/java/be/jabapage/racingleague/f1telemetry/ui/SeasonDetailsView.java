@@ -64,6 +64,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final Checkbox hideAiCheckbox = new Checkbox("Hide AI Drivers");
     private final Checkbox showTyreWearCheckbox = new Checkbox("Show Tyre Wear on Live Leaderboard");
     private final Checkbox showErsCheckbox = new Checkbox("Show ERS on Live Leaderboard");
+    private final com.vaadin.flow.component.textfield.IntegerField minLapsPctField = new com.vaadin.flow.component.textfield.IntegerField("Minimum Laps Percentage for Stats (%)");
     private final Grid<Event> eventGrid = new Grid<>(Event.class, false);
     private final Grid<DriverStanding> driverGrid = new Grid<>(DriverStanding.class, false);
     private final Grid<TeamStanding> teamGrid = new Grid<>(TeamStanding.class, false);
@@ -199,11 +200,6 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
         addSessionTypeBtn.addClickListener(e -> showAddSessionTypeDialog());
 
-        // Settings Layout
-        settingsLayout.add(new H3("Season Settings"));
-        settingsLayout.add(hideAiCheckbox, showTyreWearCheckbox, showErsCheckbox);
-        settingsLayout.setVisible(false);
-
         hideAiCheckbox.addValueChangeListener(e -> {
             if (league != null && !isInitializing) {
                 league.setHideAi(e.getValue());
@@ -229,6 +225,23 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 Notification.show("ERS visibility updated", 3000, Notification.Position.TOP_CENTER);
             }
         });
+        
+        minLapsPctField.setMin(0);
+        minLapsPctField.setMax(100);
+        minLapsPctField.setStepButtonsVisible(true);
+        minLapsPctField.setWidth("300px");
+        minLapsPctField.addValueChangeListener(e -> {
+            if (league != null && !isInitializing && e.getValue() != null) {
+                league.setMinLapsPct(e.getValue());
+                leagueRepository.save(league);
+                Notification.show("Minimum laps percentage updated", 3000, Notification.Position.TOP_CENTER);
+            }
+        });
+
+        // Settings Layout
+        settingsLayout.add(new H3("Season Settings"));
+        settingsLayout.add(hideAiCheckbox, showTyreWearCheckbox, showErsCheckbox, minLapsPctField);
+        settingsLayout.setVisible(false);
         
         recalculateBtn.addClickListener(e -> {
             if (league != null) {
@@ -576,6 +589,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             hideAiCheckbox.setValue(league.isHideAi());
             showTyreWearCheckbox.setValue(league.isShowTyreWear());
             showErsCheckbox.setValue(league.isShowErs());
+            minLapsPctField.setValue(league.getMinLapsPct() != null ? league.getMinLapsPct() : 60);
             updateData();
             
             // Hide admin-only features if not logged in
@@ -590,6 +604,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             hideAiCheckbox.setVisible(loggedIn);
             showTyreWearCheckbox.setVisible(loggedIn);
             showErsCheckbox.setVisible(loggedIn);
+            minLapsPctField.setVisible(loggedIn);
         } finally {
             isInitializing = false;
         }
