@@ -1171,6 +1171,23 @@ public class TelemetryProcessingService {
             log.info("Session UID: {} already recorded as ID: {}. Overwriting with Final Classification data.", 
                 sessionUID, existing.get().getId());
             SessionResult oldSession = existing.get();
+            
+            // Unlink and preserve LapResults (sector times) so they are not deleted by cascades
+            for (DriverResult dr : oldSession.getDriverResults()) {
+                for (LapResult lap : dr.getLapResults()) {
+                    lap.setDriverResult(null);
+                    lapResultRepository.save(lap);
+                }
+                dr.getLapResults().clear();
+            }
+            lapResultRepository.flush();
+
+            if (oldSession.getEvent() != null) {
+                oldSession.getEvent().getSessionResults().remove(oldSession);
+            }
+            if (oldSession.getLeague() != null) {
+                oldSession.getLeague().getSessionResults().remove(oldSession);
+            }
             oldSession.setSessionUID(null);
             sessionResultRepository.saveAndFlush(oldSession);
             sessionResultRepository.delete(oldSession);
