@@ -4,4 +4,5 @@
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
     <include file="changelog/001_initial_schema.xml" relativeToChangelogFile="true"/>
     <include file="changelog/003_add_min_laps_pct_to_league.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/004_add_country_to_drivers.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>

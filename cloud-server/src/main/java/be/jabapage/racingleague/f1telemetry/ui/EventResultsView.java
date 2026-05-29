@@ -13,6 +13,7 @@ import be.jabapage.racingleague.f1telemetry.repository.EventRepository;
 import be.jabapage.racingleague.f1telemetry.repository.SessionResultRepository;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
 import be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService;
+import be.jabapage.racingleague.f1telemetry.util.CountryProvider;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
@@ -227,6 +228,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 dr.setTelemetryName(driverCombo.getValue().getTelemetryName());
                 dr.setRaceNumber(driverCombo.getValue().getRaceNumber());
                 dr.setDriverId(driverCombo.getValue().getDriverId());
+                dr.setCountry(driverCombo.getValue().getCountry());
                 dr.setTeamName(teamCombo.getValue());
                 dr.setPosition(posField.getValue().intValue());
                 dr.setNumLaps(lapsField.getValue() != null ? lapsField.getValue() : 0);
@@ -380,14 +382,19 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 else if (status == 6) nameText += " (NC)";
                 else if (status == 7) nameText += " (RET)";
             }
+            Span flagSpan = new Span(CountryProvider.getFlagByName(dr.getCountry()));
+            flagSpan.getStyle().set("margin-right", "var(--lumo-space-s)");
             Span name = new Span(nameText);
+            HorizontalLayout row = new HorizontalLayout(flagSpan, name);
+            row.setAlignItems(Alignment.CENTER);
+            row.setSpacing(false);
             if (dr.isAi()) {
                 Span badge = new Span("AI");
                 badge.getElement().getThemeList().add("badge contrast small");
                 badge.getStyle().set("margin-left", "var(--lumo-space-s)");
-                return new HorizontalLayout(name, badge);
+                row.add(badge);
             }
-            return name;
+            return row;
         }).setHeader("Driver");
         
         grid.addColumn(DriverResult::getTeamName).setHeader("Team");
@@ -567,7 +574,15 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         }
 
         Grid<ConsistencyStats> grid = new Grid<>(ConsistencyStats.class, false);
-        grid.addColumn(ConsistencyStats::getDriverName).setHeader("Driver");
+        grid.addComponentColumn(s -> {
+            Span flagSpan = new Span(CountryProvider.getFlagByName(s.getCountry()));
+            flagSpan.getStyle().set("margin-right", "var(--lumo-space-s)");
+            Span name = new Span(s.getDriverName());
+            HorizontalLayout row = new HorizontalLayout(flagSpan, name);
+            row.setAlignItems(Alignment.CENTER);
+            row.setSpacing(false);
+            return row;
+        }).setHeader("Driver");
         grid.addColumn(ConsistencyStats::getTeamName).setHeader("Team");
         grid.addColumn(s -> String.format("%.1f", s.getRating())).setHeader("Rating");
         grid.addColumn(s -> String.format("%.3fs", s.getAvgDiff())).setHeader("Avg Diff");
@@ -593,7 +608,15 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         }
 
         Grid<LongestStintStats> grid = new Grid<>(LongestStintStats.class, false);
-        grid.addColumn(LongestStintStats::getDriverName).setHeader("Driver");
+        grid.addComponentColumn(s -> {
+            Span flagSpan = new Span(CountryProvider.getFlagByName(s.getCountry()));
+            flagSpan.getStyle().set("margin-right", "var(--lumo-space-s)");
+            Span name = new Span(s.getDriverName());
+            HorizontalLayout row = new HorizontalLayout(flagSpan, name);
+            row.setAlignItems(Alignment.CENTER);
+            row.setSpacing(false);
+            return row;
+        }).setHeader("Driver");
         grid.addColumn(LongestStintStats::getTeamName).setHeader("Team");
         grid.addColumn(LongestStintStats::getLaps).setHeader("Laps");
         grid.addComponentColumn(s -> {
@@ -641,7 +664,15 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
 
         Grid<RacePaceStats> grid = new Grid<>(RacePaceStats.class, false);
         grid.addColumn(s -> stats.indexOf(s) + 1).setHeader("#").setWidth("50px").setFlexGrow(0);
-        grid.addColumn(RacePaceStats::getDriverName).setHeader("Driver").setAutoWidth(true);
+        grid.addComponentColumn(s -> {
+            Span flagSpan = new Span(CountryProvider.getFlagByName(s.getCountry()));
+            flagSpan.getStyle().set("margin-right", "var(--lumo-space-s)");
+            Span name = new Span(s.getDriverName());
+            HorizontalLayout row = new HorizontalLayout(flagSpan, name);
+            row.setAlignItems(Alignment.CENTER);
+            row.setSpacing(false);
+            return row;
+        }).setHeader("Driver").setAutoWidth(true);
         grid.addColumn(RacePaceStats::getTeamName).setHeader("Team").setAutoWidth(true);
         grid.addColumn(s -> {
             if (s.getPureRacePace() == bestPace) {

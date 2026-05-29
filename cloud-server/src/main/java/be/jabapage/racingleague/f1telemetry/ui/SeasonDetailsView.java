@@ -11,6 +11,7 @@ import be.jabapage.racingleague.f1telemetry.repository.TeamStandingRepository;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
 import be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService;
+import be.jabapage.racingleague.f1telemetry.util.CountryProvider;
 import com.vaadin.flow.component.ComponentUtil;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -365,7 +366,12 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             com.vaadin.flow.component.textfield.IntegerField raceNumField = new com.vaadin.flow.component.textfield.IntegerField("Race #");
             raceNumField.setWidthFull();
 
-            VerticalLayout dialogLayout = new VerticalLayout(nameField, telemetryNameField, raceNumField);
+            ComboBox<String> countryCombo = new ComboBox<>("Country");
+            countryCombo.setItems(CountryProvider.getCountryNames());
+            countryCombo.setValue("Unknown");
+            countryCombo.setWidthFull();
+
+            VerticalLayout dialogLayout = new VerticalLayout(nameField, telemetryNameField, raceNumField, countryCombo);
             dialog.add(dialogLayout);
 
             Button saveBtn = new Button("Add", ev -> {
@@ -378,6 +384,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 mapping.setOverriddenName(nameField.getValue());
                 mapping.setTelemetryName(telemetryNameField.getValue().isEmpty() ? nameField.getValue() : telemetryNameField.getValue());
                 mapping.setRaceNumber(raceNumField.getValue() != null ? raceNumField.getValue() : 0);
+                mapping.setCountry(countryCombo.getValue() != null ? countryCombo.getValue() : "Unknown");
                 mapping.setDriverId(255); // Use 255 for manual drivers
                 driverMappingRepository.save(mapping);
                 updateData();
@@ -435,8 +442,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                         deletingNote.setDuration(0);
                         deletingNote.open();
                         try {
-                            eventRepository.delete(event);
-                            telemetryProcessingService.recalculateStandings(league.getId());
+                            telemetryProcessingService.deleteEvent(event.getId());
                             updateData();
                             deletingNote.close();
                             Notification.show("Weekend deleted and standings recalculated", 3000, Notification.Position.TOP_CENTER);
@@ -458,6 +464,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             HorizontalLayout nameLayout = new HorizontalLayout();
             nameLayout.setAlignItems(Alignment.CENTER);
             nameLayout.setSpacing(false);
+
+            Span flagSpan = new Span(CountryProvider.getFlagByName(ds.getCountry()));
+            flagSpan.getStyle().set("margin-right", "var(--lumo-space-s)");
+            nameLayout.add(flagSpan);
 
             if (ds.getRaceNumber() != null && ds.getRaceNumber() > 0) {
                 Span raceNum = new Span("#" + ds.getRaceNumber());
@@ -491,7 +501,15 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     }
 
     private void configureMappingGrid() {
-        mappingGrid.addColumn(DriverMapping::getTelemetryName).setHeader("Telemetry Name");
+        mappingGrid.addComponentColumn(m -> {
+            Span flagSpan = new Span(CountryProvider.getFlagByName(m.getCountry()));
+            flagSpan.getStyle().set("margin-right", "var(--lumo-space-s)");
+            Span name = new Span(m.getTelemetryName());
+            HorizontalLayout row = new HorizontalLayout(flagSpan, name);
+            row.setAlignItems(Alignment.CENTER);
+            row.setSpacing(false);
+            return row;
+        }).setHeader("Telemetry Name");
         mappingGrid.addColumn(DriverMapping::getRaceNumber).setHeader("Race #");
         mappingGrid.addColumn(DriverMapping::getDriverId).setHeader("Driver ID");
         
@@ -502,6 +520,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         }).setHeader("Reserve");
 
         Grid.Column<DriverMapping> overrideColumn = mappingGrid.addColumn(DriverMapping::getOverriddenName).setHeader("Display Name");
+        Grid.Column<DriverMapping> countryColumn = mappingGrid.addColumn(DriverMapping::getCountry).setHeader("Country");
 
         Binder<DriverMapping> binder = new Binder<>(DriverMapping.class);
         Editor<DriverMapping> editor = mappingGrid.getEditor();
@@ -512,6 +531,12 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         overrideField.setWidthFull();
         binder.forField(overrideField).bind(DriverMapping::getOverriddenName, DriverMapping::setOverriddenName);
         overrideColumn.setEditorComponent(overrideField);
+
+        ComboBox<String> countryField = new ComboBox<>();
+        countryField.setItems(CountryProvider.getCountryNames());
+        countryField.setWidthFull();
+        binder.forField(countryField).bind(DriverMapping::getCountry, DriverMapping::setCountry);
+        countryColumn.setEditorComponent(countryField);
 
         Checkbox reserveField = new Checkbox();
         binder.forField(reserveField).bind(DriverMapping::getReserve, DriverMapping::setReserve);

@@ -10,6 +10,6 @@ import java.util.Optional;
 
 @Repository
 public interface DriverStandingRepository extends JpaRepository<DriverStanding, Long> {
-    Optional<DriverStanding> findByLeagueAndDriverName(League league, String driverName);
+    Optional<DriverStanding> findByLeagueAndDriverNameAndRaceNumberAndCountry(League league, String driverName, Integer raceNumber, String country);
     List<DriverStanding> findByLeague(League league);
 }

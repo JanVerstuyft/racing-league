@@ -8,6 +8,7 @@ public class DriverBoardState {
     private String name;
     private int raceNumber;
     private String team;
+    private String country;
     private String tyreCompound;
     private int tyreAge;
     private int pitStops;

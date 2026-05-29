@@ -4,6 +4,7 @@ import be.jabapage.racingleague.f1telemetry.model.DriverBoardState;
 import be.jabapage.racingleague.f1telemetry.model.SessionInfo;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
 import be.jabapage.racingleague.f1telemetry.service.Broadcaster;
+import be.jabapage.racingleague.f1telemetry.util.CountryProvider;
 import com.vaadin.flow.component.AttachEvent;
 import com.vaadin.flow.component.DetachEvent;
 import com.vaadin.flow.component.UI;
@@ -101,13 +102,16 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         }).setHeader("Pos").setWidth("70px").setFlexGrow(0);
         
         grid.addComponentColumn(state -> {
+            Span flagSpan = new Span(CountryProvider.getFlagByName(state.getCountry()));
+            flagSpan.getStyle().set("margin-right", "var(--lumo-space-s)");
+
             Span raceNum = new Span("#" + state.getRaceNumber());
             raceNum.getStyle().set("color", "var(--lumo-secondary-text-color)");
             raceNum.getStyle().set("font-size", "0.8em");
             raceNum.getStyle().set("margin-right", "var(--lumo-space-s)");
 
             Span name = new Span(state.getName());
-            HorizontalLayout nameLayout = new HorizontalLayout(raceNum, name);
+            HorizontalLayout nameLayout = new HorizontalLayout(flagSpan, raceNum, name);
             nameLayout.setAlignItems(Alignment.CENTER);
             nameLayout.setSpacing(false);
 

@@ -33,6 +33,9 @@ public class DriverMapping {
     @Column(name = "is_reserve")
     private Boolean reserve = false;
 
+    @Column(name = "country")
+    private String country = "Unknown";
+
     public boolean isReserve() {
         return reserve != null && reserve;
     }

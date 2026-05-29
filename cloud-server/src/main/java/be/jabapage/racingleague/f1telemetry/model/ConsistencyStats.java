@@ -7,6 +7,7 @@ public class ConsistencyStats {
     private String driverName;
     private boolean ai;
     private String teamName;
+    private String country;
     private double rating;
     private double avgDiff;
     private double s1Rating;

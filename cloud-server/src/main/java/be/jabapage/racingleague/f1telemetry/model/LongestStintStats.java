@@ -7,6 +7,7 @@ public class LongestStintStats {
     private String driverName;
     private boolean ai;
     private String teamName;
+    private String country;
     private int laps;
     private String tyreCompound;
     private double avgLapTime;

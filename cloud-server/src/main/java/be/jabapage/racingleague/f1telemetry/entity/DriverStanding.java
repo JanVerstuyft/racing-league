@@ -30,6 +30,9 @@ public class DriverStanding {
     @Column(name = "is_reserve")
     private Boolean reserve = false;
 
+    @Column(name = "country")
+    private String country = "Unknown";
+
     public boolean isAi() {
         return ai != null && ai;
     }

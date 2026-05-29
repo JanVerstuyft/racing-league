@@ -33,6 +33,9 @@ public class DriverResult {
     @Column(name = "is_ai")
     private Boolean ai = false;
 
+    @Column(name = "country")
+    private String country = "Unknown";
+
     public boolean isAi() {
         return ai != null && ai;
     }

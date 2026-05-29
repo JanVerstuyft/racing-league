@@ -3,6 +3,7 @@ package be.jabapage.racingleague.f1telemetry.service;
 import be.jabapage.racingleague.f1telemetry.entity.*;
 import be.jabapage.racingleague.f1telemetry.model.*;
 import be.jabapage.racingleague.f1telemetry.repository.*;
+import be.jabapage.racingleague.f1telemetry.util.CountryProvider;
 import be.jabapage.racingleague.f1telemetry.entity.LiveState;
 import be.jabapage.racingleague.f1telemetry.repository.LiveStateRepository;
 import java.util.concurrent.ConcurrentHashMap;
@@ -396,6 +397,7 @@ public class TelemetryProcessingService {
                 newMapping.setTelemetryName(p.getName());
                 newMapping.setRaceNumber(p.getRaceNumber());
                 newMapping.setDriverId(p.getDriverId());
+                newMapping.setCountry(CountryProvider.getCountryInfo(p.getNationality()).getName());
                 driverMappingRepository.save(newMapping);
                 // Add to cache with empty override to avoid re-checking
                 state.getDriverNameOverrides().put(key, "");
@@ -663,6 +665,7 @@ public class TelemetryProcessingService {
             driverState.setRaceNumber(p.getRaceNumber());
             driverState.setAi(isAi(state, p, i));
             driverState.setTeam(TEAM_NAMES.getOrDefault(p.getTeamId(), "Unknown"));
+            driverState.setCountry(CountryProvider.getCountryInfo(p.getNationality()).getName());
             driverState.setTyreCompound(TYRE_COMPOUNDS.getOrDefault(csd.getVisualTyreCompound(), "Unknown"));
             driverState.setTyreAge(csd.getTyresAgeLaps());
             driverState.setPitStops(ld.getNumPitStops());
@@ -788,6 +791,7 @@ public class TelemetryProcessingService {
             stats.setDriverName(dr.getDriverName());
             stats.setAi(dr.isAi());
             stats.setTeamName(dr.getTeamName());
+            stats.setCountry(dr.getCountry());
 
             // Process segments independently
             List<LapResult> seg1Laps = validLaps.stream().filter(l -> l.getLapNumber() <= seg1End).toList();
@@ -964,6 +968,7 @@ public class TelemetryProcessingService {
             stats.setDriverName(dr.getDriverName());
             stats.setAi(dr.isAi());
             stats.setTeamName(dr.getTeamName());
+            stats.setCountry(dr.getCountry());
 
             stats.setS1AvgDiff(calculateProcessedSectorDiff(laps.stream().mapToLong(LapResult::getS1InMS).toArray()));
             stats.setS2AvgDiff(calculateProcessedSectorDiff(laps.stream().mapToLong(LapResult::getS2InMS).toArray()));
@@ -1113,6 +1118,7 @@ public class TelemetryProcessingService {
                 stats.setDriverName(dr.getDriverName());
                 stats.setAi(dr.isAi());
                 stats.setTeamName(dr.getTeamName());
+                stats.setCountry(dr.getCountry());
                 stats.setLaps(stint.getLaps());
                 stats.setTyreCompound(TYRE_COMPOUNDS.getOrDefault(stint.getTyreCompound(), "Unknown"));
 
@@ -1267,6 +1273,7 @@ public class TelemetryProcessingService {
             driverResult.setRaceNumber(participant.getRaceNumber());
             driverResult.setDriverId(participant.getDriverId());
             driverResult.setAi(isAi(state, participant, i));
+            driverResult.setCountry(CountryProvider.getCountryInfo(participant.getNationality()).getName());
             driverResult.setTeamName(TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(data.getPosition());
             driverResult.setNumLaps(data.getNumLaps());
@@ -1388,6 +1395,7 @@ public class TelemetryProcessingService {
             driverResult.setRaceNumber(participant.getRaceNumber());
             driverResult.setDriverId(participant.getDriverId());
             driverResult.setAi(isAi(state, participant, i));
+            driverResult.setCountry(CountryProvider.getCountryInfo(participant.getNationality()).getName());
             driverResult.setTeamName(TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(ld.getCarPosition());
             driverResult.setNumLaps(ld.getCurrentLapNum() - 1); // Live state current lap means they completed current-1
@@ -1622,7 +1630,7 @@ public class TelemetryProcessingService {
 
     private void updateStandings(League league, DriverResult result, boolean isReserve, Integer raceNumber, boolean isRaceSession) {
         // Update Driver Standings
-        DriverStanding ds = driverStandingRepository.findByLeagueAndDriverName(league, result.getDriverName())
+        DriverStanding ds = driverStandingRepository.findByLeagueAndDriverNameAndRaceNumberAndCountry(league, result.getDriverName(), raceNumber, result.getCountry())
                 .orElseGet(() -> {
                     DriverStanding newDs = new DriverStanding();
                     newDs.setLeague(league);
@@ -1630,11 +1638,13 @@ public class TelemetryProcessingService {
                     newDs.setPoints(0);
                     newDs.setWins(0);
                     newDs.setPodiums(0);
+                    newDs.setCountry(result.getCountry());
                     return newDs;
                 });
         ds.setAi(result.isAi());
         ds.setReserve(isReserve);
         ds.setRaceNumber(raceNumber);
+        ds.setCountry(result.getCountry());
         
         // Handle multiple teams for a driver
         String currentTeams = ds.getTeamName();
@@ -1722,5 +1732,24 @@ public class TelemetryProcessingService {
             }
         }
         driverResultRepository.saveAll(session.getDriverResults());
+    }
+
+    @Transactional
+    public void deleteEvent(Long eventId) {
+        Event event = eventRepository.findById(eventId).orElseThrow();
+        League league = event.getLeague();
+        
+        if (league != null) {
+            league.getEvents().remove(event);
+            for (SessionResult sr : event.getSessionResults()) {
+                league.getSessionResults().remove(sr);
+            }
+        }
+        
+        eventRepository.delete(event);
+        
+        if (league != null) {
+            recalculateStandings(league.getId());
+        }
     }
 }
