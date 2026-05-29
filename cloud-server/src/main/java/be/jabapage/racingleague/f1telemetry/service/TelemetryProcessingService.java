@@ -5,6 +5,8 @@ import be.jabapage.racingleague.f1telemetry.model.*;
 import be.jabapage.racingleague.f1telemetry.repository.*;
 import be.jabapage.racingleague.f1telemetry.entity.LiveState;
 import be.jabapage.racingleague.f1telemetry.repository.LiveStateRepository;
+import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.scheduling.annotation.Scheduled;
 import tools.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,11 +47,11 @@ public class TelemetryProcessingService {
     @Autowired
     private ObjectMapper objectMapper;
 
-    private final Map<String, LeagueSessionState> leagueStates = new java.util.concurrent.ConcurrentHashMap<>();
-    private final Map<Long, LocalDateTime> lastLocalUpdate = new java.util.concurrent.ConcurrentHashMap<>();
-    private final Map<Long, Long> lastSavedMap = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, LeagueSessionState> leagueStates = new ConcurrentHashMap<>();
+    private final Map<Long, LocalDateTime> lastLocalUpdate = new ConcurrentHashMap<>();
+    private final Map<Long, Long> lastSavedMap = new ConcurrentHashMap<>();
 
-    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 1000)
+    @Scheduled(fixedDelay = 1000)
     public void syncDistributedState() {
         Set<Long> activeLeagueIds = getActiveLeagueIds();
         if (activeLeagueIds.isEmpty()) return;
