@@ -53,8 +53,26 @@ public class TelemetryProcessingService {
 
     @Scheduled(fixedDelay = 1000)
     public void syncDistributedState() {
+        // Clean up inactive league states from memory to stop 1-second database polling
+        long now = System.currentTimeMillis();
+        leagueStates.entrySet().removeIf(entry -> {
+            LeagueSessionState state = entry.getValue();
+            boolean inactive = state.getLastPacketTime() == 0 || (now - state.getLastPacketTime() > 120000);
+            if (inactive) {
+                log.info("Cleaning up inactive state in memory for league {}", state.getLeagueId());
+                if (state.getLeagueId() != null) {
+                    lastLocalUpdate.remove(state.getLeagueId());
+                    lastSavedMap.remove(state.getLeagueId());
+                }
+            }
+            return inactive;
+        });
+
         Set<Long> activeLeagueIds = getActiveLeagueIds();
-        if (activeLeagueIds.isEmpty()) return;
+        if (activeLeagueIds.isEmpty()) {
+            log.trace("No active leagues, skipping sync");
+            return;
+        }
 
         // Fetch only states for leagues we care about
         List<LiveState> updates = liveStateRepository.findAllById(activeLeagueIds);
