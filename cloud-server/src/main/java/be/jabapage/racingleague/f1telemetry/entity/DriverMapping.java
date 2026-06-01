@@ -36,6 +36,14 @@ public class DriverMapping {
     @Column(name = "country")
     private String country = "Unknown";
 
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+        name = "driver_mapping_tier",
+        joinColumns = @JoinColumn(name = "driver_mapping_id"),
+        inverseJoinColumns = @JoinColumn(name = "tier_id")
+    )
+    private java.util.Set<Tier> tiers = new java.util.LinkedHashSet<>();
+
     public boolean isReserve() {
         return reserve != null && reserve;
     }

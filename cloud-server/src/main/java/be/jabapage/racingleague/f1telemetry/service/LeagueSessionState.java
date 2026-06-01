@@ -15,6 +15,7 @@ import java.util.Arrays;
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public class LeagueSessionState {
     private Long leagueId;
+    private Long tierId;
     private boolean hideAi;
     private boolean showTyreWear;
     private boolean showErs;

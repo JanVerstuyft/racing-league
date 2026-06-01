@@ -14,7 +14,8 @@ import java.time.LocalDateTime;
 @Entity
 public class LiveState {
     @Id
-    private Long leagueId;
+    @Column(name = "tier_id")
+    private Long tierId;
 
     @Column(name = "last_updated")
     private LocalDateTime lastUpdated;

@@ -16,9 +16,6 @@ public class League {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String name;
-    
-    @Column(unique = true)
-    private String token;
 
     @Column(name = "hide_ai")
     private Boolean hideAi = false;
@@ -48,17 +45,8 @@ public class League {
     @JoinColumn(name = "user_id")
     private User user;
 
-    @OneToMany(mappedBy = "league", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<DriverStanding> driverStandings = new ArrayList<>();
-
-    @OneToMany(mappedBy = "league", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<TeamStanding> teamStandings = new ArrayList<>();
-
-    @OneToMany(mappedBy = "league", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private java.util.Set<SessionResult> sessionResults = new java.util.LinkedHashSet<>();
-
-    @OneToMany(mappedBy = "league", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private java.util.Set<Event> events = new java.util.LinkedHashSet<>();
+    @OneToMany(mappedBy = "league", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private List<Tier> tiers = new ArrayList<>();
 
     @OneToMany(mappedBy = "league", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     private List<SessionPointConfig> sessionPointConfigs = new ArrayList<>();

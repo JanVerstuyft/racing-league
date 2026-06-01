@@ -21,8 +21,8 @@ public class SessionResult {
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "league_id")
-    private League league;
+    @JoinColumn(name = "tier_id")
+    private Tier tier;
 
     @ManyToOne
     @JoinColumn(name = "event_id")

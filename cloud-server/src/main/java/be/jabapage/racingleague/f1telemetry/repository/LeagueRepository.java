@@ -11,12 +11,9 @@ import java.util.Optional;
 @Repository
 public interface LeagueRepository extends JpaRepository<League, Long> {
     @Query("SELECT DISTINCT l FROM League l " +
-           "LEFT JOIN FETCH l.events e " +
-           "LEFT JOIN FETCH e.sessionResults " +
+           "LEFT JOIN FETCH l.tiers " +
            "WHERE l.id = :id")
     Optional<League> findByIdWithEvents(@Param("id") Long id);
-
-    Optional<League> findByToken(String token);
 
     java.util.List<be.jabapage.racingleague.f1telemetry.entity.League> findByUser(be.jabapage.racingleague.f1telemetry.entity.User user);
 }
