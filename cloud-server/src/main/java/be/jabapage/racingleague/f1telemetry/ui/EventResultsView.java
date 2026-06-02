@@ -156,7 +156,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             Button saveBtn = new Button("Add", ev -> {
                 if (typeCombo.getValue() == null) return;
                 SessionResult sr = new SessionResult();
-                sr.setLeague(currentEvent.getLeague());
+                sr.setTier(currentEvent.getTier());
                 sr.setEvent(currentEvent);
                 sr.setTrackId(currentEvent.getTrackId());
                 sr.setSessionType(typeCombo.getValue());
@@ -181,7 +181,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             dialog.setHeaderTitle("Add Result to " + TelemetryProcessingService.SESSION_TYPE_NAMES.getOrDefault(session.getSessionType(), "Session"));
 
             ComboBox<DriverMapping> driverCombo = new ComboBox<>("Driver");
-            driverCombo.setItems(driverMappingRepository.findByLeague(currentEvent.getLeague()));
+            driverCombo.setItems(driverMappingRepository.findByLeague(currentEvent.getTier().getLeague()));
             driverCombo.setItemLabelGenerator(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty() ? m.getOverriddenName() : m.getTelemetryName());
             driverCombo.setWidthFull();
 
@@ -260,7 +260,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 
                 // Recalculate gaps and standings for this league
                 telemetryProcessingService.calculateGaps(session);
-                telemetryProcessingService.recalculateStandings(currentEvent.getLeague().getId());
+                telemetryProcessingService.recalculateStandings(currentEvent.getTier().getId());
                 
                 refreshEvent();
                 dialog.close();
@@ -321,7 +321,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         eventRepository.findByIdWithResults(parameter).ifPresentOrElse(e -> {
             this.currentEvent = e;
             eventHeader.setText("Event: " + currentEvent.getEventName());
-            backToSeason.setRoute(SeasonDetailsView.class, currentEvent.getLeague().getId());
+            backToSeason.setRoute(SeasonDetailsView.class, currentEvent.getTier().getLeague().getId());
             setupSessionTabs();
             updateSessionContent();
         }, () -> {
@@ -355,7 +355,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 .sorted(Comparator.comparingInt(dr -> dr.getPosition() != null ? dr.getPosition() : 99))
                 .collect(Collectors.toList());
         
-        if (currentEvent.getLeague().isHideAi()) {
+        if (currentEvent.getTier().getLeague().isHideAi()) {
             driverResults = driverResults.stream().filter(dr -> !dr.isAi()).collect(Collectors.toList());
         }
 
@@ -564,7 +564,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     private void updateConsistencyData() {
         List<ConsistencyStats> stats = telemetryProcessingService.calculateConsistency(currentEventId);
 
-        if (currentEvent.getLeague().isHideAi()) {
+        if (currentEvent.getTier().getLeague().isHideAi()) {
             stats = stats.stream().filter(s -> !s.isAi()).collect(Collectors.toList());
         }
 
@@ -598,7 +598,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     private void updateLongestStintsData() {
         List<LongestStintStats> stats = telemetryProcessingService.calculateLongestStints(currentEventId);
 
-        if (currentEvent.getLeague().isHideAi()) {
+        if (currentEvent.getTier().getLeague().isHideAi()) {
             stats = stats.stream().filter(s -> !s.isAi()).collect(Collectors.toList());
         }
 
@@ -648,7 +648,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         List<RacePaceStats> rawStats = telemetryProcessingService.calculatePureRacePace(currentEventId);
 
         final List<RacePaceStats> stats;
-        if (currentEvent.getLeague().isHideAi()) {
+        if (currentEvent.getTier().getLeague().isHideAi()) {
             stats = rawStats.stream().filter(s -> !s.isAi()).collect(Collectors.toList());
         } else {
             stats = rawStats;

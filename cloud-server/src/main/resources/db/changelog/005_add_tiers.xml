@@ -1,0 +1,137 @@
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="005_add_tiers" author="antigravity">
+        <!-- 1. Create table tier -->
+        <createTable tableName="tier">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="tier_pkey"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="token" type="VARCHAR(255)"/>
+            <column name="league_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint columnNames="token" constraintName="uk_tier_token" tableName="tier"/>
+        <addForeignKeyConstraint baseColumnNames="league_id" baseTableName="tier"
+                                 constraintName="fk_tier_league" referencedColumnNames="id" referencedTableName="league"
+                                 onDelete="CASCADE"/>
+
+        <!-- 2. Create join table driver_mapping_tier -->
+        <createTable tableName="driver_mapping_tier">
+            <column name="driver_mapping_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="tier_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addPrimaryKey columnNames="driver_mapping_id, tier_id" constraintName="pk_driver_mapping_tier" tableName="driver_mapping_tier"/>
+        <addForeignKeyConstraint baseColumnNames="driver_mapping_id" baseTableName="driver_mapping_tier"
+                                 constraintName="fk_dmt_mapping" referencedColumnNames="id" referencedTableName="driver_mapping"
+                                 onDelete="CASCADE"/>
+        <addForeignKeyConstraint baseColumnNames="tier_id" baseTableName="driver_mapping_tier"
+                                 constraintName="fk_dmt_tier" referencedColumnNames="id" referencedTableName="tier"
+                                 onDelete="CASCADE"/>
+
+        <!-- 3. Add tier_id columns to event, session_result, driver_standing, team_standing, live_state -->
+        <addColumn tableName="event">
+            <column name="tier_id" type="BIGINT"/>
+        </addColumn>
+        <addColumn tableName="session_result">
+            <column name="tier_id" type="BIGINT"/>
+        </addColumn>
+        <addColumn tableName="driver_standing">
+            <column name="tier_id" type="BIGINT"/>
+        </addColumn>
+        <addColumn tableName="team_standing">
+            <column name="tier_id" type="BIGINT"/>
+        </addColumn>
+        <addColumn tableName="live_state">
+            <column name="tier_id" type="BIGINT"/>
+        </addColumn>
+
+        <!-- 4. Migrate existing data using custom SQL -->
+        <sql>
+            <!-- Insert default tier for each league, keeping the league's token -->
+            INSERT INTO tier (name, token, league_id)
+            SELECT 'Tier 1', token, id FROM league;
+
+            <!-- Link existing events to the default tier -->
+            UPDATE event e
+            SET tier_id = (SELECT t.id FROM tier t WHERE t.league_id = e.league_id AND t.name = 'Tier 1');
+
+            <!-- Link existing session_results to the default tier -->
+            UPDATE session_result sr
+            SET tier_id = (SELECT t.id FROM tier t WHERE t.league_id = sr.league_id AND t.name = 'Tier 1');
+
+            <!-- Link existing driver_standings to the default tier -->
+            UPDATE driver_standing ds
+            SET tier_id = (SELECT t.id FROM tier t WHERE t.league_id = ds.league_id AND t.name = 'Tier 1');
+
+            <!-- Link existing team_standings to the default tier -->
+            UPDATE team_standing ts
+            SET tier_id = (SELECT t.id FROM tier t WHERE t.league_id = ts.league_id AND t.name = 'Tier 1');
+
+            <!-- Map existing driver mappings to the default tier -->
+            INSERT INTO driver_mapping_tier (driver_mapping_id, tier_id)
+            SELECT dm.id, t.id
+            FROM driver_mapping dm
+            JOIN tier t ON t.league_id = dm.league_id AND t.name = 'Tier 1';
+
+            <!-- Link existing live_states to the default tier -->
+            UPDATE live_state ls
+            SET tier_id = (SELECT t.id FROM tier t WHERE t.league_id = ls.league_id AND t.name = 'Tier 1')
+            WHERE league_id IS NOT NULL;
+        </sql>
+
+        <!-- 5. Enforce NOT NULL constraints and foreign key constraints on the new columns -->
+        <sql>
+            DELETE FROM live_state WHERE tier_id IS NULL;
+        </sql>
+        
+        <addNotNullConstraint columnName="tier_id" tableName="event" columnDataType="BIGINT"/>
+        <addForeignKeyConstraint baseColumnNames="tier_id" baseTableName="event"
+                                 constraintName="fk_event_tier" referencedColumnNames="id" referencedTableName="tier"/>
+
+        <addNotNullConstraint columnName="tier_id" tableName="session_result" columnDataType="BIGINT"/>
+        <addForeignKeyConstraint baseColumnNames="tier_id" baseTableName="session_result"
+                                 constraintName="fk_session_result_tier" referencedColumnNames="id" referencedTableName="tier"/>
+
+        <addNotNullConstraint columnName="tier_id" tableName="driver_standing" columnDataType="BIGINT"/>
+        <addForeignKeyConstraint baseColumnNames="tier_id" baseTableName="driver_standing"
+                                 constraintName="fk_driver_standing_tier" referencedColumnNames="id" referencedTableName="tier"/>
+
+        <addNotNullConstraint columnName="tier_id" tableName="team_standing" columnDataType="BIGINT"/>
+        <addForeignKeyConstraint baseColumnNames="tier_id" baseTableName="team_standing"
+                                 constraintName="fk_team_standing_tier" referencedColumnNames="id" referencedTableName="tier"/>
+
+        <addNotNullConstraint columnName="tier_id" tableName="live_state" columnDataType="BIGINT"/>
+        <addForeignKeyConstraint baseColumnNames="tier_id" baseTableName="live_state"
+                                 constraintName="fk_live_state_tier" referencedColumnNames="id" referencedTableName="tier"/>
+
+        <!-- 6. Drop old columns, old PK/FK constraints -->
+        <dropForeignKeyConstraint baseTableName="event" constraintName="fk2oontqepc8mddwomq8jdynrrg"/>
+        <dropColumn columnName="league_id" tableName="event"/>
+
+        <dropForeignKeyConstraint baseTableName="session_result" constraintName="fkj79ir99stwfvvlcda7etn044d"/>
+        <dropColumn columnName="league_id" tableName="session_result"/>
+
+        <dropForeignKeyConstraint baseTableName="driver_standing" constraintName="fk9djuh29w9shgfyexdhs78607p"/>
+        <dropColumn columnName="league_id" tableName="driver_standing"/>
+
+        <dropForeignKeyConstraint baseTableName="team_standing" constraintName="fkqc9ewgwrtyai45vdm3upn3d8u"/>
+        <dropColumn columnName="league_id" tableName="team_standing"/>
+
+        <dropPrimaryKey constraintName="live_state_pkey1" tableName="live_state"/>
+        <dropColumn columnName="league_id" tableName="live_state"/>
+        <addPrimaryKey columnNames="tier_id" constraintName="pk_live_state" tableName="live_state"/>
+
+        <dropColumn columnName="token" tableName="league"/>
+    </changeSet>
+
+</databaseChangeLog>

@@ -18,8 +18,8 @@ public class Event {
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "league_id")
-    private League league;
+    @JoinColumn(name = "tier_id")
+    private Tier tier;
 
     private String trackId;
     private String eventName; // e.g., "British Grand Prix"

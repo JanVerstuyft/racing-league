@@ -3,10 +3,12 @@ package be.jabapage.racingleague.f1telemetry.ui;
 import be.jabapage.racingleague.f1telemetry.entity.DriverStanding;
 import be.jabapage.racingleague.f1telemetry.entity.Event;
 import be.jabapage.racingleague.f1telemetry.entity.League;
+import be.jabapage.racingleague.f1telemetry.entity.Tier;
 import be.jabapage.racingleague.f1telemetry.entity.TeamStanding;
 import be.jabapage.racingleague.f1telemetry.repository.DriverStandingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.EventRepository;
 import be.jabapage.racingleague.f1telemetry.repository.LeagueRepository;
+import be.jabapage.racingleague.f1telemetry.repository.TierRepository;
 import be.jabapage.racingleague.f1telemetry.repository.TeamStandingRepository;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
@@ -34,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import be.jabapage.racingleague.f1telemetry.entity.DriverMapping;
@@ -45,6 +48,7 @@ import com.vaadin.flow.data.binder.Binder;
 
 import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.combobox.MultiSelectComboBox;
 
 @AnonymousAllowed
 @PageTitle("Season Details | F1 Telemetry")
@@ -52,6 +56,7 @@ import com.vaadin.flow.component.combobox.ComboBox;
 public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter<Long> {
 
     private final LeagueRepository leagueRepository;
+    private final TierRepository tierRepository;
     private final EventRepository eventRepository;
     private final DriverStandingRepository driverStandingRepository;
     private final TeamStandingRepository teamStandingRepository;
@@ -61,26 +66,37 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final TelemetryProcessingService telemetryProcessingService;
     
     private League league;
+    private List<Tier> leagueTiers = new ArrayList<>();
+    private Tier selectedTier;
+
     private final H2 seasonName = new H2();
+    private final ComboBox<Tier> tierSelector = new ComboBox<>("Active Tier");
     private final Checkbox hideAiCheckbox = new Checkbox("Hide AI Drivers");
     private final Checkbox showTyreWearCheckbox = new Checkbox("Show Tyre Wear on Live Leaderboard");
     private final Checkbox showErsCheckbox = new Checkbox("Show ERS on Live Leaderboard");
     private final com.vaadin.flow.component.textfield.IntegerField minLapsPctField = new com.vaadin.flow.component.textfield.IntegerField("Minimum Laps Percentage for Stats (%)");
+    
     private final Grid<Event> eventGrid = new Grid<>(Event.class, false);
     private final Grid<DriverStanding> driverGrid = new Grid<>(DriverStanding.class, false);
     private final Grid<TeamStanding> teamGrid = new Grid<>(TeamStanding.class, false);
+    private final Grid<TeamStanding> leagueTeamGrid = new Grid<>(TeamStanding.class, false);
     private final Grid<DriverMapping> mappingGrid = new Grid<>(DriverMapping.class, false);
     private final Grid<SessionPointConfig> pointsGrid = new Grid<>(SessionPointConfig.class, false);
+    private final Grid<Tier> tierGrid = new Grid<>(Tier.class, false);
 
     private final VerticalLayout eventsLayout = new VerticalLayout();
     private final VerticalLayout standingsLayout = new VerticalLayout();
     private final VerticalLayout driverStandingsContent = new VerticalLayout();
     private final VerticalLayout teamStandingsContent = new VerticalLayout();
+    private final VerticalLayout leagueTeamStandingsContent = new VerticalLayout();
     private final VerticalLayout driversLayout = new VerticalLayout();
     private final VerticalLayout pointsLayout = new VerticalLayout();
+    private final VerticalLayout tiersLayout = new VerticalLayout();
     private final VerticalLayout settingsLayout = new VerticalLayout();
+    
     private final Button addManualDriverBtn = new Button("Add Manual Driver");
     private final Button deleteSelectedMappingsBtn = new Button("Delete Selected");
+    private final MultiSelectComboBox<Tier> tierEditorField = new MultiSelectComboBox<>();
     
     // Points UI Components
     private final Tabs sessionTypeTabs = new Tabs();
@@ -98,7 +114,9 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private Grid.Column<Event> actionsColumn;
     private boolean isInitializing = false;
 
-    public SeasonDetailsView(LeagueRepository leagueRepository, EventRepository eventRepository,
+    public SeasonDetailsView(LeagueRepository leagueRepository,
+                             TierRepository tierRepository,
+                             EventRepository eventRepository,
                              DriverStandingRepository driverStandingRepository,
                              TeamStandingRepository teamStandingRepository,
                              DriverMappingRepository driverMappingRepository,
@@ -106,6 +124,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                              TelemetryProcessingService telemetryProcessingService,
                              SecurityService securityService) {
         this.leagueRepository = leagueRepository;
+        this.tierRepository = tierRepository;
         this.eventRepository = eventRepository;
         this.driverStandingRepository = driverStandingRepository;
         this.teamStandingRepository = teamStandingRepository;
@@ -126,22 +145,55 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         nav.add(new RouterLink("Documentation", DocumentationView.class));
         nav.setSpacing(true);
 
-        HorizontalLayout header = new HorizontalLayout(seasonName);
+        tierSelector.setItemLabelGenerator(Tier::getName);
+        tierSelector.setWidth("250px");
+        tierSelector.addValueChangeListener(e -> {
+            if (e.getValue() != null && !isInitializing) {
+                selectedTier = e.getValue();
+                updateData();
+            }
+        });
+
+        HorizontalLayout header = new HorizontalLayout(seasonName, tierSelector);
         header.setAlignItems(Alignment.BASELINE);
         header.setSpacing(true);
 
         // Top level tabs
-        Tabs mainTabs = new Tabs(new Tab("Race Weekends"), new Tab("Standings"), new Tab("Drivers"), new Tab("Points"), new Tab("Settings"));
+        Tabs mainTabs = new Tabs(new Tab("Race Weekends"), new Tab("Standings"), new Tab("Drivers"), new Tab("Points"), new Tab("Tiers"), new Tab("Settings"));
         mainTabs.addSelectedChangeListener(e -> {
             String label = e.getSelectedTab().getLabel();
             eventsLayout.setVisible(label.equals("Race Weekends"));
             standingsLayout.setVisible(label.equals("Standings"));
             driversLayout.setVisible(label.equals("Drivers"));
             pointsLayout.setVisible(label.equals("Points"));
+            tiersLayout.setVisible(label.equals("Tiers"));
             settingsLayout.setVisible(label.equals("Settings"));
         });
 
         eventsLayout.add(new HorizontalLayout(new H3("Race Weekends"), addManualWeekendBtn), eventGrid);
+
+        // Tiers management layout
+        TextField addTierNameField = new TextField("Tier Name");
+        Button addTierBtn = new Button("Add Tier");
+        addTierBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        addTierBtn.addClickListener(ev -> {
+            if (league == null || addTierNameField.getValue().isEmpty()) return;
+            Tier t = new Tier();
+            t.setName(addTierNameField.getValue());
+            t.setToken(UUID.randomUUID().toString());
+            t.setLeague(league);
+            tierRepository.save(t);
+            addTierNameField.clear();
+            updateTierSelector();
+            refreshTiersList();
+            Notification.show("Tier added", 3000, Notification.Position.TOP_CENTER);
+        });
+
+        HorizontalLayout tiersToolbar = new HorizontalLayout(addTierNameField, addTierBtn);
+        tiersToolbar.setDefaultVerticalComponentAlignment(Alignment.BASELINE);
+
+        tiersLayout.add(new H3("Manage Tiers"), tiersToolbar, tierGrid);
+        tiersLayout.setVisible(false);
 
         // Points Layout
         pointsLayout.add(new H3("Points Configuration Overrides"));
@@ -245,15 +297,15 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         settingsLayout.setVisible(false);
         
         recalculateBtn.addClickListener(e -> {
-            if (league != null) {
-                telemetryProcessingService.recalculateStandings(league.getId());
+            if (selectedTier != null) {
+                telemetryProcessingService.recalculateStandings(selectedTier.getId());
                 updateData();
                 Notification.show("Standings recalculated!", 3000, Notification.Position.TOP_CENTER);
             }
         });
 
         addManualWeekendBtn.addClickListener(e -> {
-            if (league == null) return;
+            if (selectedTier == null) return;
             
             com.vaadin.flow.component.dialog.Dialog dialog = new com.vaadin.flow.component.dialog.Dialog();
             dialog.setHeaderTitle("Add Manual Weekend");
@@ -281,7 +333,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                     return;
                 }
                 Event newEvent = new Event();
-                newEvent.setLeague(league);
+                newEvent.setTier(selectedTier);
                 newEvent.setTrackId(String.valueOf(trackCombo.getValue()));
                 newEvent.setEventName(nameField.getValue());
                 eventRepository.save(newEvent);
@@ -297,11 +349,12 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         });
 
         // Inner tabs for Standings
-        Tabs standingsTabs = new Tabs(new Tab("Drivers"), new Tab("Teams"));
+        Tabs standingsTabs = new Tabs(new Tab("Drivers"), new Tab("Teams"), new Tab("League Teams"));
         standingsTabs.addSelectedChangeListener(e -> {
             String label = e.getSelectedTab().getLabel();
             driverStandingsContent.setVisible(label.equals("Drivers"));
             teamStandingsContent.setVisible(label.equals("Teams"));
+            leagueTeamStandingsContent.setVisible(label.equals("League Teams"));
         });
 
         driverGrid.setSelectionMode(Grid.SelectionMode.NONE);
@@ -309,11 +362,16 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         driverStandingsContent.add(new HorizontalLayout(new H3("Driver Standings"), recalculateBtn),
                 driverGrid);
         driverStandingsContent.setPadding(false);        
+        
         teamStandingsContent.add(new H3("Team Standings"), teamGrid);
         teamStandingsContent.setVisible(false);
         teamStandingsContent.setPadding(false);
 
-        standingsLayout.add(standingsTabs, driverStandingsContent, teamStandingsContent);
+        leagueTeamStandingsContent.add(new H3("League Team Standings (Over All Tiers)"), leagueTeamGrid);
+        leagueTeamStandingsContent.setVisible(false);
+        leagueTeamStandingsContent.setPadding(false);
+
+        standingsLayout.add(standingsTabs, driverStandingsContent, teamStandingsContent, leagueTeamStandingsContent);
         standingsLayout.setVisible(false);
 
         deleteSelectedMappingsBtn.addThemeVariants(ButtonVariant.LUMO_ERROR);
@@ -371,7 +429,12 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             countryCombo.setValue("Unknown");
             countryCombo.setWidthFull();
 
-            VerticalLayout dialogLayout = new VerticalLayout(nameField, telemetryNameField, raceNumField, countryCombo);
+            MultiSelectComboBox<Tier> manualTiersField = new MultiSelectComboBox<>("Assign to Tiers");
+            manualTiersField.setItems(tierRepository.findByLeagueOrderByNameAsc(league));
+            manualTiersField.setItemLabelGenerator(Tier::getName);
+            manualTiersField.setWidthFull();
+
+            VerticalLayout dialogLayout = new VerticalLayout(nameField, telemetryNameField, raceNumField, countryCombo, manualTiersField);
             dialog.add(dialogLayout);
 
             Button saveBtn = new Button("Add", ev -> {
@@ -386,6 +449,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 mapping.setRaceNumber(raceNumField.getValue() != null ? raceNumField.getValue() : 0);
                 mapping.setCountry(countryCombo.getValue() != null ? countryCombo.getValue() : "Unknown");
                 mapping.setDriverId(255); // Use 255 for manual drivers
+                mapping.getTiers().addAll(manualTiersField.getValue());
+
                 driverMappingRepository.save(mapping);
                 updateData();
                 dialog.close();
@@ -396,7 +461,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             dialog.open();
         });
 
-        add(nav, header, mainTabs, eventsLayout, standingsLayout, driversLayout, pointsLayout, settingsLayout);
+        add(nav, header, mainTabs, eventsLayout, standingsLayout, driversLayout, pointsLayout, tiersLayout, settingsLayout);
     }
 
     private void configureGrids() {
@@ -450,7 +515,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                             deletingNote.close();
                             Notification.show("Error: " + ex.getMessage(), 5000, Notification.Position.TOP_CENTER);
                         }
-                    });                    dialog.open();
+                    });
+                    dialog.open();
                 });
                 deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
                 actions.add(deleteBtn);
@@ -490,12 +556,92 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         }).setHeader("Driver").setSortable(true).setComparator(DriverStanding::getDriverName);
 
         driverGrid.addColumn(DriverStanding::getTeamName).setHeader("Team");
-
         driverGrid.addColumn(ds -> ds.getPoints() != null ? ds.getPoints() : 0).setHeader("Points").setSortable(true);
         driverGrid.addColumn(ds -> ds.getWins() != null ? ds.getWins() : 0).setHeader("Wins");
 
         teamGrid.addColumn(TeamStanding::getTeamName).setHeader("Team");
         teamGrid.addColumn(ts -> ts.getPoints() != null ? ts.getPoints() : 0).setHeader("Points").setSortable(true);
+
+        leagueTeamGrid.addColumn(TeamStanding::getTeamName).setHeader("Team");
+        leagueTeamGrid.addColumn(ts -> ts.getPoints() != null ? ts.getPoints() : 0).setHeader("Points").setSortable(true);
+
+        // Configure TierGrid
+        tierGrid.addColumn(Tier::getName).setHeader("Tier Name").setAutoWidth(true);
+        tierGrid.addComponentColumn(t -> {
+            Span tokenSpan = new Span(t.getToken());
+            tokenSpan.getStyle().set("font-family", "monospace");
+            tokenSpan.getStyle().set("font-size", "0.8em");
+            Button copyBtn = new Button("Copy", e -> {
+                getElement().executeJs("navigator.clipboard.writeText($0)", t.getToken());
+                Notification.show("Token copied to clipboard", 3000, Notification.Position.TOP_CENTER);
+            });
+            copyBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
+            
+            HorizontalLayout l = new HorizontalLayout(tokenSpan, copyBtn);
+            l.setAlignItems(Alignment.CENTER);
+            return l;
+        }).setHeader("Telemetry Token").setAutoWidth(true);
+        
+        tierGrid.addComponentColumn(t -> {
+            RouterLink liveLink = new RouterLink("Live Dashboard", LeaderboardView.class, t.getId());
+            return liveLink;
+        }).setHeader("Live");
+
+        tierGrid.addComponentColumn(t -> {
+            HorizontalLayout actions = new HorizontalLayout();
+            
+            TextField renameField = new TextField();
+            renameField.setValue(t.getName());
+            renameField.setVisible(false);
+            
+            Button renameBtn = new Button("Rename");
+            renameBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_SMALL);
+            
+            Button saveBtn = new Button("Save");
+            saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SMALL);
+            saveBtn.setVisible(false);
+            
+            renameBtn.addClickListener(e -> {
+                renameField.setVisible(true);
+                saveBtn.setVisible(true);
+                renameBtn.setVisible(false);
+            });
+            
+            saveBtn.addClickListener(e -> {
+                if (!renameField.getValue().isEmpty()) {
+                    t.setName(renameField.getValue());
+                    tierRepository.save(t);
+                    updateTierSelector();
+                    refreshTiersList();
+                    renameField.setVisible(false);
+                    saveBtn.setVisible(false);
+                    renameBtn.setVisible(true);
+                    Notification.show("Tier renamed!", 3000, Notification.Position.TOP_CENTER);
+                }
+            });
+            
+            Button deleteBtn = new Button("Delete", e -> {
+                ConfirmDialog cd = new ConfirmDialog();
+                cd.setHeader("Delete Tier?");
+                cd.setText("Are you sure you want to delete '" + t.getName() + "'? All race weekends and standings in this tier will be lost.");
+                cd.setCancelable(true);
+                cd.setConfirmText("Delete");
+                cd.setConfirmButtonTheme("error primary");
+                cd.addConfirmListener(event -> {
+                    tierRepository.delete(t);
+                    updateTierSelector();
+                    refreshTiersList();
+                    Notification.show("Tier deleted", 3000, Notification.Position.TOP_CENTER);
+                });
+                cd.open();
+            });
+            deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
+            
+            actions.add(renameField, renameBtn, saveBtn, deleteBtn);
+            actions.setAlignItems(Alignment.CENTER);
+            actions.setVisible(securityService.getAuthenticatedUser().isPresent());
+            return actions;
+        }).setHeader("Actions");
 
         configureMappingGrid();
     }
@@ -522,6 +668,11 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         Grid.Column<DriverMapping> overrideColumn = mappingGrid.addColumn(DriverMapping::getOverriddenName).setHeader("Display Name");
         Grid.Column<DriverMapping> countryColumn = mappingGrid.addColumn(DriverMapping::getCountry).setHeader("Country");
 
+        // Column for Tiers assignments
+        Grid.Column<DriverMapping> tiersColumn = mappingGrid.addColumn(m -> {
+            return m.getTiers().stream().map(Tier::getName).sorted().collect(Collectors.joining(", "));
+        }).setHeader("Assigned Tiers");
+
         Binder<DriverMapping> binder = new Binder<>(DriverMapping.class);
         Editor<DriverMapping> editor = mappingGrid.getEditor();
         editor.setBinder(binder);
@@ -542,14 +693,25 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         binder.forField(reserveField).bind(DriverMapping::getReserve, DriverMapping::setReserve);
         reserveColumn.setEditorComponent(reserveField);
 
+        tierEditorField.setItemLabelGenerator(Tier::getName);
+        tierEditorField.setWidthFull();
+        binder.forField(tierEditorField).bind(DriverMapping::getTiers, DriverMapping::setTiers);
+        tiersColumn.setEditorComponent(tierEditorField);
+
         Button saveButton = new Button("Save", e -> {
             try {
                 DriverMapping item = editor.getItem();
                 editor.save();
                 driverMappingRepository.save(item);
                 telemetryProcessingService.refreshDriverMappings(league.getId());
-                telemetryProcessingService.recalculateStandings(league.getId());
-                Notification.show("Driver name and standings updated!", 3000, Notification.Position.TOP_CENTER);
+                
+                // Recalculate standings for all tiers of the league to ensure consistency
+                List<Tier> tiers = tierRepository.findByLeague(league);
+                for (Tier t : tiers) {
+                    telemetryProcessingService.recalculateStandings(t.getId());
+                }
+                
+                Notification.show("Driver and standings updated!", 3000, Notification.Position.TOP_CENTER);
                 updateData();
             } finally {
                 e.getSource().setEnabled(true);
@@ -615,7 +777,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             showTyreWearCheckbox.setValue(league.isShowTyreWear());
             showErsCheckbox.setValue(league.isShowErs());
             minLapsPctField.setValue(league.getMinLapsPct() != null ? league.getMinLapsPct() : 60);
-            updateData();
+            
+            updateTierSelector();
             
             // Hide admin-only features if not logged in
             boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
@@ -630,17 +793,44 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             showTyreWearCheckbox.setVisible(loggedIn);
             showErsCheckbox.setVisible(loggedIn);
             minLapsPctField.setVisible(loggedIn);
+            tiersLayout.setVisible(false);
+            
+            refreshTiersList();
+            updateData();
         } finally {
             isInitializing = false;
         }
     }
 
-    private void updateData() {
+    private void updateTierSelector() {
         if (league == null) return;
-
-        eventGrid.setItems(eventRepository.findByLeague(league));
+        leagueTiers = tierRepository.findByLeagueOrderByNameAsc(league);
+        tierSelector.setItems(leagueTiers);
         
-        List<DriverStanding> standings = driverStandingRepository.findByLeague(league);
+        if (selectedTier != null && !leagueTiers.contains(selectedTier)) {
+            selectedTier = null;
+        }
+        
+        if (selectedTier == null && !leagueTiers.isEmpty()) {
+            selectedTier = leagueTiers.get(0);
+        }
+        
+        tierSelector.setValue(selectedTier);
+        tierEditorField.setItems(leagueTiers);
+    }
+
+    private void refreshTiersList() {
+        if (league != null) {
+            tierGrid.setItems(tierRepository.findByLeagueOrderByNameAsc(league));
+        }
+    }
+
+    private void updateData() {
+        if (league == null || selectedTier == null) return;
+
+        eventGrid.setItems(eventRepository.findByTier(selectedTier));
+        
+        List<DriverStanding> standings = driverStandingRepository.findByTier(selectedTier);
         if (league.isHideAi()) {
             standings = standings.stream().filter(s -> !s.isAi()).toList();
         }
@@ -649,13 +839,34 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 .sorted(Comparator.comparing((DriverStanding ds) -> ds.getPoints() != null ? ds.getPoints() : 0).reversed())
                 .collect(java.util.stream.Collectors.toList()));
         
-        teamGrid.setItems(teamStandingRepository.findByLeague(league).stream()
+        teamGrid.setItems(teamStandingRepository.findByTier(selectedTier).stream()
                 .sorted(Comparator.comparing((TeamStanding ts) -> ts.getPoints() != null ? ts.getPoints() : 0).reversed())
                 .collect(java.util.stream.Collectors.toList()));
         
         mappingGrid.setItems(driverMappingRepository.findByLeague(league).stream()
                 .sorted(Comparator.comparing(m -> m.getOverriddenName() != null ? m.getOverriddenName() : m.getTelemetryName()))
                 .collect(Collectors.toList()));
+
+        // Update League-wide Team Standings (dynamic aggregation over all tiers)
+        List<TeamStanding> allTiersTeamStandings = new ArrayList<>();
+        for (Tier tier : leagueTiers) {
+            allTiersTeamStandings.addAll(teamStandingRepository.findByTier(tier));
+        }
+        java.util.Map<String, Integer> leagueTeamPoints = allTiersTeamStandings.stream()
+                .collect(Collectors.groupingBy(
+                        TeamStanding::getTeamName,
+                        Collectors.summingInt(ts -> ts.getPoints() != null ? ts.getPoints() : 0)
+                ));
+        List<TeamStanding> leagueTeamStandings = leagueTeamPoints.entrySet().stream()
+                .map(entry -> {
+                    TeamStanding ts = new TeamStanding();
+                    ts.setTeamName(entry.getKey());
+                    ts.setPoints(entry.getValue());
+                    return ts;
+                })
+                .sorted(Comparator.comparing((TeamStanding ts) -> ts.getPoints() != null ? ts.getPoints() : 0).reversed())
+                .collect(Collectors.toList());
+        leagueTeamGrid.setItems(leagueTeamStandings);
 
         refreshPointsTabs();
     }
@@ -682,7 +893,6 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 Tab t = (Tab) sessionTypeTabs.getComponentAt(i);
                 if (selectedSessionType.equals(ComponentUtil.getData(t, Integer.class))) {
                     sessionTypeTabs.setSelectedTab(t);
-                    // loadPointsForSessionType(selectedSessionType); // Already called by dialog or listener
                     return;
                 }
             }
@@ -818,7 +1028,12 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         });
         sessionPointConfigRepository.saveAll(currentEditingConfigs);
         
-        telemetryProcessingService.recalculateStandings(league.getId());
+        // Recalculate standings for all tiers in this league
+        List<Tier> tiers = tierRepository.findByLeague(league);
+        for (Tier t : tiers) {
+            telemetryProcessingService.recalculateStandings(t.getId());
+        }
+        
         updateData();
         Notification.show("Points saved and standings recalculated", 3000, Notification.Position.TOP_CENTER);
         pointsChanged = false;
@@ -839,7 +1054,13 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                     .filter(c -> c.getSessionType().equals(selectedSessionType))
                     .toList();
             sessionPointConfigRepository.deleteAll(toDelete);
-            telemetryProcessingService.recalculateStandings(league.getId());
+            
+            // Recalculate standings for all tiers in this league
+            List<Tier> tiers = tierRepository.findByLeague(league);
+            for (Tier t : tiers) {
+                telemetryProcessingService.recalculateStandings(t.getId());
+            }
+
             selectedSessionType = null;
             updateData();
             Notification.show("Overrides removed", 3000, Notification.Position.TOP_CENTER);

@@ -26,6 +26,8 @@ public class TelemetryProcessingService {
     @Autowired
     private LeagueRepository leagueRepository;
     @Autowired
+    private TierRepository tierRepository;
+    @Autowired
     private SessionResultRepository sessionResultRepository;
     @Autowired
     private DriverStandingRepository driverStandingRepository;
@@ -60,30 +62,30 @@ public class TelemetryProcessingService {
             LeagueSessionState state = entry.getValue();
             boolean inactive = state.getLastPacketTime() == 0 || (now - state.getLastPacketTime() > 120000);
             if (inactive) {
-                log.info("Cleaning up inactive state in memory for league {}", state.getLeagueId());
-                if (state.getLeagueId() != null) {
-                    lastLocalUpdate.remove(state.getLeagueId());
-                    lastSavedMap.remove(state.getLeagueId());
+                log.info("Cleaning up inactive state in memory for tier {}", state.getTierId());
+                if (state.getTierId() != null) {
+                    lastLocalUpdate.remove(state.getTierId());
+                    lastSavedMap.remove(state.getTierId());
                 }
             }
             return inactive;
         });
 
-        Set<Long> activeLeagueIds = getActiveLeagueIds();
-        if (activeLeagueIds.isEmpty()) {
-            log.trace("No active leagues, skipping sync");
+        Set<Long> activeTierIds = getActiveTierIds();
+        if (activeTierIds.isEmpty()) {
+            log.trace("No active tiers, skipping sync");
             return;
         }
 
-        // Fetch only states for leagues we care about
-        List<LiveState> updates = liveStateRepository.findAllById(activeLeagueIds);
+        // Fetch only states for tiers we care about
+        List<LiveState> updates = liveStateRepository.findAllById(activeTierIds);
         
         for (LiveState remote : updates) {
-            LocalDateTime local = lastLocalUpdate.get(remote.getLeagueId());
+            LocalDateTime local = lastLocalUpdate.get(remote.getTierId());
             if (local == null || remote.getLastUpdated().isAfter(local)) {
                 // Update memory cache for UDP processing
                 leagueStates.entrySet().stream()
-                        .filter(entry -> Objects.equals(entry.getValue().getLeagueId(), remote.getLeagueId()))
+                        .filter(entry -> Objects.equals(entry.getValue().getTierId(), remote.getTierId()))
                         .findFirst()
                         .ifPresentOrElse(entry -> {
                             try {
@@ -99,7 +101,7 @@ public class TelemetryProcessingService {
 
                                 if (remoteIsNewerSession || !localIsActivelyReceiving) {
                                     entry.setValue(remoteState);
-                                    log.debug("Sync: Updated state for league {} (Remote is newer or local is idle)", remote.getLeagueId());
+                                    log.debug("Sync: Updated state for tier {} (Remote is newer or local is idle)", remote.getTierId());
                                 } else {
                                     // Merge critical fields if missing locally
                                     boolean merged = false;
@@ -112,13 +114,14 @@ public class TelemetryProcessingService {
                                         merged = true;
                                     }
                                     if (merged) {
-                                        log.info("Sync: Merged missing Session/Participants for league {} from DB", remote.getLeagueId());
+                                        log.info("Sync: Merged missing Session/Participants for tier {} from DB", remote.getTierId());
                                     }
                                 }
 
-                                lastLocalUpdate.put(remote.getLeagueId(), remote.getLastUpdated());
+                                lastLocalUpdate.put(remote.getTierId(), remote.getLastUpdated());
                                 
-                                leagueRepository.findById(remote.getLeagueId()).ifPresent(l -> {
+                                tierRepository.findById(remote.getTierId()).ifPresent(t -> {
+                                    League l = t.getLeague();
                                     refreshDriverMappings(entry.getValue(), l);
                                     entry.getValue().setHideAi(l.isHideAi());
                                     entry.getValue().setShowTyreWear(l.isShowTyreWear());
@@ -128,11 +131,11 @@ public class TelemetryProcessingService {
                                 broadcastLeaderboard(entry.getValue());
                                 broadcastSessionInfo(entry.getValue());
                             } catch (Exception e) {
-                                log.error("Sync: Failed to update league {}: {}", remote.getLeagueId(), e.getMessage());
+                                log.error("Sync: Failed to update tier {}: {}", remote.getTierId(), e.getMessage());
                             }
                         }, () -> {
                             // If we don't have it in memory but someone is listening, broadcast to them
-                            if (broadcaster.hasListeners(remote.getLeagueId())) {
+                            if (broadcaster.hasListeners(remote.getTierId())) {
                                 loadAndBroadcast(remote);
                             }
                         });
@@ -140,16 +143,16 @@ public class TelemetryProcessingService {
         }
     }
 
-    private Set<Long> getActiveLeagueIds() {
+    private Set<Long> getActiveTierIds() {
         Set<Long> activeIds = new HashSet<>();
         // Add IDs from active UDP sessions
         leagueStates.values().forEach(s -> {
-            if (s.getLeagueId() != null && s.getLeagueId() != -1) {
-                activeIds.add(s.getLeagueId());
+            if (s.getTierId() != null && s.getTierId() != -1) {
+                activeIds.add(s.getTierId());
             }
         });
         // Add IDs from active UI listeners (e.g., people watching the dashboard)
-        activeIds.addAll(broadcaster.getActiveLeagueIds());
+        activeIds.addAll(broadcaster.getActiveTierIds());
         return activeIds;
     }
 
@@ -158,9 +161,10 @@ public class TelemetryProcessingService {
             String json = decompress(remote.getCompressedState());
             if (json.isEmpty()) return;
             LeagueSessionState state = objectMapper.readValue(json, LeagueSessionState.class);
-            lastLocalUpdate.put(remote.getLeagueId(), remote.getLastUpdated());
+            lastLocalUpdate.put(remote.getTierId(), remote.getLastUpdated());
             
-            leagueRepository.findById(remote.getLeagueId()).ifPresent(l -> {
+            tierRepository.findById(remote.getTierId()).ifPresent(t -> {
+                League l = t.getLeague();
                 refreshDriverMappings(state, l);
                 state.setHideAi(l.isHideAi());
                 state.setShowTyreWear(l.isShowTyreWear());
@@ -173,36 +177,40 @@ public class TelemetryProcessingService {
                 broadcastSessionInfo(state);
             });
         } catch (Exception e) {
-            log.error("Failed to load and broadcast league {}: {}", remote.getLeagueId(), e.getMessage());
+            log.error("Failed to load and broadcast tier {}: {}", remote.getTierId(), e.getMessage());
         }
     }
 
     private LeagueSessionState getOrCreateState(String token) {
         return leagueStates.computeIfAbsent(token, t -> {
-            Optional<League> league = leagueRepository.findByToken(t);
-            if (league.isPresent()) {
+            Optional<Tier> tier = tierRepository.findByToken(t);
+            if (tier.isPresent()) {
                 // Try to load from DB first
-                League l = league.get();
-                Optional<LiveState> liveState = liveStateRepository.findById(l.getId());
+                Tier tr = tier.get();
+                League l = tr.getLeague();
+                Optional<LiveState> liveState = liveStateRepository.findById(tr.getId());
                 if (liveState.isPresent()) {
                     try {
                         String json = decompress(liveState.get().getCompressedState());
                         if (!json.isEmpty()) {
                             LeagueSessionState state = objectMapper.readValue(json, LeagueSessionState.class);
+                            state.setTierId(tr.getId());
+                            state.setLeagueId(l.getId());
                             // Refresh transient mappings
                             refreshDriverMappings(state, l);
                             state.setHideAi(l.isHideAi());
                             state.setShowTyreWear(l.isShowTyreWear());
                             state.setShowErs(l.isShowErs());
-                            log.info("Loaded live state for league {} from database", l.getId());
+                            log.info("Loaded live state for tier {} from database", tr.getId());
                             return state;
                         }
                     } catch (Exception e) {
-                        log.error("Failed to deserialize live state for league {}: {}", l.getId(), e.getMessage());
+                        log.error("Failed to deserialize live state for tier {}: {}", tr.getId(), e.getMessage());
                     }
                 }
 
                 LeagueSessionState state = new LeagueSessionState(l.getId());
+                state.setTierId(tr.getId());
                 state.setHideAi(l.isHideAi());
                 state.setShowTyreWear(l.isShowTyreWear());
                 state.setShowErs(l.isShowErs());
@@ -217,14 +225,14 @@ public class TelemetryProcessingService {
     }
 
     private void saveState(LeagueSessionState state) {
-        if (state.getLeagueId() == null || state.getLeagueId() == -1) return;
+        if (state.getTierId() == null || state.getTierId() == -1) return;
 
         long now = System.currentTimeMillis();
-        long lastSaved = lastSavedMap.getOrDefault(state.getLeagueId(), 0L);
+        long lastSaved = lastSavedMap.getOrDefault(state.getTierId(), 0L);
 
         // Throttle DB writes to once per 1000ms
         if (now - lastSaved > 1000) {
-            lastSavedMap.put(state.getLeagueId(), now);
+            lastSavedMap.put(state.getTierId(), now);
             performAsyncSave(state);
         }
     }
@@ -234,16 +242,16 @@ public class TelemetryProcessingService {
         try {
             LocalDateTime now = LocalDateTime.now();
             LiveState liveState = new LiveState();
-            liveState.setLeagueId(state.getLeagueId());
+            liveState.setTierId(state.getTierId());
             liveState.setLastUpdated(now);
             
             String json = objectMapper.writeValueAsString(state);
             liveState.setCompressedState(compress(json));
             
             liveStateRepository.save(liveState);
-            lastLocalUpdate.put(state.getLeagueId(), now);
+            lastLocalUpdate.put(state.getTierId(), now);
         } catch (Exception e) {
-            log.error("Failed to persist live state for league {}: {}", state.getLeagueId(), e.getMessage());
+            log.error("Failed to persist live state for tier {}: {}", state.getTierId(), e.getMessage());
         }
     }
 
@@ -265,17 +273,16 @@ public class TelemetryProcessingService {
         }
     }
 
-    private void clearState(Long leagueId) {
-        if (leagueId != null && leagueId != -1) {
-            liveStateRepository.deleteById(leagueId);
+    private void clearState(Long tierId) {
+        if (tierId != null && tierId != -1) {
+            liveStateRepository.deleteById(tierId);
         }
     }
 
     public void refreshHideAiSetting(Long leagueId) {
         leagueStates.values().stream()
                 .filter(s -> Objects.equals(s.getLeagueId(), leagueId))
-                .findFirst()
-                .ifPresent(state -> {
+                .forEach(state -> {
                     leagueRepository.findById(leagueId).ifPresent(league -> state.setHideAi(league.isHideAi()));
                 });
     }
@@ -283,8 +290,7 @@ public class TelemetryProcessingService {
     public void refreshDriverMappings(Long leagueId) {
         leagueStates.values().stream()
                 .filter(s -> Objects.equals(s.getLeagueId(), leagueId))
-                .findFirst()
-                .ifPresent(state -> {
+                .forEach(state -> {
                     leagueRepository.findById(leagueId).ifPresent(league -> refreshDriverMappings(state, league));
                 });
     }
@@ -370,7 +376,7 @@ public class TelemetryProcessingService {
     );
 
     private void autoDiscoverDrivers(LeagueSessionState state, PacketParticipantsData participants) {
-        if (state.getLeagueId() == null || state.getLeagueId() == -1) return;
+        if (state.getLeagueId() == null || state.getLeagueId() == -1 || state.getTierId() == null || state.getTierId() == -1) return;
 
         League league = leagueRepository.findById(state.getLeagueId()).orElse(null);
         if (league == null) return;
@@ -399,15 +405,27 @@ public class TelemetryProcessingService {
                 newMapping.setRaceNumber(p.getRaceNumber());
                 newMapping.setDriverId(p.getDriverId());
                 newMapping.setCountry(CountryProvider.getCountryInfo(p.getNationality()).getName());
+                
+                Tier tier = tierRepository.findById(state.getTierId()).orElse(null);
+                if (tier != null) {
+                    newMapping.getTiers().add(tier);
+                }
+                
                 driverMappingRepository.save(newMapping);
                 // Add to cache with empty override to avoid re-checking
                 state.getDriverNameOverrides().put(key, "");
                 changed = true;
                 log.info("Auto-discovered new driver in league {}: {} (#{}, ID: {})", league.getId(), p.getName(), p.getRaceNumber(), p.getDriverId());
             } else {
+                DriverMapping existingMapping = mapping.get();
+                Tier tier = tierRepository.findById(state.getTierId()).orElse(null);
+                if (tier != null && !existingMapping.getTiers().contains(tier)) {
+                    existingMapping.getTiers().add(tier);
+                    driverMappingRepository.save(existingMapping);
+                }
                 // Already in DB, add to cache to avoid re-checking DB
-                state.getDriverNameOverrides().put(key, mapping.get().getOverriddenName() != null ? mapping.get().getOverriddenName() : "");
-                if (mapping.get().isReserve()) {
+                state.getDriverNameOverrides().put(key, existingMapping.getOverriddenName() != null ? existingMapping.getOverriddenName() : "");
+                if (existingMapping.isReserve()) {
                     state.getReserveDrivers().add(key);
                 }
             }
@@ -450,10 +468,10 @@ public class TelemetryProcessingService {
             // Usually SEND or Final Classification handles this, but this is a safety net.
             
             state.reset();
-            clearState(state.getLeagueId());
+            clearState(state.getTierId());
             state.setCurrentSessionUID(packetSessionUID);
             // Clear the live UI
-            broadcaster.broadcastLeaderboard(state.getLeagueId(), Collections.emptyList());
+            broadcaster.broadcastLeaderboard(state.getTierId(), Collections.emptyList());
         }
         state.setLastPacketTime(now);
 
@@ -587,15 +605,16 @@ public class TelemetryProcessingService {
     }
 
     private void broadcastSessionInfo(LeagueSessionState state) {
+        if (state.getTierId() == null) return;
         SessionInfo info = buildSessionInfo(state);
         if (info != null) {
-            broadcaster.broadcastSessionInfo(state.getLeagueId(), info);
+            broadcaster.broadcastSessionInfo(state.getTierId(), info);
         }
     }
 
-    public SessionInfo getSessionInfo(Long leagueId) {
+    public SessionInfo getSessionInfo(Long tierId) {
         return leagueStates.values().stream()
-                .filter(s -> Objects.equals(s.getLeagueId(), leagueId))
+                .filter(s -> Objects.equals(s.getTierId(), tierId))
                 .findFirst()
                 .map(this::buildSessionInfo)
                 .orElse(null);
@@ -629,15 +648,16 @@ public class TelemetryProcessingService {
     }
 
     private void broadcastLeaderboard(LeagueSessionState state) {
+        if (state.getTierId() == null) return;
         List<DriverBoardState> board = buildLeaderboard(state);
         if (board != null) {
-            broadcaster.broadcastLeaderboard(state.getLeagueId(), board);
+            broadcaster.broadcastLeaderboard(state.getTierId(), board);
         }
     }
 
-    public List<DriverBoardState> getLeaderboard(Long leagueId) {
+    public List<DriverBoardState> getLeaderboard(Long tierId) {
         return leagueStates.values().stream()
-                .filter(s -> Objects.equals(s.getLeagueId(), leagueId))
+                .filter(s -> Objects.equals(s.getTierId(), tierId))
                 .findFirst()
                 .map(this::buildLeaderboard)
                 .orElse(Collections.emptyList());
@@ -777,7 +797,7 @@ public class TelemetryProcessingService {
         int seg1End = maxLaps / 3;
         int seg2End = 2 * maxLaps / 3;
 
-        League league = event.getLeague();
+        League league = event.getTier().getLeague();
         double thresholdPct = (league.getMinLapsPct() != null ? league.getMinLapsPct() : 60) / 100.0;
 
         for (DriverResult dr : raceSession.getDriverResults()) {
@@ -949,7 +969,7 @@ public class TelemetryProcessingService {
                 .mapToInt(LapResult::getLapNumber)
                 .max().orElse(0);
 
-        League league = event.getLeague();
+        League league = event.getTier().getLeague();
         double thresholdPct = (league.getMinLapsPct() != null ? league.getMinLapsPct() : 60) / 100.0;
 
         List<ConsistencyStats> statsList = new ArrayList<>();
@@ -1167,15 +1187,15 @@ public class TelemetryProcessingService {
         long sessionUID = classification.getHeader().getSessionUID();
         log.info("Received Final Classification packet (packet 8) for session UID: {}", sessionUID);
         
-        if (state.getLeagueId() == null || state.getLeagueId() == -1) {
-            log.warn("Cannot save results: No valid league associated with state.");
+        if (state.getTierId() == null || state.getTierId() == -1) {
+            log.warn("Cannot save results: No valid tier associated with state.");
             return;
         }
 
         // Fallback fetch from DB if critical data is missing
         if (state.getCurrentSession() == null || state.getCurrentParticipants() == null) {
             log.info("Session or Participants data missing for UID: {}, trying fallback fetch from DB.", sessionUID);
-            liveStateRepository.findById(state.getLeagueId()).ifPresent(remote -> {
+            liveStateRepository.findById(state.getTierId()).ifPresent(remote -> {
                 try {
                     String json = decompress(remote.getCompressedState());
                     if (!json.isEmpty()) {
@@ -1183,7 +1203,7 @@ public class TelemetryProcessingService {
                         if (remoteState.getCurrentSessionUID() == sessionUID) {
                             if (state.getCurrentSession() == null) state.setCurrentSession(remoteState.getCurrentSession());
                             if (state.getCurrentParticipants() == null) state.setCurrentParticipants(remoteState.getCurrentParticipants());
-                            log.info("Successfully recovered missing data from database for league {}", state.getLeagueId());
+                            log.info("Successfully recovered missing data from database for tier {}", state.getTierId());
                         }
                     }
                 } catch (Exception e) {
@@ -1200,11 +1220,12 @@ public class TelemetryProcessingService {
             return;
         }
 
-        League league = leagueRepository.findByIdWithEvents(state.getLeagueId()).orElse(null);
-        if (league == null) {
-            log.warn("Cannot save results: Activated league ID {} not found in database.", state.getLeagueId());
+        Tier tier = tierRepository.findByIdWithEvents(state.getTierId()).orElse(null);
+        if (tier == null) {
+            log.warn("Cannot save results: Activated tier ID {} not found in database.", state.getTierId());
             return;
         }
+        League league = tier.getLeague();
 
         // Check if session already recorded (Search by UID only first, handles multi-pod finishing)
         boolean wasOverwritten = false;
@@ -1227,8 +1248,8 @@ public class TelemetryProcessingService {
             if (oldSession.getEvent() != null) {
                 oldSession.getEvent().getSessionResults().remove(oldSession);
             }
-            if (oldSession.getLeague() != null) {
-                oldSession.getLeague().getSessionResults().remove(oldSession);
+            if (oldSession.getTier() != null) {
+                oldSession.getTier().getSessionResults().remove(oldSession);
             }
             oldSession.setSessionUID(null);
             sessionResultRepository.saveAndFlush(oldSession);
@@ -1239,10 +1260,10 @@ public class TelemetryProcessingService {
 
         // Find or create event
         String trackIdStr = String.valueOf(state.getCurrentSession().getTrackId());
-        Event event = eventRepository.findByLeagueAndTrackId(league, trackIdStr)
+        Event event = eventRepository.findByTierAndTrackId(tier, trackIdStr)
                 .orElseGet(() -> {
                     Event newEvent = new Event();
-                    newEvent.setLeague(league);
+                    newEvent.setTier(tier);
                     newEvent.setTrackId(trackIdStr);
                     newEvent.setEventName(TRACK_NAMES.getOrDefault(state.getCurrentSession().getTrackId(), "Track " + trackIdStr));
                     log.info("Creating new event: {} for track: {}", newEvent.getEventName(), trackIdStr);
@@ -1253,7 +1274,7 @@ public class TelemetryProcessingService {
             classification.getNumCars(), sessionUID, state.getCurrentSession().getSessionType());
 
         SessionResult sessionResult = new SessionResult();
-        sessionResult.setLeague(league);
+        sessionResult.setTier(tier);
         sessionResult.setEvent(event);
         sessionResult.setSessionUID(classification.getHeader().getSessionUID());
         sessionResult.setSessionType(state.getCurrentSession().getSessionType());
@@ -1329,12 +1350,12 @@ public class TelemetryProcessingService {
             if (wasOverwritten) {
                 // If we overwritten an existing (live-saved) result, we must recalculate everything
                 // to avoid double-counting points in standings.
-                recalculateStandings(league.getId());
+                recalculateStandings(tier.getId());
             } else {
                 for (DriverResult driverResult : sessionResult.getDriverResults()) {
                     String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId() + "|" + driverResult.getCountry();
                     boolean isReserve = state.getReserveDrivers().contains(key);
-                    updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
+                    updateStandings(tier, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
                 }
             }
         }
@@ -1345,8 +1366,8 @@ public class TelemetryProcessingService {
 
     @Transactional
     public void saveResultsFromLiveState(LeagueSessionState state, long sessionUID) {
-        if (state.getLeagueId() == null || state.getLeagueId() == -1 || state.getCurrentSession() == null || state.getCurrentParticipants() == null || state.getCurrentLapData() == null) {
-            log.warn("Cannot save live results: Missing critical context (League, Session, Participants or LapData)");
+        if (state.getTierId() == null || state.getTierId() == -1 || state.getCurrentSession() == null || state.getCurrentParticipants() == null || state.getCurrentLapData() == null) {
+            log.warn("Cannot save live results: Missing critical context (Tier, Session, Participants or LapData)");
             return;
         }
 
@@ -1357,21 +1378,22 @@ public class TelemetryProcessingService {
             return; // Already saved (maybe by Packet 8 that arrived just before SEND)
         }
 
-        League league = leagueRepository.findByIdWithEvents(state.getLeagueId()).orElse(null);
-        if (league == null) return;
+        Tier tier = tierRepository.findByIdWithEvents(state.getTierId()).orElse(null);
+        if (tier == null) return;
+        League league = tier.getLeague();
 
         String trackIdStr = String.valueOf(state.getCurrentSession().getTrackId());
-        Event event = eventRepository.findByLeagueAndTrackId(league, trackIdStr)
+        Event event = eventRepository.findByTierAndTrackId(tier, trackIdStr)
                 .orElseGet(() -> {
                     Event newEvent = new Event();
-                    newEvent.setLeague(league);
+                    newEvent.setTier(tier);
                     newEvent.setTrackId(trackIdStr);
                     newEvent.setEventName(TRACK_NAMES.getOrDefault(state.getCurrentSession().getTrackId(), "Track " + trackIdStr));
                     return eventRepository.save(newEvent);
                 });
 
         SessionResult sessionResult = new SessionResult();
-        sessionResult.setLeague(league);
+        sessionResult.setTier(tier);
         sessionResult.setEvent(event);
         sessionResult.setSessionUID(sessionUID);
         sessionResult.setSessionType(sessionType);
@@ -1482,11 +1504,11 @@ public class TelemetryProcessingService {
             for (DriverResult driverResult : sessionResult.getDriverResults()) {
                 String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId() + "|" + driverResult.getCountry();
                 boolean isReserve = state.getReserveDrivers().contains(key);
-                updateStandings(league, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
+                updateStandings(tier, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
             }
         }
 
-        clearState(state.getLeagueId());
+        clearState(state.getTierId());
 
         log.info("Saved Fallback {} results (from live state) for session UID: {} in event: {}", 
                 isRace ? "Race" : "Qualifying", sessionUID, event.getEventName());
@@ -1494,7 +1516,7 @@ public class TelemetryProcessingService {
 
     @Transactional
     public void updateDriverNamesFromMappings(Long leagueId) {
-        League league = leagueRepository.findByIdWithEvents(leagueId).orElse(null);
+        League league = leagueRepository.findById(leagueId).orElse(null);
         if (league == null) return;
 
         List<DriverMapping> mappings = driverMappingRepository.findByLeague(league);
@@ -1506,17 +1528,20 @@ public class TelemetryProcessingService {
                         (existing, replacement) -> existing
                 ));
 
-        java.util.Set<SessionResult> allSessions = league.getEvents().stream()
-                .flatMap(e -> e.getSessionResults().stream())
-                .collect(java.util.stream.Collectors.toSet());
+        List<Tier> tiers = tierRepository.findByLeague(league);
+        for (Tier tier : tiers) {
+            java.util.Set<SessionResult> allSessions = tier.getEvents().stream()
+                    .flatMap(e -> e.getSessionResults().stream())
+                    .collect(java.util.stream.Collectors.toSet());
 
-        for (SessionResult session : allSessions) {
-            for (DriverResult result : session.getDriverResults()) {
-                if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
-                    String key = result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry();
-                    String nameToUse = nameMap.getOrDefault(key, result.getTelemetryName());
-                    if (!nameToUse.equals(result.getDriverName())) {
-                        result.setDriverName(nameToUse);
+            for (SessionResult session : allSessions) {
+                for (DriverResult result : session.getDriverResults()) {
+                    if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
+                        String key = result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry();
+                        String nameToUse = nameMap.getOrDefault(key, result.getTelemetryName());
+                        if (!nameToUse.equals(result.getDriverName())) {
+                            result.setDriverName(nameToUse);
+                        }
                     }
                 }
             }
@@ -1525,9 +1550,10 @@ public class TelemetryProcessingService {
     }
 
     @Transactional
-    public void recalculateStandings(Long leagueId) {
-        League league = leagueRepository.findByIdWithEvents(leagueId).orElse(null);
-        if (league == null) return;
+    public void recalculateStandings(Long tierId) {
+        Tier tier = tierRepository.findById(tierId).orElse(null);
+        if (tier == null) return;
+        League league = tier.getLeague();
 
         // Load all mappings for this league
         List<DriverMapping> mappings = driverMappingRepository.findByLeague(league);
@@ -1545,13 +1571,13 @@ public class TelemetryProcessingService {
                 .collect(Collectors.toSet());
 
         // Clear existing standings
-        driverStandingRepository.deleteAll(driverStandingRepository.findByLeague(league));
-        teamStandingRepository.deleteAll(teamStandingRepository.findByLeague(league));
+        driverStandingRepository.deleteAll(driverStandingRepository.findByTier(tier));
+        teamStandingRepository.deleteAll(teamStandingRepository.findByTier(tier));
 
         List<SessionPointConfig> pointConfigs = sessionPointConfigRepository.findByLeague(league);
 
         // Get all sessions from events - Use a Set to avoid duplicates if hibernate join fetch returned duplicates
-        java.util.Set<SessionResult> allSessions = league.getEvents().stream()
+        java.util.Set<SessionResult> allSessions = tier.getEvents().stream()
                 .flatMap(e -> e.getSessionResults().stream())
                 .collect(java.util.stream.Collectors.toSet());
 
@@ -1614,7 +1640,7 @@ public class TelemetryProcessingService {
                     if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
                         isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry());
                     }
-                    updateStandings(league, result, isReserve, raceNumber, isRace);
+                    updateStandings(tier, result, isReserve, raceNumber, isRace);
                 } else if (isRace) {
                     // Still need to update standings for races for Wins/Podiums even if 0 points
                     boolean isReserve = false;
@@ -1622,19 +1648,19 @@ public class TelemetryProcessingService {
                     if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
                         isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry());
                     }
-                    updateStandings(league, result, isReserve, raceNumber, true);
+                    updateStandings(tier, result, isReserve, raceNumber, true);
                 }
             }
         }
-        log.info("Recalculated standings for league: {}", league.getName());
+        log.info("Recalculated standings for tier: {}", tier.getName());
     }
 
-    private void updateStandings(League league, DriverResult result, boolean isReserve, Integer raceNumber, boolean isRaceSession) {
+    private void updateStandings(Tier tier, DriverResult result, boolean isReserve, Integer raceNumber, boolean isRaceSession) {
         // Update Driver Standings
-        DriverStanding ds = driverStandingRepository.findByLeagueAndDriverNameAndRaceNumberAndCountry(league, result.getDriverName(), raceNumber, result.getCountry())
+        DriverStanding ds = driverStandingRepository.findByTierAndDriverNameAndRaceNumberAndCountry(tier, result.getDriverName(), raceNumber, result.getCountry())
                 .orElseGet(() -> {
                     DriverStanding newDs = new DriverStanding();
-                    newDs.setLeague(league);
+                    newDs.setTier(tier);
                     newDs.setDriverName(result.getDriverName());
                     newDs.setPoints(0);
                     newDs.setWins(0);
@@ -1666,10 +1692,10 @@ public class TelemetryProcessingService {
         driverStandingRepository.save(ds);
 
         // Update Team Standings
-        TeamStanding ts = teamStandingRepository.findByLeagueAndTeamName(league, result.getTeamName())
+        TeamStanding ts = teamStandingRepository.findByTierAndTeamName(tier, result.getTeamName())
                 .orElseGet(() -> {
                     TeamStanding newTs = new TeamStanding();
-                    newTs.setLeague(league);
+                    newTs.setTier(tier);
                     newTs.setTeamName(result.getTeamName());
                     newTs.setPoints(0);
                     return newTs;
@@ -1738,19 +1764,16 @@ public class TelemetryProcessingService {
     @Transactional
     public void deleteEvent(Long eventId) {
         Event event = eventRepository.findById(eventId).orElseThrow();
-        League league = event.getLeague();
+        Tier tier = event.getTier();
         
-        if (league != null) {
-            league.getEvents().remove(event);
-            for (SessionResult sr : event.getSessionResults()) {
-                league.getSessionResults().remove(sr);
-            }
+        if (tier != null) {
+            tier.getEvents().remove(event);
         }
         
         eventRepository.delete(event);
         
-        if (league != null) {
-            recalculateStandings(league.getId());
+        if (tier != null) {
+            recalculateStandings(tier.getId());
         }
     }
 }

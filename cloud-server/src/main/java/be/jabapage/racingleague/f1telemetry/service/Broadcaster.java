@@ -19,11 +19,12 @@ public class Broadcaster {
     private final Map<Long, List<Consumer<List<DriverBoardState>>>> leaderboardListeners = new ConcurrentHashMap<>();
     private final Map<Long, List<Consumer<SessionInfo>>> sessionInfoListeners = new ConcurrentHashMap<>();
 
-    public synchronized Registration registerLeaderboard(Long leagueId, Consumer<List<DriverBoardState>> listener) {
-        leaderboardListeners.computeIfAbsent(leagueId, k -> new LinkedList<>()).add(listener);
+    public synchronized Registration registerLeaderboard(Long tierId, Consumer<List<DriverBoardState>> listener) {
+        if (tierId == null) return () -> {};
+        leaderboardListeners.computeIfAbsent(tierId, k -> new LinkedList<>()).add(listener);
         return () -> {
             synchronized (Broadcaster.this) {
-                List<Consumer<List<DriverBoardState>>> listeners = leaderboardListeners.get(leagueId);
+                List<Consumer<List<DriverBoardState>>> listeners = leaderboardListeners.get(tierId);
                 if (listeners != null) {
                     listeners.remove(listener);
                 }
@@ -31,11 +32,12 @@ public class Broadcaster {
         };
     }
 
-    public synchronized Registration registerSessionInfo(Long leagueId, Consumer<SessionInfo> listener) {
-        sessionInfoListeners.computeIfAbsent(leagueId, k -> new LinkedList<>()).add(listener);
+    public synchronized Registration registerSessionInfo(Long tierId, Consumer<SessionInfo> listener) {
+        if (tierId == null) return () -> {};
+        sessionInfoListeners.computeIfAbsent(tierId, k -> new LinkedList<>()).add(listener);
         return () -> {
             synchronized (Broadcaster.this) {
-                List<Consumer<SessionInfo>> listeners = sessionInfoListeners.get(leagueId);
+                List<Consumer<SessionInfo>> listeners = sessionInfoListeners.get(tierId);
                 if (listeners != null) {
                     listeners.remove(listener);
                 }
@@ -43,20 +45,22 @@ public class Broadcaster {
         };
     }
 
-    public synchronized boolean hasListeners(Long leagueId) {
-        List<Consumer<List<DriverBoardState>>> lListeners = leaderboardListeners.get(leagueId);
-        List<Consumer<SessionInfo>> sListeners = sessionInfoListeners.get(leagueId);
+    public synchronized boolean hasListeners(Long tierId) {
+        if (tierId == null) return false;
+        List<Consumer<List<DriverBoardState>>> lListeners = leaderboardListeners.get(tierId);
+        List<Consumer<SessionInfo>> sListeners = sessionInfoListeners.get(tierId);
         return (lListeners != null && !lListeners.isEmpty()) || (sListeners != null && !sListeners.isEmpty());
     }
 
-    public synchronized java.util.Set<Long> getActiveLeagueIds() {
+    public synchronized java.util.Set<Long> getActiveTierIds() {
         java.util.Set<Long> ids = new java.util.HashSet<>(leaderboardListeners.keySet());
         ids.addAll(sessionInfoListeners.keySet());
         return ids;
     }
 
-    public synchronized void broadcastLeaderboard(Long leagueId, List<DriverBoardState> data) {
-        List<Consumer<List<DriverBoardState>>> listeners = leaderboardListeners.get(leagueId);
+    public synchronized void broadcastLeaderboard(Long tierId, List<DriverBoardState> data) {
+        if (tierId == null) return;
+        List<Consumer<List<DriverBoardState>>> listeners = leaderboardListeners.get(tierId);
         if (listeners != null) {
             for (Consumer<List<DriverBoardState>> listener : listeners) {
                 EXECUTOR.execute(() -> listener.accept(data));
@@ -64,8 +68,9 @@ public class Broadcaster {
         }
     }
 
-    public synchronized void broadcastSessionInfo(Long leagueId, SessionInfo info) {
-        List<Consumer<SessionInfo>> listeners = sessionInfoListeners.get(leagueId);
+    public synchronized void broadcastSessionInfo(Long tierId, SessionInfo info) {
+        if (tierId == null) return;
+        List<Consumer<SessionInfo>> listeners = sessionInfoListeners.get(tierId);
         if (listeners != null) {
             for (Consumer<SessionInfo> listener : listeners) {
                 EXECUTOR.execute(() -> listener.accept(info));

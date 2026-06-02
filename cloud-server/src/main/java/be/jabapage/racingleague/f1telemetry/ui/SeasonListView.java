@@ -1,14 +1,15 @@
 package be.jabapage.racingleague.f1telemetry.ui;
 
 import be.jabapage.racingleague.f1telemetry.entity.League;
+import be.jabapage.racingleague.f1telemetry.entity.Tier;
 import be.jabapage.racingleague.f1telemetry.repository.LeagueRepository;
+import be.jabapage.racingleague.f1telemetry.repository.TierRepository;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
 import be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.grid.Grid;
-import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -26,15 +27,18 @@ import java.util.UUID;
 public class SeasonListView extends VerticalLayout {
 
     private final LeagueRepository leagueRepository;
+    private final TierRepository tierRepository;
     private final TelemetryProcessingService telemetryProcessingService;
     private final SecurityService securityService;
     private final Grid<League> grid = new Grid<>(League.class, false);
     private final TextField nameField = new TextField("Season Name");
 
     public SeasonListView(LeagueRepository leagueRepository, 
+                          TierRepository tierRepository,
                           TelemetryProcessingService telemetryProcessingService,
                           SecurityService securityService) {
         this.leagueRepository = leagueRepository;
+        this.tierRepository = tierRepository;
         this.telemetryProcessingService = telemetryProcessingService;
         this.securityService = securityService;
         
@@ -52,33 +56,9 @@ public class SeasonListView extends VerticalLayout {
         grid.addColumn(League::getName).setHeader("Season Name").setAutoWidth(true);
         
         grid.addComponentColumn(league -> {
-            Span tokenSpan = new Span(league.getToken());
-            tokenSpan.getStyle().set("font-family", "monospace");
-            tokenSpan.getStyle().set("font-size", "0.8em");
-            
-            Button copyBtn = new Button("Copy", e -> {
-                getElement().executeJs("navigator.clipboard.writeText($0)", league.getToken());
-                Notification.show("Token copied to clipboard", 3000, Notification.Position.TOP_CENTER);
-            });
-            copyBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
-            
-            HorizontalLayout layout = new HorizontalLayout(tokenSpan, copyBtn);
-            layout.setAlignItems(Alignment.CENTER);
-            return layout;
-        }).setHeader("Telemetry Token").setAutoWidth(true);
-        
-        grid.addComponentColumn(league -> {
-            // Since we don't have a single active league anymore for the whole server,
-            // we might want to track this per user session.
-            // For now, let's just keep the Details link.
             RouterLink detailsLink = new RouterLink("Details", SeasonDetailsView.class, league.getId());
             return detailsLink;
         }).setHeader("Details");
-
-        grid.addComponentColumn(league -> {
-            RouterLink liveLink = new RouterLink("Live Dashboard", LeaderboardView.class, league.getId());
-            return liveLink;
-        }).setHeader("Live");
 
         grid.addComponentColumn(league -> {
             Button deleteBtn = new Button("Delete", e -> {
@@ -117,9 +97,15 @@ public class SeasonListView extends VerticalLayout {
                     League league = new League();
                     league.setName(nameField.getValue());
                     league.setUser(user);
-                    league.setToken(UUID.randomUUID().toString());
                     league.setHideAi(true);
-                    leagueRepository.save(league);
+                    League savedLeague = leagueRepository.save(league);
+
+                    Tier tier = new Tier();
+                    tier.setName("Tier 1");
+                    tier.setToken(UUID.randomUUID().toString());
+                    tier.setLeague(savedLeague);
+                    tierRepository.save(tier);
+
                     nameField.clear();
                     updateList();
                 });
