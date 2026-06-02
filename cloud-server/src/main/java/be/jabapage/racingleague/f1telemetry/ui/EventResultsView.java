@@ -16,6 +16,7 @@ import be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService;
 import be.jabapage.racingleague.f1telemetry.util.CountryProvider;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.ComponentUtil;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.dialog.Dialog;
@@ -65,6 +66,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     private final Tabs sessionTabs = new Tabs();
     private final VerticalLayout sessionContent = new VerticalLayout();
     
+    private final Tabs statsSessionTabs = new Tabs();
     private final Tabs statsTabs = new Tabs();
     private final VerticalLayout statsContent = new VerticalLayout();
     
@@ -98,6 +100,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             resultsContainer.setVisible(isResults);
             statsContainer.setVisible(!isResults);
             if (!isResults) {
+                setupStatsSessionTabs();
                 updateStatsContent();
             }
         });
@@ -113,13 +116,16 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         resultsContainer.setSizeFull();
 
         // Stats Section
+        statsSessionTabs.setWidthFull();
+        statsSessionTabs.addSelectedChangeListener(event -> updateStatsContent());
+
         statsTabs.setWidthFull();
         Tab paceTab = new Tab("Pure Race Pace");
         Tab stintsTab = new Tab("Longest Stints");
         Tab consistencyTab = new Tab("Consistency");
         statsTabs.add(paceTab, stintsTab, consistencyTab);
         statsTabs.addSelectedChangeListener(event -> updateStatsContent());
-        statsContainer.add(statsTabs, statsContent);
+        statsContainer.add(statsSessionTabs, statsTabs, statsContent);
         statsContainer.setSizeFull();
         statsContainer.setVisible(false);
 
@@ -146,7 +152,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             dialog.setHeaderTitle("Add Manual Session");
 
             ComboBox<Integer> typeCombo = new ComboBox<>("Session Type");
-            typeCombo.setItems(java.util.stream.IntStream.rangeClosed(1, 18).boxed().toList());
+            typeCombo.setItems(TelemetryProcessingService.SESSION_TYPE_NAMES.keySet().stream().filter(id -> id > 0).sorted().toList());
             typeCombo.setItemLabelGenerator(id -> TelemetryProcessingService.SESSION_TYPE_NAMES.getOrDefault(id, "Session " + id));
             typeCombo.setWidthFull();
 
@@ -178,7 +184,8 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             SessionResult session = sessions.get(selectedIndex);
 
             Dialog dialog = new Dialog();
-            dialog.setHeaderTitle("Add Result to " + TelemetryProcessingService.SESSION_TYPE_NAMES.getOrDefault(session.getSessionType(), "Session"));
+            java.util.Set<Integer> types = currentEvent.getSessionResults().stream().map(SessionResult::getSessionType).collect(Collectors.toSet());
+            dialog.setHeaderTitle("Add Result to " + getDynamicSessionName(session.getSessionType(), types));
 
             ComboBox<DriverMapping> driverCombo = new ComboBox<>("Driver");
             driverCombo.setItems(driverMappingRepository.findByLeague(currentEvent.getTier().getLeague()));
@@ -298,6 +305,11 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             if (currentIdx >= 0 && currentIdx < sessionTabs.getComponentCount()) {
                 sessionTabs.setSelectedIndex(currentIdx);
             }
+            int currentStatsIdx = statsSessionTabs.getSelectedIndex();
+            setupStatsSessionTabs();
+            if (currentStatsIdx >= 0 && currentStatsIdx < statsSessionTabs.getComponentCount()) {
+                statsSessionTabs.setSelectedIndex(currentStatsIdx);
+            }
             updateSessionContent();
         });
     }
@@ -309,10 +321,36 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 Map.entry(5, 5), Map.entry(6, 6), Map.entry(7, 7), Map.entry(8, 8), Map.entry(9, 9),
                 Map.entry(10, 10), Map.entry(11, 11), Map.entry(12, 12), Map.entry(13, 13), Map.entry(14, 14),
                 Map.entry(15, 15), Map.entry(16, 16), Map.entry(17, 17),
-                Map.entry(18, 18)
+                Map.entry(18, 18), Map.entry(19, 19)
         );
         sessions.sort(Comparator.comparingInt(s -> sortOrder.getOrDefault(s.getSessionType(), 99)));
         return sessions;
+    }
+
+    private List<SessionResult> getRaceSessions() {
+        List<SessionResult> sessions = getOrderedSessions();
+        return sessions.stream()
+                .filter(s -> (s.getSessionType() >= 15 && s.getSessionType() <= 17) || s.getSessionType() == 19)
+                .collect(Collectors.toList());
+    }
+
+    private void setupStatsSessionTabs() {
+        statsSessionTabs.removeAll();
+        List<SessionResult> raceSessions = getRaceSessions();
+        if (raceSessions.size() <= 1) {
+            statsSessionTabs.setVisible(false);
+        } else {
+            statsSessionTabs.setVisible(true);
+        }
+        java.util.Set<Integer> types = currentEvent.getSessionResults().stream()
+                .map(SessionResult::getSessionType)
+                .collect(Collectors.toSet());
+        for (SessionResult session : raceSessions) {
+            String name = getDynamicSessionName(session.getSessionType(), types);
+            Tab tab = new Tab(name);
+            ComponentUtil.setData(tab, Long.class, session.getId());
+            statsSessionTabs.add(tab);
+        }
     }
 
     @Override
@@ -323,6 +361,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             eventHeader.setText("Event: " + currentEvent.getEventName());
             backToSeason.setRoute(SeasonDetailsView.class, currentEvent.getTier().getLeague().getId());
             setupSessionTabs();
+            setupStatsSessionTabs();
             updateSessionContent();
         }, () -> {
             event.forwardTo(SeasonListView.class);
@@ -332,8 +371,11 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     private void setupSessionTabs() {
         sessionTabs.removeAll();
         List<SessionResult> sessions = getOrderedSessions();
+        java.util.Set<Integer> types = currentEvent.getSessionResults().stream()
+                .map(SessionResult::getSessionType)
+                .collect(Collectors.toSet());
         for (SessionResult session : sessions) {
-            String sessionName = TelemetryProcessingService.SESSION_TYPE_NAMES.getOrDefault(session.getSessionType(), "Session " + session.getSessionType());
+            String sessionName = getDynamicSessionName(session.getSessionType(), types);
             sessionTabs.add(new Tab(sessionName));
         }
     }
@@ -552,17 +594,32 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
 
     private void updateStatsContent() {
         statsContent.removeAll();
+        
+        List<SessionResult> raceSessions = getRaceSessions();
+        if (raceSessions.isEmpty()) {
+            statsContent.add(new Span("No race session data available."));
+            return;
+        }
+
+        int selectedStatsSessionIdx = statsSessionTabs.getSelectedIndex();
+        if (selectedStatsSessionIdx < 0 || selectedStatsSessionIdx >= raceSessions.size()) {
+            selectedStatsSessionIdx = 0;
+        }
+        
+        SessionResult selectedSession = raceSessions.get(selectedStatsSessionIdx);
+        Long sessionResultId = selectedSession.getId();
+
         if (statsTabs.getSelectedIndex() == 0) { // Pure Race Pace
-            updatePaceData();
+            updatePaceData(sessionResultId);
         } else if (statsTabs.getSelectedIndex() == 1) { // Longest Stints
-            updateLongestStintsData();
+            updateLongestStintsData(sessionResultId);
         } else if (statsTabs.getSelectedIndex() == 2) { // Consistency
-            updateConsistencyData();
+            updateConsistencyData(sessionResultId);
         }
     }
 
-    private void updateConsistencyData() {
-        List<ConsistencyStats> stats = telemetryProcessingService.calculateConsistency(currentEventId);
+    private void updateConsistencyData(Long sessionResultId) {
+        List<ConsistencyStats> stats = telemetryProcessingService.calculateConsistency(sessionResultId);
 
         if (currentEvent.getTier().getLeague().isHideAi()) {
             stats = stats.stream().filter(s -> !s.isAi()).collect(Collectors.toList());
@@ -595,8 +652,8 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         statsContent.add(grid);
     }
 
-    private void updateLongestStintsData() {
-        List<LongestStintStats> stats = telemetryProcessingService.calculateLongestStints(currentEventId);
+    private void updateLongestStintsData(Long sessionResultId) {
+        List<LongestStintStats> stats = telemetryProcessingService.calculateLongestStints(sessionResultId);
 
         if (currentEvent.getTier().getLeague().isHideAi()) {
             stats = stats.stream().filter(s -> !s.isAi()).collect(Collectors.toList());
@@ -644,8 +701,8 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         statsContent.add(grid);
     }
 
-    private void updatePaceData() {
-        List<RacePaceStats> rawStats = telemetryProcessingService.calculatePureRacePace(currentEventId);
+    private void updatePaceData(Long sessionResultId) {
+        List<RacePaceStats> rawStats = telemetryProcessingService.calculatePureRacePace(sessionResultId);
 
         final List<RacePaceStats> stats;
         if (currentEvent.getTier().getLeague().isHideAi()) {
@@ -742,7 +799,21 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         }
         return span;
     }
-
+    public static String getDynamicSessionName(int sessionType, java.util.Collection<Integer> sessionTypesInEvent) {
+        if (sessionType == 15) {
+            if (sessionTypesInEvent.contains(16)) {
+                return "Sprint Race";
+            }
+            return "Race";
+        }
+        if (sessionType == 16) {
+            if (sessionTypesInEvent.contains(15)) {
+                return "Race";
+            }
+            return "Race 2";
+        }
+        return TelemetryProcessingService.SESSION_TYPE_NAMES.getOrDefault(sessionType, "Session " + sessionType);
+    }
 
     private String formatLapTime(float seconds) {
         if (seconds <= 0) return "-";

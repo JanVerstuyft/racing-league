@@ -310,19 +310,47 @@ public class TelemetryProcessingService {
         }
     }
 
-    private int getPointsForPosition(League league, int sessionType, int position) {
-        // Check for custom point configuration for this session type and position
+    private int getPointsForPosition(League league, SessionResult session, int position) {
+        if (session == null) return 0;
+        int sessionType = session.getSessionType();
+        
+        // Determine the virtual session type for point configuration lookup
+        int lookupSessionType = sessionType;
+        boolean isSprintWeekend = session.getEvent() != null && session.getEvent().getSessionResults().stream()
+                .anyMatch(s -> s.getSessionType() == 16);
+        
+        if (sessionType == 15) {
+            if (isSprintWeekend) {
+                lookupSessionType = 19; // Sprint Race points config
+            } else {
+                lookupSessionType = 15; // Race points config
+            }
+        } else if (sessionType == 16) {
+            lookupSessionType = 15; // Race points config
+        }
+
+        final int finalLookupType = lookupSessionType;
+
+        // Check for custom point configuration for this lookup session type and position
         List<SessionPointConfig> configs = sessionPointConfigRepository.findByLeague(league);
         Optional<SessionPointConfig> config = configs.stream()
-                .filter(c -> c.getSessionType() == sessionType && c.getPosition() == position)
+                .filter(c -> c.getSessionType() == finalLookupType && c.getPosition() == position)
                 .findFirst();
 
         if (config.isPresent()) {
             return config.get().getPoints();
         }
 
-        // Fallback to standard F1 points for Race sessions (15, 16, 17)
-        boolean isRace = sessionType >= 15 && sessionType <= 17;
+        // Fallback to standard F1 points
+        if (finalLookupType == 19) { // Sprint Race standard points
+            if (position >= 1 && position <= 8) {
+                int[] pointsMap = {0, 8, 7, 6, 5, 4, 3, 2, 1};
+                return pointsMap[position];
+            }
+            return 0;
+        }
+
+        boolean isRace = (finalLookupType >= 15 && finalLookupType <= 17);
         if (isRace && position >= 1 && position <= 10) {
             int[] pointsMap = {0, 25, 18, 15, 12, 10, 8, 6, 4, 2, 1};
             return pointsMap[position];
@@ -372,7 +400,8 @@ public class TelemetryProcessingService {
             Map.entry(5, "Qualifying 1"), Map.entry(6, "Qualifying 2"), Map.entry(7, "Qualifying 3"), Map.entry(8, "Short Qualifying"), Map.entry(9, "One-Shot Qualifying"),
             Map.entry(10, "Sprint Shootout 1"), Map.entry(11, "Sprint Shootout 2"), Map.entry(12, "Sprint Shootout 3"), Map.entry(13, "Short Sprint Shootout"), Map.entry(14, "One-Shot Sprint Shootout"),
             Map.entry(15, "Race"), Map.entry(16, "Race 2"), Map.entry(17, "Race 3"),
-            Map.entry(18, "Time Trial")
+            Map.entry(18, "Time Trial"),
+            Map.entry(19, "Sprint Race")
     );
 
     private void autoDiscoverDrivers(LeagueSessionState state, PacketParticipantsData participants) {
@@ -756,14 +785,8 @@ public class TelemetryProcessingService {
     private record SectorData(long time, String tyre) {}
     private record WeightedResult(double pace, Map<String, Double> tyreWeights) {}
 
-    public List<RacePaceStats> calculatePureRacePace(Long eventId) {
-        Event event = eventRepository.findByIdWithResults(eventId).orElse(null);
-        if (event == null) return Collections.emptyList();
-
-        // Find the main race session
-        SessionResult raceSession = event.getSessionResults().stream()
-                .filter(s -> s.getSessionType() >= 15 && s.getSessionType() <= 17)
-                .findFirst().orElse(null);
+    public List<RacePaceStats> calculatePureRacePace(Long sessionResultId) {
+        SessionResult raceSession = sessionResultRepository.findById(sessionResultId).orElse(null);
         if (raceSession == null) return Collections.emptyList();
 
         // Calculate total race distance (max laps driven)
@@ -797,7 +820,7 @@ public class TelemetryProcessingService {
         int seg1End = maxLaps / 3;
         int seg2End = 2 * maxLaps / 3;
 
-        League league = event.getTier().getLeague();
+        League league = raceSession.getTier().getLeague();
         double thresholdPct = (league.getMinLapsPct() != null ? league.getMinLapsPct() : 60) / 100.0;
 
         for (DriverResult dr : raceSession.getDriverResults()) {
@@ -954,13 +977,8 @@ public class TelemetryProcessingService {
         return new WeightedResult(totalWeight > 0 ? weightedSum / totalWeight : 0, tyreWeights);
     }
 
-    public List<ConsistencyStats> calculateConsistency(Long eventId) {
-        Event event = eventRepository.findByIdWithResults(eventId).orElse(null);
-        if (event == null) return Collections.emptyList();
-
-        SessionResult raceSession = event.getSessionResults().stream()
-                .filter(s -> s.getSessionType() >= 15 && s.getSessionType() <= 17)
-                .findFirst().orElse(null);
+    public List<ConsistencyStats> calculateConsistency(Long sessionResultId) {
+        SessionResult raceSession = sessionResultRepository.findById(sessionResultId).orElse(null);
         if (raceSession == null) return Collections.emptyList();
 
         // Calculate total race distance (max laps driven)
@@ -969,7 +987,7 @@ public class TelemetryProcessingService {
                 .mapToInt(LapResult::getLapNumber)
                 .max().orElse(0);
 
-        League league = event.getTier().getLeague();
+        League league = raceSession.getTier().getLeague();
         double thresholdPct = (league.getMinLapsPct() != null ? league.getMinLapsPct() : 60) / 100.0;
 
         List<ConsistencyStats> statsList = new ArrayList<>();
@@ -1084,14 +1102,8 @@ public class TelemetryProcessingService {
         return totalWeight > 0 ? weightedSum / totalWeight : 0;
     }
 
-    public List<LongestStintStats> calculateLongestStints(Long eventId) {
-        Event event = eventRepository.findByIdWithResults(eventId).orElse(null);
-        if (event == null) return Collections.emptyList();
-
-        // Find the main race session
-        SessionResult raceSession = event.getSessionResults().stream()
-                .filter(s -> s.getSessionType() >= 15 && s.getSessionType() <= 17)
-                .findFirst().orElse(null);
+    public List<LongestStintStats> calculateLongestStints(Long sessionResultId) {
+        SessionResult raceSession = sessionResultRepository.findById(sessionResultId).orElse(null);
         if (raceSession == null) return Collections.emptyList();
 
         // Find best sectors for 107% rule
@@ -1280,7 +1292,7 @@ public class TelemetryProcessingService {
         sessionResult.setSessionType(state.getCurrentSession().getSessionType());
         sessionResult.setTrackId(trackIdStr);
 
-        boolean isRace = state.getCurrentSession().getSessionType() >= 15 && state.getCurrentSession().getSessionType() <= 17;
+        boolean isRace = (state.getCurrentSession().getSessionType() >= 15 && state.getCurrentSession().getSessionType() <= 17) || state.getCurrentSession().getSessionType() == 19;
 
         for (int i = 0; i < classification.getNumCars(); i++) {
             FinalClassificationData data = classification.getClassificationData().get(i);
@@ -1299,7 +1311,7 @@ public class TelemetryProcessingService {
             driverResult.setTeamName(TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(data.getPosition());
             driverResult.setNumLaps(data.getNumLaps());
-            driverResult.setPointsAwarded(getPointsForPosition(league, state.getCurrentSession().getSessionType(), data.getPosition()));
+            driverResult.setPointsAwarded(getPointsForPosition(league, sessionResult, data.getPosition()));
             driverResult.setGridPosition(data.getGridPosition());
             driverResult.setBestLapTime(data.getBestLapTimeInMS() / 1000.0f);
             driverResult.setTotalTime(data.getTotalRaceTime() + data.getPenaltiesTime());
@@ -1399,7 +1411,7 @@ public class TelemetryProcessingService {
         sessionResult.setSessionType(sessionType);
         sessionResult.setTrackId(trackIdStr);
 
-        boolean isRace = sessionType >= 15 && sessionType <= 17;
+        boolean isRace = (sessionType >= 15 && sessionType <= 17) || sessionType == 19;
 
         for (int i = 0; i < state.getCurrentParticipants().getParticipants().size(); i++) {
             ParticipantData participant = state.getCurrentParticipants().getParticipants().get(i);
@@ -1429,7 +1441,7 @@ public class TelemetryProcessingService {
             driverResult.setWarnings(ld.getTotalWarnings());
             
             // Assign points
-            driverResult.setPointsAwarded(getPointsForPosition(league, sessionType, ld.getCarPosition()));
+            driverResult.setPointsAwarded(getPointsForPosition(league, sessionResult, ld.getCarPosition()));
 
             // Link stored lap results
             List<LapResult> laps = lapResultRepository.findBySessionUIDAndCarIndex(sessionUID, i);
@@ -1582,7 +1594,7 @@ public class TelemetryProcessingService {
                 .collect(java.util.stream.Collectors.toSet());
 
         for (SessionResult session : allSessions) {
-            boolean isRace = session.getSessionType() >= 15 && session.getSessionType() <= 17;
+            boolean isRace = (session.getSessionType() >= 15 && session.getSessionType() <= 17) || session.getSessionType() == 19;
             
             // Recalculate gaps for each session
             calculateGaps(session);
@@ -1608,7 +1620,7 @@ public class TelemetryProcessingService {
                 }
 
                 // Re-evaluate points based on current configuration
-                int finishPoints = getPointsForPosition(league, session.getSessionType(), result.getPosition());
+                int finishPoints = getPointsForPosition(league, session, result.getPosition());
                 
                 // Bonus points
                 int bonusPoints = 0;
@@ -1707,7 +1719,7 @@ public class TelemetryProcessingService {
     public void calculateGaps(SessionResult session) {
         if (session.getDriverResults() == null || session.getDriverResults().isEmpty()) return;
 
-        boolean isRace = session.getSessionType() >= 15 && session.getSessionType() <= 17;
+        boolean isRace = (session.getSessionType() >= 15 && session.getSessionType() <= 17) || session.getSessionType() == 19;
 
         // Find the winner/pole setter (Position 1)
         Optional<DriverResult> leader = session.getDriverResults().stream()

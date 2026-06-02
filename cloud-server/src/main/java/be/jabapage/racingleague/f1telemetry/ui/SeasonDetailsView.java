@@ -35,6 +35,7 @@ import com.vaadin.flow.server.auth.AnonymousAllowed;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -481,10 +482,21 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
         eventGrid.addColumn(Event::getEventName).setHeader("Event");
         eventGrid.addColumn(event -> {
+            java.util.Set<Integer> types = event.getSessionResults().stream()
+                    .map(SessionResult::getSessionType)
+                    .collect(Collectors.toSet());
+            Map<Integer, Integer> sortOrder = Map.ofEntries(
+                    Map.entry(1, 1), Map.entry(2, 2), Map.entry(3, 3), Map.entry(4, 4),
+                    Map.entry(5, 5), Map.entry(6, 6), Map.entry(7, 7), Map.entry(8, 8), Map.entry(9, 9),
+                    Map.entry(10, 10), Map.entry(11, 11), Map.entry(12, 12), Map.entry(13, 13), Map.entry(14, 14),
+                    Map.entry(15, 15), Map.entry(16, 16), Map.entry(17, 17),
+                    Map.entry(18, 18), Map.entry(19, 19)
+            );
             return event.getSessionResults().stream()
                     .map(SessionResult::getSessionType)
-                    .map(type -> TelemetryProcessingService.SESSION_TYPE_NAMES.getOrDefault(type, "S" + type))
                     .distinct()
+                    .sorted(Comparator.comparingInt(type -> sortOrder.getOrDefault(type, 99)))
+                    .map(type -> EventResultsView.getDynamicSessionName(type, types))
                     .collect(Collectors.joining(", "));
         }).setHeader("Sessions");
 
@@ -921,8 +933,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             fastestLapPointsField.setValue(0);
             noPenaltyPointsField.setValue(0);
             // Generate defaults for 1-20
-            boolean isRace = type >= 15 && type <= 17;
+            boolean isRace = (type >= 15 && type <= 17);
+            boolean isSprint = type == 19;
             int[] racePoints = {25, 18, 15, 12, 10, 8, 6, 4, 2, 1};
+            int[] sprintPoints = {8, 7, 6, 5, 4, 3, 2, 1};
             for (int p = 1; p <= 20; p++) {
                 SessionPointConfig c = new SessionPointConfig();
                 c.setLeague(league);
@@ -932,6 +946,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 c.setNoPenaltyPoints(0);
                 int points = 0;
                 if (isRace && p <= 10) points = racePoints[p-1];
+                if (isSprint && p <= 8) points = sprintPoints[p-1];
                 c.setPoints(points);
                 currentEditingConfigs.add(c);
             }
