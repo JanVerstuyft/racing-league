@@ -16,11 +16,11 @@
 ## 1. Collector Setup
 ### 1a. Local Collector Setup
 The Local Collector is a desktop application that forwards data from your F1 game to this cloud server. It provides a graphical interface for easy configuration.
-You need Java 21 Runtime environment to run the application.  You can download it from [here](https://github.com/JanVerstuyft/racing-league/releases).
+You need Java 21 Runtime environment to run the application. You can download it from [here](https://github.com/JanVerstuyft/racing-league/releases).
 
 ### Collector Application
 1. Launch the Local Collector application.
-2. In the 'Collector Settings' section, paste your 'Cloud Telemetry Token' (found on your Season page).
+2. In the 'Collector Settings' section, paste your **Telemetry Token** (found under the **Tiers** tab in the Season Details page).
 3. Ensure 'Enable Cloud Sync' is checked.
 4. Click 'Save & Apply' to start the bridge.
 
@@ -47,7 +47,7 @@ The Android Collector is a mobile app that acts as a bridge between your F1 game
 3. **UDP Listener Settings:** Ensure the 'UDP Port' matches your game settings (default is 20777).
 4. **Cloud Forwarding:** 
     * Enable 'Cloud Forwarding'.
-    * Paste your 'Cloud Telemetry Token' (found on your Season page) into the 'Cloud UUID' field.
+    * Paste your **Telemetry Token** (found under the **Tiers** tab in the Season Details page) into the 'Cloud UUID' field.
 5. **Local Forwarding (Optional):** If you use another dashboard app on the same device or network, you can enable local forwarding here.
 6. Return to the **Dashboard** tab and click **Start Collector**.
 7. Note the **IP Address** displayed on the Dashboard.
@@ -63,14 +63,16 @@ The Android Collector is a mobile app that acts as a bridge between your F1 game
 When a driver joins a session for the first time, they are automatically 'discovered' and added to the 'Drivers' tab in your Season details.
 
 * **Display Names:** Use the Edit button to set a custom name. This name will be used in the standings and live leaderboard instead of the game's telemetry name.
+* **Manual Driver Additions:** Administrators can manually register drivers before their telemetry is received by using the **Add Manual Driver** button, with the option to pre-assign them to specific Tiers.
 * **Reserves:** Mark a driver as 'Reserve' to group them separately in the standings. They will still receive points, but their team will be displayed as 'Reserve Driver'.
 
 ## 3. Public Pages
 You can share the following pages with your league members. They do not require a login to view:
 
-* **Season Standings:** The main season page shows current driver and team standings.
-* **Event Results:** Detailed results for each race weekend, including lap times and tyre stints.
-* **Live Leaderboard:** A dedicated live dashboard for spectators. Use the token from the Season page: `/leaderboard/{token}`.
+* **Season Standings:** The main season page shows current driver and team standings inside individual tiers.
+* **League Team Standings:** Displays aggregated team standings computed over all active tiers of the season.
+* **Event Results:** Detailed results for each race weekend, including lap times, tyre stints, and analytics.
+* **Live Leaderboard:** A dedicated live dashboard for spectators. Use the token from the Tiers tab in the Season Details page: `/leaderboard/{token}`.
 
 ## 4. Race Statistics & Analytics
 Detailed analytics are available in the **Event Results** view to help compare driver performance beyond just the finishing position.
@@ -96,17 +98,19 @@ Measures how stable a driver is during the race. A higher rating (0-100) indicat
 * **Avg Diff:** The sum of the calculated average deviations for S1, S2, and S3.
 
 ## 5. Season Settings
-League administrators can customize the live leaderboard behavior via the **Settings** tab in the Season Details view.
+League administrators can customize the live leaderboard and stats calculation behavior via the **Settings** tab in the Season Details view.
 
 * **Hide AI Drivers:** If enabled, AI drivers will be filtered out from the standings and the live leaderboard.
 * **Show Tyre Wear:** Displays the current maximum tyre wear percentage for each driver on the live leaderboard.
 * **Show ERS:** Displays the current ERS battery percentage for each driver on the live leaderboard. When a driver is actively using ERS (Overtake mode), the value is highlighted in bold yellow.
+* **Minimum Laps Percentage:** Configures the minimum percentage of completed laps (default 60%) required for a driver's session to be factored into the race statistics and pace calculations.
 
 ## 6. Points Configuration Overrides
 League administrators can customize the points awarded for any session type via the **Points** tab in the Season Details view.
 
-* **Standard System:** By default, the system uses the standard F1 point system (25, 18, 15, 12, 10, 8, 6, 4, 2, 1) only for **Race** sessions.
+* **Standard System:** By default, the system uses the standard F1 point system (25, 18, 15, 12, 10, 8, 6, 4, 2, 1) for **Race** sessions.
+* **Sprint Races Point System:** **Sprint Race** sessions (session type 19) are natively supported and default to the standard F1 Sprint points layout (8, 7, 6, 5, 4, 3, 2, 1) for the top 8 positions.
 * **Custom Overrides:** You can define custom points for any finishing position in any session type.
     * **Example (Pole Position):** Add an override for 'Qualifying 3' or 'Short Qualifying', Position 1, with 1 point.
-    * **Example (Sprint):** Add overrides for positions 1-8 for 'Sprint' sessions if needed.
-* **Standings Integration:** Any points awarded via custom overrides are automatically added to the driver and team standings.
+* **Session Bonuses:** Custom "Fastest Lap" and "No Penalties" bonus points can be defined at the session level. Following official F1 regulations, these points are only awarded to drivers who finish within a point-scoring position for that session.
+* **Standings Integration:** Any points awarded via custom overrides or bonuses are automatically added to the driver and team standings.
