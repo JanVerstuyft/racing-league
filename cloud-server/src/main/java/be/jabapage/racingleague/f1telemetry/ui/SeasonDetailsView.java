@@ -11,6 +11,7 @@ import be.jabapage.racingleague.f1telemetry.repository.LeagueRepository;
 import be.jabapage.racingleague.f1telemetry.repository.TierRepository;
 import be.jabapage.racingleague.f1telemetry.repository.TeamStandingRepository;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
+import be.jabapage.racingleague.f1telemetry.entity.DriverResult;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
 import be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService;
 import be.jabapage.racingleague.f1telemetry.util.CountryProvider;
@@ -1203,6 +1204,54 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         Button saveBtn = new Button("Add", ev -> {
             if (nameField.getValue().isEmpty() || metricCombo.getValue() == null || metricExpressionField.getValue().isEmpty() || ruleTypeCombo.getValue() == null) {
                 Notification.show("Please fill in all required fields", 3000, Notification.Position.TOP_CENTER);
+                return;
+            }
+
+            String exprStr = metricExpressionField.getValue();
+            try {
+                org.springframework.expression.Expression expression = 
+                    new org.springframework.expression.spel.standard.SpelExpressionParser().parseExpression(exprStr);
+                
+                // Create dummy DriverResult objects with non-null property values to dry-run evaluate the expression
+                DriverResult dummyDriver = new DriverResult();
+                dummyDriver.setPosition(1);
+                dummyDriver.setGridPosition(2);
+                dummyDriver.setBestLapTime(90.0f);
+                dummyDriver.setPenalties(0);
+                dummyDriver.setWarnings(0);
+                dummyDriver.setTotalTime(3600.0);
+                dummyDriver.setNumLaps(50);
+                dummyDriver.setAi(false);
+                dummyDriver.setDriverName("Test");
+                dummyDriver.setTelemetryName("Test");
+                dummyDriver.setResultStatus(3);
+                
+                DriverResult prevDriver = new DriverResult();
+                prevDriver.setPosition(1);
+                prevDriver.setGridPosition(2);
+                prevDriver.setBestLapTime(91.0f);
+                prevDriver.setPenalties(0);
+                prevDriver.setWarnings(0);
+                prevDriver.setTotalTime(3599.0);
+                prevDriver.setNumLaps(50);
+                prevDriver.setAi(false);
+                prevDriver.setDriverName("Prev");
+                prevDriver.setTelemetryName("Prev");
+                prevDriver.setResultStatus(3);
+                
+                SessionResult dummySession = new SessionResult();
+                dummySession.setSessionType(20);
+                dummySession.setTrackId("austria");
+
+                org.springframework.expression.spel.support.StandardEvaluationContext context = 
+                    new org.springframework.expression.spel.support.StandardEvaluationContext(dummyDriver);
+                context.setVariable("driver", dummyDriver);
+                context.setVariable("session", dummySession);
+                context.setVariable("previous", prevDriver);
+                
+                expression.getValue(context);
+            } catch (Exception ex) {
+                Notification.show("Invalid SpEL expression: " + ex.getMessage(), 5000, Notification.Position.TOP_CENTER);
                 return;
             }
 
