@@ -110,6 +110,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final Button deleteSessionBtn = new Button("Remove All Overrides for Session");
     private final Grid<ExtraPointRule> extraPointRulesGrid = new Grid<>(ExtraPointRule.class, false);
     private Grid.Column<ExtraPointRule> extraRulesActionColumn;
+    private Grid.Column<ExtraPointRule> extraRulesExpressionColumn;
     private final Button addExtraRuleBtn = new Button("Add Extra Point Rule");
     private Integer selectedSessionType = null;
     private final List<SessionPointConfig> currentEditingConfigs = new ArrayList<>();
@@ -214,7 +215,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
         pointsLayout.add(pointsHeader);
         
-        pointsGrid.setWidthFull();
+        pointsGrid.setWidth("550px");
         
         VerticalLayout bonusSidebar = new VerticalLayout();
         bonusSidebar.setWidthFull();
@@ -232,7 +233,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         HorizontalLayout gridAndBonus = new HorizontalLayout(pointsGrid, bonusSidebar);
         gridAndBonus.setWidthFull();
         gridAndBonus.setAlignItems(Alignment.START);
-        gridAndBonus.setFlexGrow(1, pointsGrid);
+        gridAndBonus.setFlexGrow(0, pointsGrid);
         gridAndBonus.setFlexGrow(1, bonusSidebar);
         pointsLayout.add(gridAndBonus);
         
@@ -472,9 +473,13 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             com.vaadin.flow.component.textfield.IntegerField field = new com.vaadin.flow.component.textfield.IntegerField();
             field.setValue(config.getPoints());
             field.setStepButtonsVisible(true);
+            boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
+            field.setReadOnly(!loggedIn);
             field.addValueChangeListener(e -> {
-                config.setPoints(e.getValue() != null ? e.getValue() : 0);
-                pointsChanged = true;
+                if (loggedIn) {
+                    config.setPoints(e.getValue() != null ? e.getValue() : 0);
+                    pointsChanged = true;
+                }
             });
             field.setWidthFull();
             return field;
@@ -483,6 +488,16 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
         extraPointRulesGrid.addColumn(ExtraPointRule::getRuleName).setHeader("Name").setAutoWidth(true);
         extraPointRulesGrid.addColumn(r -> r.getMetric().getDisplayName()).setHeader("Metric").setAutoWidth(true);
+        extraRulesExpressionColumn = extraPointRulesGrid.addComponentColumn(r -> {
+            Span span = new Span(r.getMetricExpression());
+            span.getElement().setProperty("title", r.getMetricExpression());
+            span.getStyle().set("white-space", "nowrap");
+            span.getStyle().set("overflow", "hidden");
+            span.getStyle().set("text-overflow", "ellipsis");
+            span.getStyle().set("display", "block");
+            span.getStyle().set("max-width", "100%");
+            return span;
+        }).setHeader("Expression").setWidth("200px").setFlexGrow(1);
         extraPointRulesGrid.addColumn(r -> {
             if (r.getRuleType() == ExtraPointRule.RuleType.THRESHOLD_BELOW || r.getRuleType() == ExtraPointRule.RuleType.THRESHOLD_ABOVE) {
                 return r.getRuleType().getDisplayName() + ": " + r.getThresholdValue();
@@ -830,6 +845,9 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             if (extraRulesActionColumn != null) {
                 extraRulesActionColumn.setVisible(loggedIn);
             }
+            if (extraRulesExpressionColumn != null) {
+                extraRulesExpressionColumn.setVisible(loggedIn);
+            }
             hideAiCheckbox.setVisible(loggedIn);
             showTyreWearCheckbox.setVisible(loggedIn);
             showErsCheckbox.setVisible(loggedIn);
@@ -1114,6 +1132,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         metricCombo.setWidthFull();
         metricCombo.setRequired(true);
 
+        TextField metricExpressionField = new TextField("SpEL Expression");
+        metricExpressionField.setWidthFull();
+        metricExpressionField.setRequired(true);
+
         ComboBox<ExtraPointRule.RuleType> ruleTypeCombo = new ComboBox<>("Rule Type");
         ruleTypeCombo.setItems(ExtraPointRule.RuleType.values());
         ruleTypeCombo.setItemLabelGenerator(ExtraPointRule.RuleType::getDisplayName);
@@ -1138,6 +1160,13 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 if (nameField.getValue().isEmpty()) {
                     nameField.setValue(e.getValue().getDisplayName());
                 }
+                if (e.getValue() == ExtraPointRule.Metric.CUSTOM) {
+                    metricExpressionField.setReadOnly(false);
+                    metricExpressionField.setValue("");
+                } else {
+                    metricExpressionField.setValue(e.getValue().getDefaultExpression());
+                    metricExpressionField.setReadOnly(true);
+                }
                 switch (e.getValue()) {
                     case PLACES_GAINED:
                         ruleTypeCombo.setValue(ExtraPointRule.RuleType.HIGHEST_VALUE);
@@ -1154,6 +1183,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                     case GAP_TO_PREVIOUS:
                         ruleTypeCombo.setValue(ExtraPointRule.RuleType.LOWEST_VALUE);
                         break;
+                    case CUSTOM:
+                        break;
                 }
             }
         });
@@ -1164,13 +1195,13 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         });
 
         VerticalLayout dialogLayout = new VerticalLayout(
-            nameField, metricCombo, ruleTypeCombo, thresholdField, pointsField,
+            nameField, metricCombo, metricExpressionField, ruleTypeCombo, thresholdField, pointsField,
             mustFinishCb, onlyForPointScorersCb, excludeAiCb
         );
         dialog.add(dialogLayout);
 
         Button saveBtn = new Button("Add", ev -> {
-            if (nameField.getValue().isEmpty() || metricCombo.getValue() == null || ruleTypeCombo.getValue() == null) {
+            if (nameField.getValue().isEmpty() || metricCombo.getValue() == null || metricExpressionField.getValue().isEmpty() || ruleTypeCombo.getValue() == null) {
                 Notification.show("Please fill in all required fields", 3000, Notification.Position.TOP_CENTER);
                 return;
             }
@@ -1180,6 +1211,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             rule.setSessionType(selectedSessionType);
             rule.setRuleName(nameField.getValue());
             rule.setMetric(metricCombo.getValue());
+            rule.setMetricExpression(metricExpressionField.getValue());
             rule.setRuleType(ruleTypeCombo.getValue());
             rule.setThresholdValue(thresholdField.getValue());
             rule.setPoints(pointsField.getValue() != null ? pointsField.getValue() : 0);

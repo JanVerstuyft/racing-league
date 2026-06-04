@@ -112,5 +112,55 @@ League administrators can customize the points awarded for any session type via 
 * **Sprint Races Point System:** **Sprint Race** sessions (session type 19) are natively supported and default to the standard F1 Sprint points layout (8, 7, 6, 5, 4, 3, 2, 1) for the top 8 positions.
 * **Custom Overrides:** You can define custom points for any finishing position in any session type.
     * **Example (Pole Position):** Add an override for 'Qualifying 3' or 'Short Qualifying', Position 1, with 1 point.
-* **Session Bonuses:** Custom "Fastest Lap" and "No Penalties" bonus points can be defined at the session level. Following official F1 regulations, these points are only awarded to drivers who finish within a point-scoring position for that session.
-* **Standings Integration:** Any points awarded via custom overrides or bonuses are automatically added to the driver and team standings.
+* **Extra Point Rules:** You can configure dynamic rules to award extra points for a session type based on driver statistics. The system evaluates a metric value for each driver using a Spring Expression Language (SpEL) expression and applies a rule to determine who gets the points.
+
+    #### Built-in Presets & Default Expressions
+    The UI provides presets for common formulas:
+
+    | Preset Metric | Default SpEL Expression | Description |
+    |---|---|---|
+    | **Most Places Gained** | `gridPosition != null && gridPosition > 0 ? gridPosition - position : null` | Number of positions gained from starting grid to finish. |
+    | **Fastest Lap** | `bestLapTime != null && bestLapTime > 0 ? bestLapTime : null` | The driver's best lap time in seconds. |
+    | **Cleanest Driver (Penalties Only)** | `penalties` | Total penalty time in seconds. |
+    | **Cleanest Driver (Warnings Only)** | `warnings` | Total number of warnings. |
+    | **Cleanest Driver (Penalties & Warnings)** | `penalties + warnings` | Sum of penalties and warnings. |
+    | **Closest Gap to Car Ahead** | `#previous != null && numLaps != null && #previous.numLaps != null && numLaps == #previous.numLaps && totalTime != null && #previous.totalTime != null ? totalTime - #previous.totalTime : null` | Time gap to the driver ahead (only if both completed the same number of laps). |
+
+    #### Custom SpEL Rules & Context
+    Administrators can select **Custom Expression** to write custom evaluation rules. When evaluating a custom expression, the root object is the driver's result (`DriverResult`), meaning its properties can be referenced directly. The following properties are available:
+
+    | Property | Type | Description |
+    |---|---|---|
+    | `position` | Integer | Finishing position in the session (1-indexed). |
+    | `gridPosition` | Integer | Starting grid position (1-indexed). |
+    | `bestLapTime` | Float | Fastest lap time in seconds. |
+    | `totalTime` | Double | Total race time in seconds. |
+    | `numLaps` | Integer | Total number of laps completed. |
+    | `penalties` | Integer | Total penalty seconds. |
+    | `warnings` | Integer | Total number of warnings. |
+    | `resultStatus` | Integer | Status code (e.g., `3` = Finished, `4` = DNF, `5` = DSQ). |
+    | `ai` | Boolean | Whether the driver is AI-controlled. |
+    | `driverName` | String | Custom display name of the driver. |
+    | `telemetryName` | String | Original telemetry name of the driver. |
+
+    In addition, the following context variables can be accessed using the `#` symbol:
+    * `#driver`: The current driver result (`DriverResult` entity).
+    * `#session`: The current session result details (`SessionResult` entity), which includes properties like `sessionType` and `trackId`.
+    * `#previous`: The `DriverResult` of the driver who finished directly ahead in the standings order (or `null` if the current driver is in 1st place).
+
+    *Example custom rules:*
+    * Gained more than 5 positions: `gridPosition - position > 5 ? 1 : null`
+    * Had warnings but no penalties: `penalties == 0 && warnings > 0 ? 1 : null`
+
+    #### Rule Types
+    * **Highest Value:** Points are awarded to the driver(s) with the highest numeric value (e.g., Most Places Gained).
+    * **Lowest Value:** Points are awarded to the driver(s) with the lowest numeric value (e.g., Fastest Lap).
+    * **Threshold (Below or Equal):** Points are awarded to **all** drivers whose metric value is less than or equal to a configured threshold (e.g., Cleanest Driver with penalties + warnings `<= 0`).
+    * **Threshold (Above or Equal):** Points are awarded to **all** drivers whose metric value is greater than or equal to a configured threshold.
+
+    #### Filter Options
+    * **Must finish session:** Requires the driver to have finished the session (result status is Finished/3). Drivers with DNF or DSQ status are ignored.
+    * **Only for point scorers:** Only awards the extra points to drivers who finished in a base point-scoring position (based on the standard points grid or overrides for that session).
+    * **Exclude AI drivers:** Exclude computer-controlled drivers from participating in extra points.
+
+* **Standings Integration:** Any points awarded via custom overrides or extra rules are automatically added to the driver and team standings.

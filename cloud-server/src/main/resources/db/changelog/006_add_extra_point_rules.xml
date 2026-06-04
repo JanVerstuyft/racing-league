@@ -19,6 +19,9 @@
             <column name="metric" type="VARCHAR(50)">
                 <constraints nullable="false"/>
             </column>
+            <column name="metric_expression" type="VARCHAR(1000)">
+                <constraints nullable="false"/>
+            </column>
             <column name="rule_type" type="VARCHAR(50)">
                 <constraints nullable="false"/>
             </column>
@@ -44,18 +47,22 @@
 
         <!-- Migrate fastest lap points to extra_point_rule -->
         <sql>
-            INSERT INTO extra_point_rule (league_id, session_type, rule_name, metric, rule_type, points, must_finish, only_for_point_scorers, exclude_ai)
-            SELECT DISTINCT league_id, session_type, 'Fastest Lap', 'FASTEST_LAP', 'LOWEST_VALUE', fastest_lap_points, true, true, true
+            <![CDATA[
+            INSERT INTO extra_point_rule (league_id, session_type, rule_name, metric, metric_expression, rule_type, points, must_finish, only_for_point_scorers, exclude_ai)
+            SELECT DISTINCT league_id, session_type, 'Fastest Lap', 'FASTEST_LAP', 'bestLapTime != null && bestLapTime > 0 ? bestLapTime : null', 'LOWEST_VALUE', fastest_lap_points, true, true, true
             FROM session_point_config
             WHERE fastest_lap_points IS NOT NULL AND fastest_lap_points > 0;
+            ]]>
         </sql>
 
         <!-- Migrate no penalty points to extra_point_rule -->
         <sql>
-            INSERT INTO extra_point_rule (league_id, session_type, rule_name, metric, rule_type, threshold_value, points, must_finish, only_for_point_scorers, exclude_ai)
-            SELECT DISTINCT league_id, session_type, 'Clean Driver (No Penalties &amp; Warnings)', 'PENALTIES_AND_WARNINGS', 'THRESHOLD_BELOW', 0.0, no_penalty_points, true, true, true
+            <![CDATA[
+            INSERT INTO extra_point_rule (league_id, session_type, rule_name, metric, metric_expression, rule_type, threshold_value, points, must_finish, only_for_point_scorers, exclude_ai)
+            SELECT DISTINCT league_id, session_type, 'Clean Driver (No Penalties & Warnings)', 'PENALTIES_AND_WARNINGS', 'penalties + warnings', 'THRESHOLD_BELOW', 0.0, no_penalty_points, true, true, true
             FROM session_point_config
             WHERE no_penalty_points IS NOT NULL AND no_penalty_points > 0;
+            ]]>
         </sql>
 
         <!-- Drop columns from session_point_config -->

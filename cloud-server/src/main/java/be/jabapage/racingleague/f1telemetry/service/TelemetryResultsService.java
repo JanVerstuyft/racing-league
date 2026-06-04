@@ -5,6 +5,10 @@ import be.jabapage.racingleague.f1telemetry.model.FinalClassificationData;
 import be.jabapage.racingleague.f1telemetry.model.PacketFinalClassificationData;
 import be.jabapage.racingleague.f1telemetry.model.ParticipantData;
 import be.jabapage.racingleague.f1telemetry.repository.*;
+import org.springframework.expression.Expression;
+import org.springframework.expression.ExpressionParser;
+import org.springframework.expression.spel.standard.SpelExpressionParser;
+import org.springframework.expression.spel.support.StandardEvaluationContext;
 import be.jabapage.racingleague.f1telemetry.util.CountryProvider;
 import tools.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -658,140 +662,96 @@ public class TelemetryResultsService {
 
     public void applyExtraPoints(SessionResult session, League league, List<SessionPointConfig> pointConfigs) {
         List<ExtraPointRule> rules = extraPointRuleRepository.findByLeagueAndSessionType(league, session.getSessionType());
-        
+
         Map<DriverResult, Integer> bonusMap = new HashMap<>();
         for (DriverResult dr : session.getDriverResults()) {
             bonusMap.put(dr, 0);
         }
 
+        ExpressionParser parser = new SpelExpressionParser();
+
+        List<DriverResult> sortedDrivers = session.getDriverResults().stream()
+            .filter(dr -> dr.getPosition() != null)
+            .sorted(Comparator.comparingInt(DriverResult::getPosition))
+            .collect(Collectors.toList());
+
         for (ExtraPointRule rule : rules) {
-            List<DriverResult> candidates = session.getDriverResults().stream()
-                .filter(dr -> {
-                    if (rule.getExcludeAi() != null && rule.getExcludeAi() && dr.isAi()) return false;
-                    if (rule.getMustFinish() != null && rule.getMustFinish() && dr.getResultStatus() != 3) return false;
-                    if (rule.getOnlyForPointScorers() != null && rule.getOnlyForPointScorers()) {
-                        int basePts = getPointsForPosition(pointConfigs, session, dr.getPosition());
-                        if (basePts <= 0) return false;
+            String exprStr = rule.getMetricExpression();
+            if (exprStr == null || exprStr.trim().isEmpty()) {
+                if (rule.getMetric() != null && rule.getMetric() != ExtraPointRule.Metric.CUSTOM) {
+                    exprStr = rule.getMetric().getDefaultExpression();
+                }
+            }
+            if (exprStr == null || exprStr.trim().isEmpty()) {
+                continue;
+            }
+
+            Expression expression;
+            try {
+                expression = parser.parseExpression(exprStr);
+            } catch (Exception e) {
+                log.error("Failed to parse SpEL expression '{}' for rule '{}': {}", exprStr, rule.getRuleName(), e.getMessage());
+                continue;
+            }
+
+            Map<DriverResult, Double> driverValueMap = new HashMap<>();
+
+            for (int i = 0; i < sortedDrivers.size(); i++) {
+                DriverResult dr = sortedDrivers.get(i);
+
+                if (rule.getExcludeAi() != null && rule.getExcludeAi() && dr.isAi()) continue;
+                if (rule.getMustFinish() != null && rule.getMustFinish() && dr.getResultStatus() != 3) continue;
+                if (rule.getOnlyForPointScorers() != null && rule.getOnlyForPointScorers()) {
+                    int basePts = getPointsForPosition(pointConfigs, session, dr.getPosition());
+                    if (basePts <= 0) continue;
+                }
+
+                DriverResult prevDr = (i > 0) ? sortedDrivers.get(i - 1) : null;
+
+                StandardEvaluationContext context = new StandardEvaluationContext(dr);
+                context.setVariable("driver", dr);
+                context.setVariable("session", session);
+                context.setVariable("previous", prevDr);
+
+                try {
+                    Object valObj = expression.getValue(context);
+                    if (valObj instanceof Number) {
+                        driverValueMap.put(dr, ((Number) valObj).doubleValue());
                     }
-                    return true;
-                })
-                .collect(Collectors.toList());
-
-            if (candidates.isEmpty()) continue;
-
-            if (rule.getMetric() == ExtraPointRule.Metric.PLACES_GAINED) {
-                List<DriverResult> validCandidates = candidates.stream()
-                    .filter(dr -> dr.getGridPosition() != null && dr.getGridPosition() > 0 && dr.getPosition() != null)
-                    .collect(Collectors.toList());
-                if (validCandidates.isEmpty()) continue;
-
-                int maxGained = validCandidates.stream()
-                    .mapToInt(dr -> dr.getGridPosition() - dr.getPosition())
-                    .max()
-                    .orElse(Integer.MIN_VALUE);
-
-                if (rule.getRuleType() == ExtraPointRule.RuleType.HIGHEST_VALUE) {
-                    validCandidates.stream()
-                        .filter(dr -> (dr.getGridPosition() - dr.getPosition()) == maxGained)
-                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
+                } catch (Exception e) {
+                    log.error("Error evaluating expression '{}' on driver '{}': {}", exprStr, dr.getDriverName(), e.getMessage());
                 }
             }
-            else if (rule.getMetric() == ExtraPointRule.Metric.FASTEST_LAP) {
-                List<DriverResult> validCandidates = candidates.stream()
-                    .filter(dr -> dr.getBestLapTime() != null && dr.getBestLapTime() > 0)
-                    .collect(Collectors.toList());
-                if (validCandidates.isEmpty()) continue;
 
-                float minLap = validCandidates.stream()
-                    .map(DriverResult::getBestLapTime)
-                    .min(Float::compare)
-                    .orElse(Float.MAX_VALUE);
+            if (driverValueMap.isEmpty()) continue;
 
-                if (rule.getRuleType() == ExtraPointRule.RuleType.LOWEST_VALUE) {
-                    validCandidates.stream()
-                        .filter(dr -> dr.getBestLapTime().equals(minLap))
-                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
-                }
+            if (rule.getRuleType() == ExtraPointRule.RuleType.HIGHEST_VALUE) {
+                double maxVal = driverValueMap.values().stream()
+                    .max(Double::compare)
+                    .orElse(Double.MIN_VALUE);
+                driverValueMap.entrySet().stream()
+                    .filter(entry -> entry.getValue().equals(maxVal))
+                    .forEach(entry -> bonusMap.put(entry.getKey(), bonusMap.get(entry.getKey()) + rule.getPoints()));
             }
-            else if (rule.getMetric() == ExtraPointRule.Metric.PENALTIES) {
-                if (rule.getRuleType() == ExtraPointRule.RuleType.THRESHOLD_BELOW) {
-                    double threshold = rule.getThresholdValue() != null ? rule.getThresholdValue() : 0.0;
-                    candidates.stream()
-                        .filter(dr -> (dr.getPenalties() != null ? dr.getPenalties() : 0) <= threshold)
-                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
-                } else if (rule.getRuleType() == ExtraPointRule.RuleType.LOWEST_VALUE) {
-                    int minPenalties = candidates.stream()
-                        .mapToInt(dr -> dr.getPenalties() != null ? dr.getPenalties() : 0)
-                        .min()
-                        .orElse(Integer.MAX_VALUE);
-                    candidates.stream()
-                        .filter(dr -> (dr.getPenalties() != null ? dr.getPenalties() : 0) == minPenalties)
-                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
-                }
+            else if (rule.getRuleType() == ExtraPointRule.RuleType.LOWEST_VALUE) {
+                double minVal = driverValueMap.values().stream()
+                    .min(Double::compare)
+                    .orElse(Double.MAX_VALUE);
+                driverValueMap.entrySet().stream()
+                    .filter(entry -> entry.getValue().equals(minVal))
+                    .forEach(entry -> bonusMap.put(entry.getKey(), bonusMap.get(entry.getKey()) + rule.getPoints()));
             }
-            else if (rule.getMetric() == ExtraPointRule.Metric.WARNINGS) {
-                if (rule.getRuleType() == ExtraPointRule.RuleType.THRESHOLD_BELOW) {
-                    double threshold = rule.getThresholdValue() != null ? rule.getThresholdValue() : 0.0;
-                    candidates.stream()
-                        .filter(dr -> (dr.getWarnings() != null ? dr.getWarnings() : 0) <= threshold)
-                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
-                } else if (rule.getRuleType() == ExtraPointRule.RuleType.LOWEST_VALUE) {
-                    int minWarnings = candidates.stream()
-                        .mapToInt(dr -> dr.getWarnings() != null ? dr.getWarnings() : 0)
-                        .min()
-                        .orElse(Integer.MAX_VALUE);
-                    candidates.stream()
-                        .filter(dr -> (dr.getWarnings() != null ? dr.getWarnings() : 0) == minWarnings)
-                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
-                }
+            else if (rule.getRuleType() == ExtraPointRule.RuleType.THRESHOLD_BELOW) {
+                double threshold = rule.getThresholdValue() != null ? rule.getThresholdValue() : 0.0;
+                driverValueMap.entrySet().stream()
+                    .filter(entry -> entry.getValue() <= threshold)
+                    .forEach(entry -> bonusMap.put(entry.getKey(), bonusMap.get(entry.getKey()) + rule.getPoints()));
             }
-            else if (rule.getMetric() == ExtraPointRule.Metric.PENALTIES_AND_WARNINGS) {
-                if (rule.getRuleType() == ExtraPointRule.RuleType.THRESHOLD_BELOW) {
-                    double threshold = rule.getThresholdValue() != null ? rule.getThresholdValue() : 0.0;
-                    candidates.stream()
-                        .filter(dr -> ((dr.getPenalties() != null ? dr.getPenalties() : 0) + (dr.getWarnings() != null ? dr.getWarnings() : 0)) <= threshold)
-                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
-                } else if (rule.getRuleType() == ExtraPointRule.RuleType.LOWEST_VALUE) {
-                    int minTotal = candidates.stream()
-                        .mapToInt(dr -> (dr.getPenalties() != null ? dr.getPenalties() : 0) + (dr.getWarnings() != null ? dr.getWarnings() : 0))
-                        .min()
-                        .orElse(Integer.MAX_VALUE);
-                    candidates.stream()
-                        .filter(dr -> ((dr.getPenalties() != null ? dr.getPenalties() : 0) + (dr.getWarnings() != null ? dr.getWarnings() : 0)) == minTotal)
-                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
-                }
-            }
-            else if (rule.getMetric() == ExtraPointRule.Metric.GAP_TO_PREVIOUS) {
-                List<DriverResult> sortedCandidates = candidates.stream()
-                    .filter(dr -> dr.getPosition() != null && dr.getTotalTime() != null && dr.getTotalTime() > 0 && dr.getNumLaps() != null)
-                    .sorted(Comparator.comparingInt(DriverResult::getPosition))
-                    .collect(Collectors.toList());
-
-                if (sortedCandidates.size() < 2) continue;
-
-                Map<DriverResult, Double> gapMap = new HashMap<>();
-                for (int j = 1; j < sortedCandidates.size(); j++) {
-                    DriverResult dr = sortedCandidates.get(j);
-                    DriverResult prevDr = sortedCandidates.get(j - 1);
-                    if (dr.getNumLaps().equals(prevDr.getNumLaps())) {
-                        double gap = dr.getTotalTime() - prevDr.getTotalTime();
-                        if (gap >= 0) {
-                           gapMap.put(dr, gap);
-                        }
-                    }
-                }
-
-                if (gapMap.isEmpty()) continue;
-
-                if (rule.getRuleType() == ExtraPointRule.RuleType.LOWEST_VALUE) {
-                    double minGap = gapMap.values().stream()
-                        .min(Double::compare)
-                        .orElse(Double.MAX_VALUE);
-
-                    gapMap.entrySet().stream()
-                        .filter(entry -> entry.getValue().equals(minGap))
-                        .forEach(entry -> bonusMap.put(entry.getKey(), bonusMap.get(entry.getKey()) + rule.getPoints()));
-                }
+            else if (rule.getRuleType() == ExtraPointRule.RuleType.THRESHOLD_ABOVE) {
+                double threshold = rule.getThresholdValue() != null ? rule.getThresholdValue() : 0.0;
+                driverValueMap.entrySet().stream()
+                    .filter(entry -> entry.getValue() >= threshold)
+                    .forEach(entry -> bonusMap.put(entry.getKey(), bonusMap.get(entry.getKey()) + rule.getPoints()));
             }
         }
 

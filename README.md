@@ -11,7 +11,7 @@ A multi-tenant racing league management system designed for F1 25. This project 
   - **Longest Stints**: Tyre compound stint telemetry and average pace with 107% rule filtering.
   - **Consistency Rating**: Heat mapping and delta scoring based on sector stability.
 - **League-Wide Standings**: Aggregate team standings tracking across all tiers of a season, alongside individual tier-based driver and team standings.
-- **Custom Point Configurations**: Flexible point setups for any session type (Races, Sprints, etc.), with custom fastest lap and penalty-free bonuses.
+- **Custom Point Configurations**: Flexible point setups for any session type (Races, Sprints, etc.), with dynamic extra point rules (e.g., most places gained, fastest lap, closest gap, or cleanest driver) configurable via custom SpEL expressions.
 - **Live Spectator Dashboard**: Public real-time dashboard displaying tyre wear, ERS usage (with active overtake highlighting), and lap times.
 
 ## Project Structure

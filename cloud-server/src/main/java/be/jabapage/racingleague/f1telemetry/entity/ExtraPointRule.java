@@ -28,6 +28,9 @@ public class ExtraPointRule {
     @Enumerated(EnumType.STRING)
     private Metric metric;
 
+    @Column(name = "metric_expression", length = 1000)
+    private String metricExpression;
+
     @Column(name = "rule_type")
     @Enumerated(EnumType.STRING)
     private RuleType ruleType;
@@ -48,21 +51,28 @@ public class ExtraPointRule {
     private Boolean excludeAi = true;
 
     public enum Metric {
-        PLACES_GAINED("Most Places Gained"),
-        FASTEST_LAP("Fastest Lap"),
-        PENALTIES("Cleanest Driver (Penalties Only)"),
-        WARNINGS("Cleanest Driver (Warnings Only)"),
-        PENALTIES_AND_WARNINGS("Cleanest Driver (Penalties & Warnings)"),
-        GAP_TO_PREVIOUS("Closest Gap to Car Ahead");
+        PLACES_GAINED("Most Places Gained", "gridPosition != null && gridPosition > 0 ? gridPosition - position : null"),
+        FASTEST_LAP("Fastest Lap", "bestLapTime != null && bestLapTime > 0 ? bestLapTime : null"),
+        PENALTIES("Cleanest Driver (Penalties Only)", "penalties"),
+        WARNINGS("Cleanest Driver (Warnings Only)", "warnings"),
+        PENALTIES_AND_WARNINGS("Cleanest Driver (Penalties & Warnings)", "penalties + warnings"),
+        GAP_TO_PREVIOUS("Closest Gap to Car Ahead", "#previous != null && numLaps != null && #previous.numLaps != null && numLaps == #previous.numLaps && totalTime != null && #previous.totalTime != null ? totalTime - #previous.totalTime : null"),
+        CUSTOM("Custom Expression", "");
 
         private final String displayName;
+        private final String defaultExpression;
 
-        Metric(String displayName) {
+        Metric(String displayName, String defaultExpression) {
             this.displayName = displayName;
+            this.defaultExpression = defaultExpression;
         }
 
         public String getDisplayName() {
             return displayName;
+        }
+
+        public String getDefaultExpression() {
+            return defaultExpression;
         }
     }
 

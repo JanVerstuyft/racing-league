@@ -198,6 +198,7 @@ public class TelemetryResultsServiceIntegrationTest {
         rule.setSessionType(15);
         rule.setRuleName("Fastest Lap");
         rule.setMetric(ExtraPointRule.Metric.FASTEST_LAP);
+        rule.setMetricExpression(ExtraPointRule.Metric.FASTEST_LAP.getDefaultExpression());
         rule.setRuleType(ExtraPointRule.RuleType.LOWEST_VALUE);
         rule.setPoints(1);
         rule.setMustFinish(true);
