@@ -34,15 +34,9 @@ public class SessionPointConfig {
     /**
      * Points to award for this position in this session type.
      */
-    private Integer points;
+     private Integer points;
 
-    @Column(name = "fastest_lap_points")
-    private Integer fastestLapPoints = 0;
-
-    @Column(name = "no_penalty_points")
-    private Integer noPenaltyPoints = 0;
-
-    @Override
+     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof SessionPointConfig that)) return false;

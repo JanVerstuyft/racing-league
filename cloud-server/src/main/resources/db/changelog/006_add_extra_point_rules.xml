@@ -1,0 +1,65 @@
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="006_add_extra_point_rules" author="jan">
+        <createTable tableName="extra_point_rule">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="extra_point_rule_pkey"/>
+            </column>
+            <column name="league_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="session_type" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="rule_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="metric" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="rule_type" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="threshold_value" type="DOUBLE"/>
+            <column defaultValueNumeric="0" name="points" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column defaultValueBoolean="true" name="must_finish" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+            <column defaultValueBoolean="true" name="only_for_point_scorers" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+            <column defaultValueBoolean="true" name="exclude_ai" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint baseColumnNames="league_id" baseTableName="extra_point_rule"
+                                 constraintName="fk_extra_point_rule_league" deferrable="false"
+                                 initiallyDeferred="false" onDelete="CASCADE" onUpdate="NO ACTION"
+                                 referencedColumnNames="id" referencedTableName="league" validate="true"/>
+
+        <!-- Migrate fastest lap points to extra_point_rule -->
+        <sql>
+            INSERT INTO extra_point_rule (league_id, session_type, rule_name, metric, rule_type, points, must_finish, only_for_point_scorers, exclude_ai)
+            SELECT DISTINCT league_id, session_type, 'Fastest Lap', 'FASTEST_LAP', 'LOWEST_VALUE', fastest_lap_points, true, true, true
+            FROM session_point_config
+            WHERE fastest_lap_points IS NOT NULL AND fastest_lap_points > 0;
+        </sql>
+
+        <!-- Migrate no penalty points to extra_point_rule -->
+        <sql>
+            INSERT INTO extra_point_rule (league_id, session_type, rule_name, metric, rule_type, threshold_value, points, must_finish, only_for_point_scorers, exclude_ai)
+            SELECT DISTINCT league_id, session_type, 'Clean Driver (No Penalties &amp; Warnings)', 'PENALTIES_AND_WARNINGS', 'THRESHOLD_BELOW', 0.0, no_penalty_points, true, true, true
+            FROM session_point_config
+            WHERE no_penalty_points IS NOT NULL AND no_penalty_points > 0;
+        </sql>
+
+        <!-- Drop columns from session_point_config -->
+        <dropColumn tableName="session_point_config" columnName="fastest_lap_points"/>
+        <dropColumn tableName="session_point_config" columnName="no_penalty_points"/>
+    </changeSet>
+</databaseChangeLog>

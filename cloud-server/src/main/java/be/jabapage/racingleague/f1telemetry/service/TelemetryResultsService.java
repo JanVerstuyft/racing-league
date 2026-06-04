@@ -43,6 +43,8 @@ public class TelemetryResultsService {
     @Autowired
     private SessionPointConfigRepository sessionPointConfigRepository;
     @Autowired
+    private ExtraPointRuleRepository extraPointRuleRepository;
+    @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
@@ -210,6 +212,8 @@ public class TelemetryResultsService {
 
         calculateGaps(sessionResult);
 
+        applyExtraPoints(sessionResult, league, pointConfigs);
+
         boolean hasPoints = sessionResult.getDriverResults().stream().anyMatch(dr -> dr.getPointsAwarded() != null && dr.getPointsAwarded() > 0);
         if (isRace || hasPoints) {
             if (wasOverwritten) {
@@ -359,6 +363,8 @@ public class TelemetryResultsService {
 
         calculateGaps(sessionResult);
 
+        applyExtraPoints(sessionResult, league, pointConfigs);
+
         boolean hasPoints = sessionResult.getDriverResults().stream().anyMatch(dr -> dr.getPointsAwarded() != null && dr.getPointsAwarded() > 0);
         if (isRace || hasPoints) {
             for (DriverResult driverResult : sessionResult.getDriverResults()) {
@@ -443,11 +449,7 @@ public class TelemetryResultsService {
             
             calculateGaps(session);
 
-            final Float fastestLapTime = session.getDriverResults().stream()
-                    .map(DriverResult::getBestLapTime)
-                    .filter(t -> t != null && t > 0)
-                    .min(Float::compare)
-                    .orElse(null);
+            applyExtraPoints(session, league, pointConfigs);
             
             for (DriverResult result : session.getDriverResults()) {
                 String nameToUse = result.getDriverName();
@@ -459,27 +461,6 @@ public class TelemetryResultsService {
                 if (!nameToUse.equals(result.getDriverName())) {
                     result.setDriverName(nameToUse);
                 }
-
-                int finishPoints = getPointsForPosition(pointConfigs, session, result.getPosition());
-                
-                int bonusPoints = 0;
-                Optional<SessionPointConfig> sessionConfig = pointConfigs.stream()
-                        .filter(c -> c.getSessionType().equals(session.getSessionType()))
-                        .findFirst();
-                
-                if (sessionConfig.isPresent()) {
-                    SessionPointConfig conf = sessionConfig.get();
-                    if (finishPoints > 0) {
-                        if (fastestLapTime != null && fastestLapTime.equals(result.getBestLapTime())) {
-                            bonusPoints += (conf.getFastestLapPoints() != null ? conf.getFastestLapPoints() : 0);
-                        }
-                        if ((result.getPenalties() == null || result.getPenalties() == 0) && (result.getWarnings() == null || result.getWarnings() == 0)) {
-                            bonusPoints += (conf.getNoPenaltyPoints() != null ? conf.getNoPenaltyPoints() : 0);
-                        }
-                    }
-                }
-
-                result.setPointsAwarded(finishPoints + bonusPoints);
 
                 if (result.getPointsAwarded() != null && result.getPointsAwarded() > 0) {
                     boolean isReserve = false;
@@ -674,4 +655,153 @@ public class TelemetryResultsService {
         }
         return p.getAiControlled() == 1;
     }
+
+    public void applyExtraPoints(SessionResult session, League league, List<SessionPointConfig> pointConfigs) {
+        List<ExtraPointRule> rules = extraPointRuleRepository.findByLeagueAndSessionType(league, session.getSessionType());
+        
+        Map<DriverResult, Integer> bonusMap = new HashMap<>();
+        for (DriverResult dr : session.getDriverResults()) {
+            bonusMap.put(dr, 0);
+        }
+
+        for (ExtraPointRule rule : rules) {
+            List<DriverResult> candidates = session.getDriverResults().stream()
+                .filter(dr -> {
+                    if (rule.getExcludeAi() != null && rule.getExcludeAi() && dr.isAi()) return false;
+                    if (rule.getMustFinish() != null && rule.getMustFinish() && dr.getResultStatus() != 3) return false;
+                    if (rule.getOnlyForPointScorers() != null && rule.getOnlyForPointScorers()) {
+                        int basePts = getPointsForPosition(pointConfigs, session, dr.getPosition());
+                        if (basePts <= 0) return false;
+                    }
+                    return true;
+                })
+                .collect(Collectors.toList());
+
+            if (candidates.isEmpty()) continue;
+
+            if (rule.getMetric() == ExtraPointRule.Metric.PLACES_GAINED) {
+                List<DriverResult> validCandidates = candidates.stream()
+                    .filter(dr -> dr.getGridPosition() != null && dr.getGridPosition() > 0 && dr.getPosition() != null)
+                    .collect(Collectors.toList());
+                if (validCandidates.isEmpty()) continue;
+
+                int maxGained = validCandidates.stream()
+                    .mapToInt(dr -> dr.getGridPosition() - dr.getPosition())
+                    .max()
+                    .orElse(Integer.MIN_VALUE);
+
+                if (rule.getRuleType() == ExtraPointRule.RuleType.HIGHEST_VALUE) {
+                    validCandidates.stream()
+                        .filter(dr -> (dr.getGridPosition() - dr.getPosition()) == maxGained)
+                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
+                }
+            }
+            else if (rule.getMetric() == ExtraPointRule.Metric.FASTEST_LAP) {
+                List<DriverResult> validCandidates = candidates.stream()
+                    .filter(dr -> dr.getBestLapTime() != null && dr.getBestLapTime() > 0)
+                    .collect(Collectors.toList());
+                if (validCandidates.isEmpty()) continue;
+
+                float minLap = validCandidates.stream()
+                    .map(DriverResult::getBestLapTime)
+                    .min(Float::compare)
+                    .orElse(Float.MAX_VALUE);
+
+                if (rule.getRuleType() == ExtraPointRule.RuleType.LOWEST_VALUE) {
+                    validCandidates.stream()
+                        .filter(dr -> dr.getBestLapTime().equals(minLap))
+                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
+                }
+            }
+            else if (rule.getMetric() == ExtraPointRule.Metric.PENALTIES) {
+                if (rule.getRuleType() == ExtraPointRule.RuleType.THRESHOLD_BELOW) {
+                    double threshold = rule.getThresholdValue() != null ? rule.getThresholdValue() : 0.0;
+                    candidates.stream()
+                        .filter(dr -> (dr.getPenalties() != null ? dr.getPenalties() : 0) <= threshold)
+                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
+                } else if (rule.getRuleType() == ExtraPointRule.RuleType.LOWEST_VALUE) {
+                    int minPenalties = candidates.stream()
+                        .mapToInt(dr -> dr.getPenalties() != null ? dr.getPenalties() : 0)
+                        .min()
+                        .orElse(Integer.MAX_VALUE);
+                    candidates.stream()
+                        .filter(dr -> (dr.getPenalties() != null ? dr.getPenalties() : 0) == minPenalties)
+                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
+                }
+            }
+            else if (rule.getMetric() == ExtraPointRule.Metric.WARNINGS) {
+                if (rule.getRuleType() == ExtraPointRule.RuleType.THRESHOLD_BELOW) {
+                    double threshold = rule.getThresholdValue() != null ? rule.getThresholdValue() : 0.0;
+                    candidates.stream()
+                        .filter(dr -> (dr.getWarnings() != null ? dr.getWarnings() : 0) <= threshold)
+                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
+                } else if (rule.getRuleType() == ExtraPointRule.RuleType.LOWEST_VALUE) {
+                    int minWarnings = candidates.stream()
+                        .mapToInt(dr -> dr.getWarnings() != null ? dr.getWarnings() : 0)
+                        .min()
+                        .orElse(Integer.MAX_VALUE);
+                    candidates.stream()
+                        .filter(dr -> (dr.getWarnings() != null ? dr.getWarnings() : 0) == minWarnings)
+                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
+                }
+            }
+            else if (rule.getMetric() == ExtraPointRule.Metric.PENALTIES_AND_WARNINGS) {
+                if (rule.getRuleType() == ExtraPointRule.RuleType.THRESHOLD_BELOW) {
+                    double threshold = rule.getThresholdValue() != null ? rule.getThresholdValue() : 0.0;
+                    candidates.stream()
+                        .filter(dr -> ((dr.getPenalties() != null ? dr.getPenalties() : 0) + (dr.getWarnings() != null ? dr.getWarnings() : 0)) <= threshold)
+                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
+                } else if (rule.getRuleType() == ExtraPointRule.RuleType.LOWEST_VALUE) {
+                    int minTotal = candidates.stream()
+                        .mapToInt(dr -> (dr.getPenalties() != null ? dr.getPenalties() : 0) + (dr.getWarnings() != null ? dr.getWarnings() : 0))
+                        .min()
+                        .orElse(Integer.MAX_VALUE);
+                    candidates.stream()
+                        .filter(dr -> ((dr.getPenalties() != null ? dr.getPenalties() : 0) + (dr.getWarnings() != null ? dr.getWarnings() : 0)) == minTotal)
+                        .forEach(dr -> bonusMap.put(dr, bonusMap.get(dr) + rule.getPoints()));
+                }
+            }
+            else if (rule.getMetric() == ExtraPointRule.Metric.GAP_TO_PREVIOUS) {
+                List<DriverResult> sortedCandidates = candidates.stream()
+                    .filter(dr -> dr.getPosition() != null && dr.getTotalTime() != null && dr.getTotalTime() > 0 && dr.getNumLaps() != null)
+                    .sorted(Comparator.comparingInt(DriverResult::getPosition))
+                    .collect(Collectors.toList());
+
+                if (sortedCandidates.size() < 2) continue;
+
+                Map<DriverResult, Double> gapMap = new HashMap<>();
+                for (int j = 1; j < sortedCandidates.size(); j++) {
+                    DriverResult dr = sortedCandidates.get(j);
+                    DriverResult prevDr = sortedCandidates.get(j - 1);
+                    if (dr.getNumLaps().equals(prevDr.getNumLaps())) {
+                        double gap = dr.getTotalTime() - prevDr.getTotalTime();
+                        if (gap >= 0) {
+                           gapMap.put(dr, gap);
+                        }
+                    }
+                }
+
+                if (gapMap.isEmpty()) continue;
+
+                if (rule.getRuleType() == ExtraPointRule.RuleType.LOWEST_VALUE) {
+                    double minGap = gapMap.values().stream()
+                        .min(Double::compare)
+                        .orElse(Double.MAX_VALUE);
+
+                    gapMap.entrySet().stream()
+                        .filter(entry -> entry.getValue().equals(minGap))
+                        .forEach(entry -> bonusMap.put(entry.getKey(), bonusMap.get(entry.getKey()) + rule.getPoints()));
+                }
+            }
+        }
+
+        for (DriverResult dr : session.getDriverResults()) {
+            int finishPoints = getPointsForPosition(pointConfigs, session, dr.getPosition());
+            int bonus = bonusMap.getOrDefault(dr, 0);
+            dr.setPointsAwarded(finishPoints + bonus);
+        }
+        
+        driverResultRepository.saveAll(session.getDriverResults());
+    }
 }
+

@@ -65,6 +65,9 @@ public class TelemetryResultsServiceIntegrationTest {
     private SessionPointConfigRepository sessionPointConfigRepository;
 
     @Autowired
+    private ExtraPointRuleRepository extraPointRuleRepository;
+
+    @Autowired
     private DriverResultRepository driverResultRepository;
 
     @Test
@@ -174,14 +177,12 @@ public class TelemetryResultsServiceIntegrationTest {
         tier.setLeague(league);
         tier = tierRepository.saveAndFlush(tier);
 
-        // 2. Setup custom Point Configs: position 1 gets 25, position 2 gets 18, fastest lap gets 1
+        // 2. Setup custom Point Configs: position 1 gets 25, position 2 gets 18
         SessionPointConfig c1 = new SessionPointConfig();
         c1.setLeague(league);
         c1.setSessionType(15); // Race
         c1.setPosition(1);
         c1.setPoints(25);
-        c1.setFastestLapPoints(1);
-        c1.setNoPenaltyPoints(0);
         sessionPointConfigRepository.saveAndFlush(c1);
 
         SessionPointConfig c2 = new SessionPointConfig();
@@ -189,9 +190,20 @@ public class TelemetryResultsServiceIntegrationTest {
         c2.setSessionType(15); // Race
         c2.setPosition(2);
         c2.setPoints(18);
-        c2.setFastestLapPoints(1);
-        c2.setNoPenaltyPoints(0);
         sessionPointConfigRepository.saveAndFlush(c2);
+
+        // Setup generic fastest lap rule
+        ExtraPointRule rule = new ExtraPointRule();
+        rule.setLeague(league);
+        rule.setSessionType(15);
+        rule.setRuleName("Fastest Lap");
+        rule.setMetric(ExtraPointRule.Metric.FASTEST_LAP);
+        rule.setRuleType(ExtraPointRule.RuleType.LOWEST_VALUE);
+        rule.setPoints(1);
+        rule.setMustFinish(true);
+        rule.setOnlyForPointScorers(true);
+        rule.setExcludeAi(false); // test setup has isAi=false by default but let's be sure
+        extraPointRuleRepository.saveAndFlush(rule);
 
         // 3. Create Event
         Event event = new Event();

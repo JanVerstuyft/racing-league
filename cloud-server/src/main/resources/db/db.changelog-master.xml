@@ -6,4 +6,5 @@
     <include file="changelog/003_add_min_laps_pct_to_league.xml" relativeToChangelogFile="true"/>
     <include file="changelog/004_add_country_to_drivers.xml" relativeToChangelogFile="true"/>
     <include file="changelog/005_add_tiers.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/006_add_extra_point_rules.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>

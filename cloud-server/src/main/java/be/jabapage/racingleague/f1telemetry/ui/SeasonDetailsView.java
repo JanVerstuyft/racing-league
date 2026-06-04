@@ -42,10 +42,13 @@ import java.util.stream.Collectors;
 
 import be.jabapage.racingleague.f1telemetry.entity.DriverMapping;
 import be.jabapage.racingleague.f1telemetry.entity.SessionPointConfig;
+import be.jabapage.racingleague.f1telemetry.entity.ExtraPointRule;
 import be.jabapage.racingleague.f1telemetry.repository.DriverMappingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.SessionPointConfigRepository;
+import be.jabapage.racingleague.f1telemetry.repository.ExtraPointRuleRepository;
 import com.vaadin.flow.component.grid.editor.Editor;
 import com.vaadin.flow.data.binder.Binder;
+import com.vaadin.flow.component.dialog.Dialog;
 
 import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.combobox.ComboBox;
@@ -63,6 +66,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final TeamStandingRepository teamStandingRepository;
     private final DriverMappingRepository driverMappingRepository;
     private final SessionPointConfigRepository sessionPointConfigRepository;
+    private final ExtraPointRuleRepository extraPointRuleRepository;
     private final SecurityService securityService;
     private final TelemetryProcessingService telemetryProcessingService;
     
@@ -104,8 +108,9 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final Button addSessionTypeBtn = new Button("Add Session Type");
     private final Button savePointsBtn = new Button("Save & Recalculate");
     private final Button deleteSessionBtn = new Button("Remove All Overrides for Session");
-    private final com.vaadin.flow.component.textfield.IntegerField fastestLapPointsField = new com.vaadin.flow.component.textfield.IntegerField("Fastest Lap Bonus");
-    private final com.vaadin.flow.component.textfield.IntegerField noPenaltyPointsField = new com.vaadin.flow.component.textfield.IntegerField("No Penalties Bonus");
+    private final Grid<ExtraPointRule> extraPointRulesGrid = new Grid<>(ExtraPointRule.class, false);
+    private Grid.Column<ExtraPointRule> extraRulesActionColumn;
+    private final Button addExtraRuleBtn = new Button("Add Extra Point Rule");
     private Integer selectedSessionType = null;
     private final List<SessionPointConfig> currentEditingConfigs = new ArrayList<>();
     private boolean pointsChanged = false;
@@ -122,6 +127,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                              TeamStandingRepository teamStandingRepository,
                              DriverMappingRepository driverMappingRepository,
                              SessionPointConfigRepository sessionPointConfigRepository,
+                             ExtraPointRuleRepository extraPointRuleRepository,
                              TelemetryProcessingService telemetryProcessingService,
                              SecurityService securityService) {
         this.leagueRepository = leagueRepository;
@@ -131,6 +137,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         this.teamStandingRepository = teamStandingRepository;
         this.driverMappingRepository = driverMappingRepository;
         this.sessionPointConfigRepository = sessionPointConfigRepository;
+        this.extraPointRuleRepository = extraPointRuleRepository;
         this.telemetryProcessingService = telemetryProcessingService;
         this.securityService = securityService;
 
@@ -214,19 +221,13 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         bonusSidebar.setPadding(false);
         bonusSidebar.setSpacing(true);
         
-        bonusSidebar.add(new H3("Session Bonuses"));
-        Span bonusNote = new Span("General bonuses awarded only to drivers who finish in a point-scoring position (standard for Races).");
-        bonusNote.getStyle().set("font-size", "var(--lumo-font-size-s)");
-        bonusNote.getStyle().set("color", "var(--lumo-secondary-text-color)");
-        bonusSidebar.add(bonusNote, fastestLapPointsField, noPenaltyPointsField);
+        bonusSidebar.add(new H3("Extra Point Rules"));
+        extraPointRulesGrid.setWidthFull();
+        extraPointRulesGrid.setMinHeight("250px");
+        bonusSidebar.add(extraPointRulesGrid, addExtraRuleBtn);
         
-        fastestLapPointsField.setStepButtonsVisible(true);
-        fastestLapPointsField.setWidthFull();
-        noPenaltyPointsField.setStepButtonsVisible(true);
-        noPenaltyPointsField.setWidthFull();
-        
-        fastestLapPointsField.addValueChangeListener(e -> pointsChanged = true);
-        noPenaltyPointsField.addValueChangeListener(e -> pointsChanged = true);
+        addExtraRuleBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        addExtraRuleBtn.addClickListener(e -> showAddExtraPointRuleDialog());
 
         HorizontalLayout gridAndBonus = new HorizontalLayout(pointsGrid, bonusSidebar);
         gridAndBonus.setWidthFull();
@@ -479,6 +480,30 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             return field;
         }).setHeader("Points Awarded");
         pointsGrid.setSelectionMode(Grid.SelectionMode.NONE);
+
+        extraPointRulesGrid.addColumn(ExtraPointRule::getRuleName).setHeader("Name").setAutoWidth(true);
+        extraPointRulesGrid.addColumn(r -> r.getMetric().getDisplayName()).setHeader("Metric").setAutoWidth(true);
+        extraPointRulesGrid.addColumn(r -> {
+            if (r.getRuleType() == ExtraPointRule.RuleType.THRESHOLD_BELOW || r.getRuleType() == ExtraPointRule.RuleType.THRESHOLD_ABOVE) {
+                return r.getRuleType().getDisplayName() + ": " + r.getThresholdValue();
+            }
+            return r.getRuleType().getDisplayName();
+        }).setHeader("Condition").setAutoWidth(true);
+        extraPointRulesGrid.addColumn(r -> r.getPoints() + " pt" + (r.getPoints() == 1 ? "" : "s")).setHeader("Points").setWidth("80px").setFlexGrow(0);
+        extraRulesActionColumn = extraPointRulesGrid.addComponentColumn(r -> {
+            Button delBtn = new Button("Delete", ev -> {
+                extraPointRuleRepository.delete(r);
+                List<Tier> tiers = tierRepository.findByLeague(league);
+                for (Tier t : tiers) {
+                    telemetryProcessingService.recalculateStandings(t.getId());
+                }
+                updateData();
+                Notification.show("Rule deleted and standings recalculated", 3000, Notification.Position.TOP_CENTER);
+            });
+            delBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
+            return delBtn;
+        }).setHeader("Action").setWidth("100px").setFlexGrow(0);
+        extraPointRulesGrid.setSelectionMode(Grid.SelectionMode.NONE);
 
         eventGrid.addColumn(Event::getEventName).setHeader("Event");
         eventGrid.addColumn(event -> {
@@ -801,6 +826,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             addSessionTypeBtn.setVisible(loggedIn);
             savePointsBtn.setVisible(loggedIn);
             deleteSessionBtn.setVisible(loggedIn);
+            addExtraRuleBtn.setVisible(loggedIn);
+            if (extraRulesActionColumn != null) {
+                extraRulesActionColumn.setVisible(loggedIn);
+            }
             hideAiCheckbox.setVisible(loggedIn);
             showTyreWearCheckbox.setVisible(loggedIn);
             showErsCheckbox.setVisible(loggedIn);
@@ -930,8 +959,6 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         
         currentEditingConfigs.clear();
         if (dbConfigs.isEmpty()) {
-            fastestLapPointsField.setValue(0);
-            noPenaltyPointsField.setValue(0);
             // Generate defaults for 1-20
             boolean isRace = (type >= 15 && type <= 17);
             boolean isSprint = type == 19;
@@ -942,8 +969,6 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 c.setLeague(league);
                 c.setSessionType(type);
                 c.setPosition(p);
-                c.setFastestLapPoints(0);
-                c.setNoPenaltyPoints(0);
                 int points = 0;
                 if (isRace && p <= 10) points = racePoints[p-1];
                 if (isSprint && p <= 8) points = sprintPoints[p-1];
@@ -951,10 +976,6 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 currentEditingConfigs.add(c);
             }
         } else {
-            SessionPointConfig first = dbConfigs.get(0);
-            fastestLapPointsField.setValue(first.getFastestLapPoints() != null ? first.getFastestLapPoints() : 0);
-            noPenaltyPointsField.setValue(first.getNoPenaltyPoints() != null ? first.getNoPenaltyPoints() : 0);
-            
             // Use existing DB configs
             dbConfigs.forEach(db -> {
                 SessionPointConfig clone = new SessionPointConfig();
@@ -963,8 +984,6 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 clone.setSessionType(db.getSessionType());
                 clone.setPosition(db.getPosition());
                 clone.setPoints(db.getPoints());
-                clone.setFastestLapPoints(db.getFastestLapPoints());
-                clone.setNoPenaltyPoints(db.getNoPenaltyPoints());
                 currentEditingConfigs.add(clone);
             });
             // Ensure 1-20 are present
@@ -976,8 +995,6 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                     c.setSessionType(type);
                     c.setPosition(p);
                     c.setPoints(0);
-                    c.setFastestLapPoints(fastestLapPointsField.getValue());
-                    c.setNoPenaltyPoints(noPenaltyPointsField.getValue());
                     currentEditingConfigs.add(c);
                 }
             }
@@ -986,6 +1003,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         
         pointsGrid.setItems(currentEditingConfigs);
         pointsChanged = false;
+        List<ExtraPointRule> extraRules = extraPointRuleRepository.findByLeagueAndSessionType(league, type);
+        extraPointRulesGrid.setItems(extraRules);
     }
 
     private void showAddSessionTypeDialog() {
@@ -1038,8 +1057,6 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         // Save current editing configs
         currentEditingConfigs.forEach(c -> {
             c.setId(null); // Ensure they are treated as new
-            c.setFastestLapPoints(fastestLapPointsField.getValue() != null ? fastestLapPointsField.getValue() : 0);
-            c.setNoPenaltyPoints(noPenaltyPointsField.getValue() != null ? noPenaltyPointsField.getValue() : 0);
         });
         sessionPointConfigRepository.saveAll(currentEditingConfigs);
         
@@ -1080,6 +1097,109 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             updateData();
             Notification.show("Overrides removed", 3000, Notification.Position.TOP_CENTER);
         });
+        dialog.open();
+    }
+
+    private void showAddExtraPointRuleDialog() {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Add Extra Point Rule");
+
+        TextField nameField = new TextField("Rule Name");
+        nameField.setRequired(true);
+        nameField.setWidthFull();
+
+        ComboBox<ExtraPointRule.Metric> metricCombo = new ComboBox<>("Metric");
+        metricCombo.setItems(ExtraPointRule.Metric.values());
+        metricCombo.setItemLabelGenerator(ExtraPointRule.Metric::getDisplayName);
+        metricCombo.setWidthFull();
+        metricCombo.setRequired(true);
+
+        ComboBox<ExtraPointRule.RuleType> ruleTypeCombo = new ComboBox<>("Rule Type");
+        ruleTypeCombo.setItems(ExtraPointRule.RuleType.values());
+        ruleTypeCombo.setItemLabelGenerator(ExtraPointRule.RuleType::getDisplayName);
+        ruleTypeCombo.setWidthFull();
+        ruleTypeCombo.setRequired(true);
+
+        com.vaadin.flow.component.textfield.NumberField thresholdField = new com.vaadin.flow.component.textfield.NumberField("Threshold Value");
+        thresholdField.setWidthFull();
+        thresholdField.setVisible(false);
+
+        com.vaadin.flow.component.textfield.IntegerField pointsField = new com.vaadin.flow.component.textfield.IntegerField("Points");
+        pointsField.setValue(1);
+        pointsField.setStepButtonsVisible(true);
+        pointsField.setWidthFull();
+
+        Checkbox mustFinishCb = new Checkbox("Must finish session", true);
+        Checkbox onlyForPointScorersCb = new Checkbox("Only for point scorers (e.g. top 10)", true);
+        Checkbox excludeAiCb = new Checkbox("Exclude AI drivers", true);
+
+        metricCombo.addValueChangeListener(e -> {
+            if (e.getValue() != null) {
+                if (nameField.getValue().isEmpty()) {
+                    nameField.setValue(e.getValue().getDisplayName());
+                }
+                switch (e.getValue()) {
+                    case PLACES_GAINED:
+                        ruleTypeCombo.setValue(ExtraPointRule.RuleType.HIGHEST_VALUE);
+                        break;
+                    case FASTEST_LAP:
+                        ruleTypeCombo.setValue(ExtraPointRule.RuleType.LOWEST_VALUE);
+                        break;
+                    case PENALTIES:
+                    case WARNINGS:
+                    case PENALTIES_AND_WARNINGS:
+                        ruleTypeCombo.setValue(ExtraPointRule.RuleType.THRESHOLD_BELOW);
+                        thresholdField.setValue(0.0);
+                        break;
+                    case GAP_TO_PREVIOUS:
+                        ruleTypeCombo.setValue(ExtraPointRule.RuleType.LOWEST_VALUE);
+                        break;
+                }
+            }
+        });
+
+        ruleTypeCombo.addValueChangeListener(e -> {
+            boolean isThreshold = e.getValue() == ExtraPointRule.RuleType.THRESHOLD_BELOW || e.getValue() == ExtraPointRule.RuleType.THRESHOLD_ABOVE;
+            thresholdField.setVisible(isThreshold);
+        });
+
+        VerticalLayout dialogLayout = new VerticalLayout(
+            nameField, metricCombo, ruleTypeCombo, thresholdField, pointsField,
+            mustFinishCb, onlyForPointScorersCb, excludeAiCb
+        );
+        dialog.add(dialogLayout);
+
+        Button saveBtn = new Button("Add", ev -> {
+            if (nameField.getValue().isEmpty() || metricCombo.getValue() == null || ruleTypeCombo.getValue() == null) {
+                Notification.show("Please fill in all required fields", 3000, Notification.Position.TOP_CENTER);
+                return;
+            }
+
+            ExtraPointRule rule = new ExtraPointRule();
+            rule.setLeague(league);
+            rule.setSessionType(selectedSessionType);
+            rule.setRuleName(nameField.getValue());
+            rule.setMetric(metricCombo.getValue());
+            rule.setRuleType(ruleTypeCombo.getValue());
+            rule.setThresholdValue(thresholdField.getValue());
+            rule.setPoints(pointsField.getValue() != null ? pointsField.getValue() : 0);
+            rule.setMustFinish(mustFinishCb.getValue());
+            rule.setOnlyForPointScorers(onlyForPointScorersCb.getValue());
+            rule.setExcludeAi(excludeAiCb.getValue());
+
+            extraPointRuleRepository.save(rule);
+            
+            List<Tier> tiers = tierRepository.findByLeague(league);
+            for (Tier t : tiers) {
+                telemetryProcessingService.recalculateStandings(t.getId());
+            }
+
+            updateData();
+            dialog.close();
+            Notification.show("Extra point rule added and standings recalculated", 3000, Notification.Position.TOP_CENTER);
+        });
+        saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        dialog.getFooter().add(new Button("Cancel", ev -> dialog.close()), saveBtn);
         dialog.open();
     }
 }
