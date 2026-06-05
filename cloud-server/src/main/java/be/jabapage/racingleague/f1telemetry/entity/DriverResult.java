@@ -43,6 +43,10 @@ public class DriverResult {
     @Column(name = "team_name")
     private String teamName;
     private Integer position;
+
+    @Column(name = "raw_position")
+    private Integer rawPosition;
+
     @Column(name = "num_laps")
     private Integer numLaps;
     @Column(name = "points_awarded")
@@ -55,6 +59,9 @@ public class DriverResult {
     @Column(name = "total_time")
     private Double totalTime;
 
+    @Column(name = "raw_total_time")
+    private Double rawTotalTime;
+
     @Column(name = "gap_to_leader")
     private String gapToLeader;
 
@@ -66,6 +73,12 @@ public class DriverResult {
 
     @Column(name = "warnings", nullable = false, columnDefinition = "int default 0")
     private Integer warnings;
+
+    @Column(name = "stewards_penalties", nullable = false, columnDefinition = "int default 0")
+    private Integer stewardsPenalties = 0;
+
+    @Column(name = "point_deductions", nullable = false, columnDefinition = "int default 0")
+    private Integer pointDeductions = 0;
 
     @OneToMany(mappedBy = "driverResult", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private java.util.Set<TyreStint> tyreStints = new java.util.LinkedHashSet<>();

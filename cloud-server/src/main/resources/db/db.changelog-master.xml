@@ -7,4 +7,7 @@
     <include file="changelog/004_add_country_to_drivers.xml" relativeToChangelogFile="true"/>
     <include file="changelog/005_add_tiers.xml" relativeToChangelogFile="true"/>
     <include file="changelog/006_add_extra_point_rules.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/007_add_manual_penalties.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/008_add_steward_penalties_to_driver_result.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/009_change_manual_penalty_to_session_result.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>

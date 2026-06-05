@@ -4,6 +4,8 @@ import be.jabapage.racingleague.f1telemetry.entity.DriverStanding;
 import be.jabapage.racingleague.f1telemetry.entity.Event;
 import be.jabapage.racingleague.f1telemetry.entity.League;
 import be.jabapage.racingleague.f1telemetry.entity.Tier;
+import lombok.Getter;
+import lombok.Setter;
 import be.jabapage.racingleague.f1telemetry.entity.TeamStanding;
 import be.jabapage.racingleague.f1telemetry.repository.DriverStandingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.EventRepository;
@@ -37,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -44,9 +47,11 @@ import java.util.stream.Collectors;
 import be.jabapage.racingleague.f1telemetry.entity.DriverMapping;
 import be.jabapage.racingleague.f1telemetry.entity.SessionPointConfig;
 import be.jabapage.racingleague.f1telemetry.entity.ExtraPointRule;
+import be.jabapage.racingleague.f1telemetry.entity.ManualPenalty;
 import be.jabapage.racingleague.f1telemetry.repository.DriverMappingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.SessionPointConfigRepository;
 import be.jabapage.racingleague.f1telemetry.repository.ExtraPointRuleRepository;
+import be.jabapage.racingleague.f1telemetry.repository.ManualPenaltyRepository;
 import com.vaadin.flow.component.grid.editor.Editor;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.component.dialog.Dialog;
@@ -68,6 +73,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final DriverMappingRepository driverMappingRepository;
     private final SessionPointConfigRepository sessionPointConfigRepository;
     private final ExtraPointRuleRepository extraPointRuleRepository;
+    private final ManualPenaltyRepository manualPenaltyRepository;
     private final SecurityService securityService;
     private final TelemetryProcessingService telemetryProcessingService;
     
@@ -86,6 +92,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final Grid<DriverStanding> driverGrid = new Grid<>(DriverStanding.class, false);
     private final Grid<TeamStanding> teamGrid = new Grid<>(TeamStanding.class, false);
     private final Grid<TeamStanding> leagueTeamGrid = new Grid<>(TeamStanding.class, false);
+    private final Grid<PenaltyStandingRow> penaltiesGrid = new Grid<>();
+    private final Grid<PenaltyStandingRow> leaguePenaltiesGrid = new Grid<>();
     private final Grid<DriverMapping> mappingGrid = new Grid<>(DriverMapping.class, false);
     private final Grid<SessionPointConfig> pointsGrid = new Grid<>(SessionPointConfig.class, false);
     private final Grid<Tier> tierGrid = new Grid<>(Tier.class, false);
@@ -95,6 +103,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final VerticalLayout driverStandingsContent = new VerticalLayout();
     private final VerticalLayout teamStandingsContent = new VerticalLayout();
     private final VerticalLayout leagueTeamStandingsContent = new VerticalLayout();
+    private final VerticalLayout penaltiesContent = new VerticalLayout();
+    private final VerticalLayout leaguePenaltiesContent = new VerticalLayout();
     private final VerticalLayout driversLayout = new VerticalLayout();
     private final VerticalLayout pointsLayout = new VerticalLayout();
     private final VerticalLayout tiersLayout = new VerticalLayout();
@@ -130,6 +140,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                              DriverMappingRepository driverMappingRepository,
                              SessionPointConfigRepository sessionPointConfigRepository,
                              ExtraPointRuleRepository extraPointRuleRepository,
+                             ManualPenaltyRepository manualPenaltyRepository,
                              TelemetryProcessingService telemetryProcessingService,
                              SecurityService securityService) {
         this.leagueRepository = leagueRepository;
@@ -140,6 +151,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         this.driverMappingRepository = driverMappingRepository;
         this.sessionPointConfigRepository = sessionPointConfigRepository;
         this.extraPointRuleRepository = extraPointRuleRepository;
+        this.manualPenaltyRepository = manualPenaltyRepository;
         this.telemetryProcessingService = telemetryProcessingService;
         this.securityService = securityService;
 
@@ -353,12 +365,16 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         });
 
         // Inner tabs for Standings
-        Tabs standingsTabs = new Tabs(new Tab("Drivers"), new Tab("Teams"), new Tab("League Teams"));
+        Tab penaltiesTab = new Tab("Penalties");
+        Tab leaguePenaltiesTab = new Tab("League Penalties");
+        Tabs standingsTabs = new Tabs(new Tab("Drivers"), new Tab("Teams"), new Tab("League Teams"), penaltiesTab, leaguePenaltiesTab);
         standingsTabs.addSelectedChangeListener(e -> {
             String label = e.getSelectedTab().getLabel();
             driverStandingsContent.setVisible(label.equals("Drivers"));
             teamStandingsContent.setVisible(label.equals("Teams"));
             leagueTeamStandingsContent.setVisible(label.equals("League Teams"));
+            penaltiesContent.setVisible(label.equals("Penalties"));
+            leaguePenaltiesContent.setVisible(label.equals("League Penalties"));
         });
 
         driverGrid.setSelectionMode(Grid.SelectionMode.NONE);
@@ -375,7 +391,15 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         leagueTeamStandingsContent.setVisible(false);
         leagueTeamStandingsContent.setPadding(false);
 
-        standingsLayout.add(standingsTabs, driverStandingsContent, teamStandingsContent, leagueTeamStandingsContent);
+        penaltiesContent.add(new H3("Incident & Penalties Standings (This Tier)"), penaltiesGrid);
+        penaltiesContent.setVisible(false);
+        penaltiesContent.setPadding(false);
+
+        leaguePenaltiesContent.add(new H3("Incident & Penalties Standings (League Wide)"), leaguePenaltiesGrid);
+        leaguePenaltiesContent.setVisible(false);
+        leaguePenaltiesContent.setPadding(false);
+
+        standingsLayout.add(standingsTabs, driverStandingsContent, teamStandingsContent, leagueTeamStandingsContent, penaltiesContent, leaguePenaltiesContent);
         standingsLayout.setVisible(false);
 
         deleteSelectedMappingsBtn.addThemeVariants(ButtonVariant.LUMO_ERROR);
@@ -547,6 +571,9 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             actions.add(resultsLink);
 
             if (securityService.getAuthenticatedUser().isPresent()) {
+                RouterLink penaltiesLink = new RouterLink("Penalties", EventPenaltiesView.class, event.getId());
+                actions.add(penaltiesLink);
+                
                 Button deleteBtn = new Button("Delete", e -> {
                     ConfirmDialog dialog = new ConfirmDialog();
                     dialog.setHeader("Delete Weekend?");
@@ -617,6 +644,9 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
         leagueTeamGrid.addColumn(TeamStanding::getTeamName).setHeader("Team");
         leagueTeamGrid.addColumn(ts -> ts.getPoints() != null ? ts.getPoints() : 0).setHeader("Points").setSortable(true);
+
+        configurePenaltyGrid(penaltiesGrid);
+        configurePenaltyGrid(leaguePenaltiesGrid);
 
         // Configure TierGrid
         tierGrid.addColumn(Tier::getName).setHeader("Tier Name").setAutoWidth(true);
@@ -927,6 +957,9 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 .sorted(Comparator.comparing((TeamStanding ts) -> ts.getPoints() != null ? ts.getPoints() : 0).reversed())
                 .collect(Collectors.toList());
         leagueTeamGrid.setItems(leagueTeamStandings);
+
+        updatePenaltiesData();
+        updateLeaguePenaltiesData();
 
         refreshPointsTabs();
     }
@@ -1282,5 +1315,132 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         dialog.getFooter().add(new Button("Cancel", ev -> dialog.close()), saveBtn);
         dialog.open();
+    }
+
+    private void configurePenaltyGrid(Grid<PenaltyStandingRow> grid) {
+        grid.addComponentColumn(ps -> {
+            HorizontalLayout nameLayout = new HorizontalLayout();
+            nameLayout.setAlignItems(Alignment.CENTER);
+            nameLayout.setSpacing(false);
+
+            Span flagSpan = new Span(CountryProvider.getFlagByName(ps.getCountry()));
+            flagSpan.getStyle().set("margin-right", "var(--lumo-space-s)");
+            nameLayout.add(flagSpan);
+
+            if (ps.getRaceNumber() != null && ps.getRaceNumber() > 0) {
+                Span raceNum = new Span("#" + ps.getRaceNumber());
+                raceNum.getStyle().set("color", "var(--lumo-secondary-text-color)");
+                raceNum.getStyle().set("font-size", "0.8em");
+                raceNum.getStyle().set("margin-right", "var(--lumo-space-s)");
+                nameLayout.add(raceNum);
+            }
+
+            Span name = new Span(ps.getDriverName());
+            nameLayout.add(name);
+            return nameLayout;
+        }).setHeader("Driver").setSortable(true).setComparator(PenaltyStandingRow::getDriverName);
+
+        grid.addColumn(PenaltyStandingRow::getTeamName).setHeader("Team");
+        grid.addColumn(PenaltyStandingRow::getIncidentCount).setHeader("Incidents").setSortable(true);
+        grid.addColumn(PenaltyStandingRow::getTotalGivenSeconds).setHeader("Total Seconds").setSortable(true);
+        grid.addColumn(PenaltyStandingRow::getTotalPointsDeducted).setHeader("Points Deducted").setSortable(true);
+        grid.setSelectionMode(Grid.SelectionMode.NONE);
+    }
+
+    private void updatePenaltiesData() {
+        if (selectedTier == null) return;
+        List<ManualPenalty> penalties = manualPenaltyRepository.findBySessionResultTier(selectedTier);
+        List<PenaltyStandingRow> rows = buildPenaltyStandingRows(penalties, selectedTier);
+        penaltiesGrid.setItems(rows);
+    }
+
+    private void updateLeaguePenaltiesData() {
+        if (league == null) return;
+        List<ManualPenalty> penalties = manualPenaltyRepository.findBySessionResultTierLeague(league);
+        List<PenaltyStandingRow> rows = buildPenaltyStandingRows(penalties, null);
+        leaguePenaltiesGrid.setItems(rows);
+    }
+
+    private List<PenaltyStandingRow> buildPenaltyStandingRows(List<ManualPenalty> penalties, Tier tier) {
+        Map<DriverMapping, List<ManualPenalty>> grouped = penalties.stream()
+                .collect(Collectors.groupingBy(ManualPenalty::getDriverMapping));
+
+        List<PenaltyStandingRow> rows = new ArrayList<>();
+        for (Map.Entry<DriverMapping, List<ManualPenalty>> entry : grouped.entrySet()) {
+            DriverMapping mapping = entry.getKey();
+            List<ManualPenalty> list = entry.getValue();
+
+            String name = mapping.getOverriddenName() != null && !mapping.getOverriddenName().isEmpty() 
+                    ? mapping.getOverriddenName() 
+                    : mapping.getTelemetryName();
+
+            long incidentCount = list.stream()
+                    .filter(p -> (p.getSeconds() != null && p.getSeconds() > 0) || (p.getPointDeduction() != null && p.getPointDeduction() > 0))
+                    .count();
+
+            if (incidentCount == 0) {
+                continue;
+            }
+
+            long totalPointsDeducted = list.stream()
+                    .mapToLong(p -> p.getPointDeduction() != null ? p.getPointDeduction() : 0)
+                    .sum();
+
+            long totalGivenSeconds = list.stream()
+                    .mapToLong(p -> p.getSeconds() != null && p.getSeconds() > 0 ? p.getSeconds() : 0)
+                    .sum();
+
+            String teamName = "Unknown";
+            if (tier != null) {
+                Optional<DriverStanding> ds = driverStandingRepository.findByTierAndDriverNameAndRaceNumberAndCountry(
+                        tier, name, mapping.getRaceNumber(), mapping.getCountry());
+                if (ds.isPresent()) {
+                    teamName = ds.get().getTeamName();
+                }
+            } else {
+                List<DriverStanding> standings = driverStandingRepository.findByDriverNameAndRaceNumberAndCountry(
+                        name, mapping.getRaceNumber(), mapping.getCountry());
+                teamName = standings.stream()
+                        .map(DriverStanding::getTeamName)
+                        .filter(t -> t != null && !t.isEmpty())
+                        .distinct()
+                        .collect(Collectors.joining(", "));
+                if (teamName.isEmpty()) teamName = "Unknown";
+            }
+
+            PenaltyStandingRow row = new PenaltyStandingRow();
+            row.setDriverName(name);
+            row.setTeamName(teamName);
+            row.setCountry(mapping.getCountry());
+            row.setRaceNumber(mapping.getRaceNumber());
+            row.setIncidentCount(incidentCount);
+            row.setTotalPointsDeducted(totalPointsDeducted);
+            row.setTotalGivenSeconds(totalGivenSeconds);
+            rows.add(row);
+        }
+
+        rows.sort((r1, r2) -> {
+            int comp = Long.compare(r2.getTotalGivenSeconds(), r1.getTotalGivenSeconds());
+            if (comp != 0) return comp;
+            comp = Long.compare(r2.getTotalPointsDeducted(), r1.getTotalPointsDeducted());
+            if (comp != 0) return comp;
+            comp = Long.compare(r2.getIncidentCount(), r1.getIncidentCount());
+            if (comp != 0) return comp;
+            return r1.getDriverName().compareToIgnoreCase(r2.getDriverName());
+        });
+
+        return rows;
+    }
+
+    @Getter
+    @Setter
+    public static class PenaltyStandingRow {
+        private String driverName;
+        private String teamName;
+        private String country;
+        private Integer raceNumber;
+        private long incidentCount;
+        private long totalPointsDeducted;
+        private long totalGivenSeconds;
     }
 }

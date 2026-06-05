@@ -3,6 +3,7 @@ package be.jabapage.racingleague.f1telemetry.ui;
 import be.jabapage.racingleague.f1telemetry.entity.DriverResult;
 import be.jabapage.racingleague.f1telemetry.entity.Event;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
+import be.jabapage.racingleague.f1telemetry.entity.LapResult;
 import be.jabapage.racingleague.f1telemetry.model.RacePaceStats;
 import be.jabapage.racingleague.f1telemetry.model.LongestStintStats;
 import be.jabapage.racingleague.f1telemetry.model.ConsistencyStats;
@@ -238,6 +239,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 dr.setCountry(driverCombo.getValue().getCountry());
                 dr.setTeamName(teamCombo.getValue());
                 dr.setPosition(posField.getValue().intValue());
+                dr.setRawPosition(dr.getPosition());
                 dr.setNumLaps(lapsField.getValue() != null ? lapsField.getValue() : 0);
                 dr.setPointsAwarded(pointsField.getValue() != null ? pointsField.getValue().intValue() : 0);
                 dr.setResultStatus(3);
@@ -257,6 +259,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 if (totalTimeField.getValue() != null && !totalTimeField.getValue().isEmpty()) {
                     try {
                         dr.setTotalTime((double) parseLapTime(totalTimeField.getValue()));
+                        dr.setRawTotalTime(dr.getTotalTime());
                     } catch (Exception ex) {
                         Notification.show("Invalid total time format. Use m:ss.SSS or s.SSS", 5000, Notification.Position.TOP_CENTER);
                         return;
@@ -465,27 +468,33 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             grid.addColumn(dr -> dr.getGapToLeader() != null ? dr.getGapToLeader() : "-").setHeader("Gap");
 
             grid.addColumn(dr -> {
-                long bestS1 = dr.getLapResults().stream().filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS1InMS() != null ? l.getS1InMS() : Long.MAX_VALUE).min().orElse(0);
-                return formatLapTime(bestS1 / 1000.0f);
+                LapResult fastest = getFastestLap(dr);
+                long s1 = (fastest != null && fastest.getS1InMS() != null) ? fastest.getS1InMS() : 0L;
+                return formatLapTime(s1 / 1000.0f);
             }).setHeader("S1").setPartNameGenerator(dr -> {
-                long bestS1 = dr.getLapResults().stream().filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS1InMS() != null ? l.getS1InMS() : Long.MAX_VALUE).min().orElse(0);
-                return (bestS1 > 0 && bestS1 == sessionBestS1) ? "best-sector" : null;
+                LapResult fastest = getFastestLap(dr);
+                long s1 = (fastest != null && fastest.getS1InMS() != null) ? fastest.getS1InMS() : 0L;
+                return (s1 > 0 && s1 == sessionBestS1) ? "best-sector" : null;
             });
 
             grid.addColumn(dr -> {
-                long bestS2 = dr.getLapResults().stream().filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS2InMS() != null ? l.getS2InMS() : Long.MAX_VALUE).min().orElse(0);
-                return formatLapTime(bestS2 / 1000.0f);
+                LapResult fastest = getFastestLap(dr);
+                long s2 = (fastest != null && fastest.getS2InMS() != null) ? fastest.getS2InMS() : 0L;
+                return formatLapTime(s2 / 1000.0f);
             }).setHeader("S2").setPartNameGenerator(dr -> {
-                long bestS2 = dr.getLapResults().stream().filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS2InMS() != null ? l.getS2InMS() : Long.MAX_VALUE).min().orElse(0);
-                return (bestS2 > 0 && bestS2 == sessionBestS2) ? "best-sector" : null;
+                LapResult fastest = getFastestLap(dr);
+                long s2 = (fastest != null && fastest.getS2InMS() != null) ? fastest.getS2InMS() : 0L;
+                return (s2 > 0 && s2 == sessionBestS2) ? "best-sector" : null;
             });
 
             grid.addColumn(dr -> {
-                long bestS3 = dr.getLapResults().stream().filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS3InMS() != null ? l.getS3InMS() : Long.MAX_VALUE).min().orElse(0);
-                return formatLapTime(bestS3 / 1000.0f);
+                LapResult fastest = getFastestLap(dr);
+                long s3 = (fastest != null && fastest.getS3InMS() != null) ? fastest.getS3InMS() : 0L;
+                return formatLapTime(s3 / 1000.0f);
             }).setHeader("S3").setPartNameGenerator(dr -> {
-                long bestS3 = dr.getLapResults().stream().filter(l -> l.getIsValid() != null && l.getIsValid()).mapToLong(l -> l.getS3InMS() != null ? l.getS3InMS() : Long.MAX_VALUE).min().orElse(0);
-                return (bestS3 > 0 && bestS3 == sessionBestS3) ? "best-sector" : null;
+                LapResult fastest = getFastestLap(dr);
+                long s3 = (fastest != null && fastest.getS3InMS() != null) ? fastest.getS3InMS() : 0L;
+                return (s3 > 0 && s3 == sessionBestS3) ? "best-sector" : null;
             });
         }
 
@@ -524,7 +533,14 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             }).setHeader("Tyres").setAutoWidth(true);
 
             grid.addColumn(DriverResult::getPointsAwarded).setHeader("Points");
-            grid.addColumn(dr -> dr.getPenalties() != null && dr.getPenalties() > 0 ? dr.getPenalties() + "s" : "-").setHeader("Pen");
+            grid.addColumn(dr -> dr.getPenalties() != null && dr.getPenalties() != 0 ? dr.getPenalties() + "s" : "-").setHeader("Game");
+            grid.addColumn(dr -> dr.getStewardsPenalties() != null && dr.getStewardsPenalties() != 0 ? dr.getStewardsPenalties() + "s" : "-").setHeader("Stewards");
+            grid.addColumn(dr -> {
+                int gamePen = dr.getPenalties() != null ? dr.getPenalties() : 0;
+                int stewardPen = dr.getStewardsPenalties() != null ? dr.getStewardsPenalties() : 0;
+                int totalPen = gamePen + stewardPen;
+                return totalPen != 0 ? totalPen + "s" : "-";
+            }).setHeader("Penalties");
             grid.addColumn(dr -> dr.getWarnings() != null ? dr.getWarnings() : 0)
                     .setHeader("Warn")
                     .setPartNameGenerator(dr -> (dr.getWarnings() != null && dr.getWarnings() == 2) ? "warning-danger" : null);
@@ -825,5 +841,15 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         int minutes = (int) (seconds / 60);
         float remainingSeconds = seconds % 60;
         return String.format("%d:%06.3f", minutes, remainingSeconds);
+    }
+
+    private static LapResult getFastestLap(DriverResult dr) {
+        if (dr.getLapResults() == null || dr.getLapResults().isEmpty()) {
+            return null;
+        }
+        return dr.getLapResults().stream()
+                .filter(l -> l.getIsValid() != null && l.getIsValid() && l.getLapTimeInMS() != null && l.getLapTimeInMS() > 0)
+                .min(Comparator.comparingLong(LapResult::getLapTimeInMS))
+                .orElse(null);
     }
 }

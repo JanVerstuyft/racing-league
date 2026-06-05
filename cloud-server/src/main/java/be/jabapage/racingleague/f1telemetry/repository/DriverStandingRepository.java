@@ -12,4 +12,5 @@ import java.util.Optional;
 public interface DriverStandingRepository extends JpaRepository<DriverStanding, Long> {
     Optional<DriverStanding> findByTierAndDriverNameAndRaceNumberAndCountry(Tier tier, String driverName, Integer raceNumber, String country);
     List<DriverStanding> findByTier(Tier tier);
+    List<DriverStanding> findByDriverNameAndRaceNumberAndCountry(String driverName, Integer raceNumber, String country);
 }

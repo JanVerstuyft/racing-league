@@ -1,0 +1,23 @@
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="009_change_manual_penalty_to_session_result" author="jan">
+        <!-- Clear table to ensure we can safely add non-nullable session_result_id column -->
+        <delete tableName="manual_penalty"/>
+
+        <dropForeignKeyConstraint baseTableName="manual_penalty" constraintName="fk_manual_penalty_event"/>
+        <dropColumn tableName="manual_penalty" columnName="event_id"/>
+
+        <addColumn tableName="manual_penalty">
+            <column name="session_result_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <addForeignKeyConstraint baseColumnNames="session_result_id" baseTableName="manual_penalty"
+                                 constraintName="fk_manual_penalty_session_result" deferrable="false"
+                                 initiallyDeferred="false" onDelete="CASCADE" onUpdate="NO ACTION"
+                                 referencedColumnNames="id" referencedTableName="session_result" validate="true"/>
+    </changeSet>
+</databaseChangeLog>

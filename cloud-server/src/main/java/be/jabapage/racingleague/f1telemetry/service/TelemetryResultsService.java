@@ -49,6 +49,8 @@ public class TelemetryResultsService {
     @Autowired
     private ExtraPointRuleRepository extraPointRuleRepository;
     @Autowired
+    private ManualPenaltyRepository manualPenaltyRepository;
+    @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
@@ -98,29 +100,17 @@ public class TelemetryResultsService {
         }
         League league = tier.getLeague();
 
+        SessionResult sessionResult;
         boolean wasOverwritten = false;
         Optional<SessionResult> existing = sessionResultRepository.findBySessionUID(sessionUID);
         if (existing.isPresent()) {
-            log.info("Session UID: {} already recorded as ID: {}. Overwriting with Final Classification data.", 
+            log.info("Session UID: {} already recorded as ID: {}. Overwriting with Final Classification data in-place.", 
                 sessionUID, existing.get().getId());
-            SessionResult oldSession = existing.get();
-            
-            // Delete all lap results for this session UID to prevent orphaned records
-            List<LapResult> oldLaps = lapResultRepository.findBySessionUID(sessionUID);
-            lapResultRepository.deleteAll(oldLaps);
-            lapResultRepository.flush();
-
-            if (oldSession.getEvent() != null) {
-                oldSession.getEvent().getSessionResults().remove(oldSession);
-            }
-            if (oldSession.getTier() != null) {
-                oldSession.getTier().getSessionResults().remove(oldSession);
-            }
-            oldSession.setSessionUID(null);
-            sessionResultRepository.saveAndFlush(oldSession);
-            sessionResultRepository.delete(oldSession);
-            sessionResultRepository.flush();
+            sessionResult = existing.get();
             wasOverwritten = true;
+        } else {
+            sessionResult = new SessionResult();
+            sessionResult.setSessionUID(classification.getHeader().getSessionUID());
         }
 
         String trackIdStr = String.valueOf(state.getCurrentSession().getTrackId());
@@ -141,36 +131,52 @@ public class TelemetryResultsService {
         List<SessionPointConfig> pointConfigs = sessionPointConfigRepository.findByLeague(league);
         List<LapResult> allLaps = lapResultRepository.findBySessionUID(classification.getHeader().getSessionUID());
 
-        SessionResult sessionResult = new SessionResult();
         sessionResult.setTier(tier);
         sessionResult.setEvent(event);
-        sessionResult.setSessionUID(classification.getHeader().getSessionUID());
         sessionResult.setSessionType(state.getCurrentSession().getSessionType());
         sessionResult.setTrackId(trackIdStr);
 
         boolean isRace = (state.getCurrentSession().getSessionType() >= 15 && state.getCurrentSession().getSessionType() <= 17) || state.getCurrentSession().getSessionType() == 19;
+
+        java.util.Set<DriverResult> updatedDriverResults = new java.util.LinkedHashSet<>();
 
         for (int i = 0; i < classification.getNumCars(); i++) {
             FinalClassificationData data = classification.getClassificationData().get(i);
             if (data.getResultStatus() == 0) continue;
 
             ParticipantData participant = state.getCurrentParticipants().getParticipants().get(i);
-            
-            DriverResult driverResult = new DriverResult();
-            driverResult.setSessionResult(sessionResult);
-            driverResult.setDriverName(getDriverName(state, participant));
-            driverResult.setTelemetryName(participant.getName());
-            driverResult.setRaceNumber(participant.getRaceNumber());
-            driverResult.setDriverId(participant.getDriverId());
+            String driverName = getDriverName(state, participant);
+            final String telemetryName = participant.getName();
+            final int raceNumber = participant.getRaceNumber();
+            final int driverId = participant.getDriverId();
+
+            DriverResult driverResult = sessionResult.getDriverResults().stream()
+                    .filter(dr -> Objects.equals(dr.getTelemetryName(), telemetryName)
+                            && Objects.equals(dr.getRaceNumber(), raceNumber)
+                            && Objects.equals(dr.getDriverId(), driverId))
+                    .findFirst()
+                    .orElse(null);
+
+            if (driverResult == null) {
+                driverResult = new DriverResult();
+                driverResult.setSessionResult(sessionResult);
+            }
+
+            driverResult.setDriverName(driverName);
+            driverResult.setTelemetryName(telemetryName);
+            driverResult.setRaceNumber(raceNumber);
+            driverResult.setDriverId(driverId);
             driverResult.setAi(isAi(state, participant, i));
             driverResult.setCountry(CountryProvider.getCountryInfo(participant.getNationality()).getName());
             driverResult.setTeamName(TelemetryProcessingService.TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(data.getPosition());
+            driverResult.setRawPosition(data.getPosition());
             driverResult.setNumLaps(data.getNumLaps());
             driverResult.setPointsAwarded(getPointsForPosition(pointConfigs, sessionResult, data.getPosition()));
             driverResult.setGridPosition(data.getGridPosition());
             driverResult.setBestLapTime(data.getBestLapTimeInMS() / 1000.0f);
             driverResult.setTotalTime(data.getTotalRaceTime() + data.getPenaltiesTime());
+            driverResult.setRawTotalTime(driverResult.getTotalTime());
             driverResult.setResultStatus(data.getResultStatus());
             driverResult.setPenalties(data.getPenaltiesTime());
             driverResult.setWarnings(0);
@@ -178,15 +184,18 @@ public class TelemetryResultsService {
                 driverResult.setWarnings(state.getCurrentLapData().getLapData().get(i).getTotalWarnings());
             }
 
-            final int carIndex = i;
-            List<LapResult> laps = allLaps.stream()
-                    .filter(lap -> lap.getCarIndex() != null && lap.getCarIndex() == carIndex)
-                    .collect(Collectors.toList());
-            for (LapResult lap : laps) {
-                lap.setDriverResult(driverResult);
-                driverResult.getLapResults().add(lap);
+            if (driverResult.getId() == null) {
+                final int carIndex = i;
+                List<LapResult> laps = allLaps.stream()
+                        .filter(lap -> lap.getCarIndex() != null && lap.getCarIndex() == carIndex)
+                        .collect(Collectors.toList());
+                for (LapResult lap : laps) {
+                    lap.setDriverResult(driverResult);
+                    driverResult.getLapResults().add(lap);
+                }
             }
 
+            driverResult.getTyreStints().clear();
             int lastEndLap = 0;
             for (int j = 0; j < data.getNumTyreStints(); j++) {
                 TyreStint stint = new TyreStint();
@@ -204,8 +213,15 @@ public class TelemetryResultsService {
                 lastEndLap = endLap;
                 driverResult.getTyreStints().add(stint);
             }
-            
-            sessionResult.getDriverResults().add(driverResult);
+
+            updatedDriverResults.add(driverResult);
+        }
+
+        sessionResult.getDriverResults().removeIf(dr -> !updatedDriverResults.contains(dr));
+        for (DriverResult dr : updatedDriverResults) {
+            if (!sessionResult.getDriverResults().contains(dr)) {
+                sessionResult.getDriverResults().add(dr);
+            }
         }
 
         sessionResultRepository.saveAndFlush(sessionResult);
@@ -290,6 +306,7 @@ public class TelemetryResultsService {
             driverResult.setCountry(CountryProvider.getCountryInfo(participant.getNationality()).getName());
             driverResult.setTeamName(TelemetryProcessingService.TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(ld.getCarPosition());
+            driverResult.setRawPosition(ld.getCarPosition());
             int completedLaps = ld.getCurrentLapNum() - 1;
             if (ld.getResultStatus() == 3) {
                 completedLaps = ld.getCurrentLapNum();
@@ -315,6 +332,7 @@ public class TelemetryResultsService {
             }
             if (totalTimeMs > 0) {
                 driverResult.setTotalTime(totalTimeMs / 1000.0 + ld.getPenalties());
+                driverResult.setRawTotalTime(driverResult.getTotalTime());
             }
 
             if (!laps.isEmpty()) {
@@ -451,9 +469,17 @@ public class TelemetryResultsService {
         for (SessionResult session : allSessions) {
             boolean isRace = (session.getSessionType() >= 15 && session.getSessionType() <= 17) || session.getSessionType() == 19;
             
+            if (isRace) {
+                applyManualTimePenaltiesAndReclassify(session, mappings);
+            }
+            
             calculateGaps(session);
 
             applyExtraPoints(session, league, pointConfigs);
+            
+            if (isRace) {
+                applyManualPointDeductions(session, mappings);
+            }
             
             for (DriverResult result : session.getDriverResults()) {
                 String nameToUse = result.getDriverName();
@@ -762,6 +788,119 @@ public class TelemetryResultsService {
         }
         
         driverResultRepository.saveAll(session.getDriverResults());
+    }
+
+    private void applyManualTimePenaltiesAndReclassify(SessionResult session, List<DriverMapping> mappings) {
+        List<ManualPenalty> penalties = manualPenaltyRepository.findBySessionResult(session);
+        if (penalties.isEmpty()) {
+            for (DriverResult dr : session.getDriverResults()) {
+                if (dr.getRawTotalTime() != null) {
+                    dr.setTotalTime(dr.getRawTotalTime());
+                }
+                if (dr.getRawPosition() != null) {
+                    dr.setPosition(dr.getRawPosition());
+                }
+                dr.setStewardsPenalties(0);
+            }
+            driverResultRepository.saveAll(session.getDriverResults());
+            return;
+        }
+
+        Map<Long, Integer> secondsMap = new HashMap<>();
+        for (ManualPenalty p : penalties) {
+            if (p.getSeconds() != null) {
+                secondsMap.put(p.getDriverMapping().getId(), secondsMap.getOrDefault(p.getDriverMapping().getId(), 0) + p.getSeconds());
+            }
+        }
+
+        for (DriverResult dr : session.getDriverResults()) {
+            if (dr.getRawTotalTime() == null) {
+                dr.setRawTotalTime(dr.getTotalTime());
+            }
+            if (dr.getRawPosition() == null) {
+                dr.setRawPosition(dr.getPosition());
+            }
+
+            DriverMapping mapping = findMappingForDriverResult(dr, mappings);
+            int stewardSeconds = 0;
+            if (mapping != null && secondsMap.containsKey(mapping.getId())) {
+                stewardSeconds = secondsMap.get(mapping.getId());
+            }
+            dr.setStewardsPenalties(stewardSeconds);
+
+            double adjustedTime = dr.getRawTotalTime() != null ? dr.getRawTotalTime() : (dr.getTotalTime() != null ? dr.getTotalTime() : 0.0);
+            adjustedTime += stewardSeconds;
+            dr.setTotalTime(adjustedTime);
+        }
+
+        List<DriverResult> results = new ArrayList<>(session.getDriverResults());
+        
+        List<DriverResult> finished = results.stream()
+                .filter(dr -> dr.getResultStatus() != null && dr.getResultStatus() == 3)
+                .sorted(Comparator.comparingDouble(dr -> dr.getTotalTime() != null ? dr.getTotalTime() : Double.MAX_VALUE))
+                .collect(Collectors.toList());
+
+        List<DriverResult> nonFinished = results.stream()
+                .filter(dr -> dr.getResultStatus() == null || dr.getResultStatus() != 3)
+                .sorted(Comparator.comparingInt(dr -> dr.getRawPosition() != null ? dr.getRawPosition() : 99))
+                .collect(Collectors.toList());
+
+        int pos = 1;
+        for (DriverResult dr : finished) {
+            dr.setPosition(pos++);
+        }
+        for (DriverResult dr : nonFinished) {
+            dr.setPosition(pos++);
+        }
+
+        driverResultRepository.saveAll(results);
+    }
+
+    private void applyManualPointDeductions(SessionResult session, List<DriverMapping> mappings) {
+        List<ManualPenalty> penalties = manualPenaltyRepository.findBySessionResult(session);
+        if (penalties.isEmpty()) {
+            for (DriverResult dr : session.getDriverResults()) {
+                dr.setPointDeductions(0);
+            }
+            driverResultRepository.saveAll(session.getDriverResults());
+            return;
+        }
+
+        Map<Long, Integer> deductionsMap = new HashMap<>();
+        for (ManualPenalty p : penalties) {
+            if (p.getPointDeduction() != null) {
+                deductionsMap.put(p.getDriverMapping().getId(), deductionsMap.getOrDefault(p.getDriverMapping().getId(), 0) + p.getPointDeduction());
+            }
+        }
+
+        for (DriverResult dr : session.getDriverResults()) {
+            DriverMapping mapping = findMappingForDriverResult(dr, mappings);
+            int pointDeducted = 0;
+            if (mapping != null && deductionsMap.containsKey(mapping.getId())) {
+                pointDeducted = deductionsMap.get(mapping.getId());
+            }
+            dr.setPointDeductions(pointDeducted);
+            if (pointDeducted > 0) {
+                int basePoints = dr.getPointsAwarded() != null ? dr.getPointsAwarded() : 0;
+                dr.setPointsAwarded(basePoints - pointDeducted);
+            }
+        }
+        driverResultRepository.saveAll(session.getDriverResults());
+    }
+
+    private DriverMapping findMappingForDriverResult(DriverResult result, List<DriverMapping> mappings) {
+        if (result.getTelemetryName() == null || result.getRaceNumber() == null || result.getDriverId() == null) {
+            return null;
+        }
+        for (DriverMapping m : mappings) {
+            if (Objects.equals(m.getTelemetryName(), result.getTelemetryName())
+                    && Objects.equals(m.getRaceNumber(), result.getRaceNumber())
+                    && Objects.equals(m.getDriverId(), result.getDriverId())
+                    && Objects.equals(m.getCountry(), result.getCountry())) {
+                return m;
+            }
+        }
+        return null;
     }
 }
 
