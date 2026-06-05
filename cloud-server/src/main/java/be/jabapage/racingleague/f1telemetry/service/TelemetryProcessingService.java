@@ -37,6 +37,16 @@ public class TelemetryProcessingService {
             8, "McLaren", 9, "Sauber"
     );
 
+    public static String getTeamName(int teamId, int gameYear) {
+        if (teamId == 9) {
+            return gameYear == 26 ? "Audi" : "Sauber";
+        }
+        if (teamId == 10) {
+            return gameYear == 26 ? "Cadillac" : "Unknown";
+        }
+        return TEAM_NAMES.getOrDefault(teamId, "Unknown");
+    }
+
     // Track ID to Name mapping
     public static final Map<Integer, String> TRACK_NAMES = Map.ofEntries(
             Map.entry(0, "Melbourne"), Map.entry(1, "Paul Ricard"), Map.entry(2, "Shanghai"), Map.entry(3, "Sakhir"),
@@ -49,7 +59,7 @@ public class TelemetryProcessingService {
             Map.entry(28, "Portimao"), Map.entry(29, "Jeddah"), Map.entry(30, "Miami"), Map.entry(31, "Las Vegas"),
             Map.entry(32, "Losail"), Map.entry(33, "Imola (Classic)"), Map.entry(34, "Estoril (Classic)"), Map.entry(35, "Jerez (Classic)"),
             Map.entry(36, "Adelaide (Classic)"), Map.entry(37, "Kyalami (Classic)"), Map.entry(38, "Brands Hatch (Classic)"), Map.entry(39, "Silverstone (Reverse)"),
-            Map.entry(40, "Austria (Reverse)"), Map.entry(41, "Brazil (Reverse)")
+            Map.entry(40, "Austria (Reverse)"), Map.entry(41, "Brazil (Reverse)"), Map.entry(42, "Madrid")
     );
 
     // Tyre Compound ID to Name mapping

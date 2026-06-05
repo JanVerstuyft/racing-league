@@ -9,10 +9,12 @@ IP = "127.0.0.1"
 TRACK_LENGTH = 5000.0
 NUM_CARS = 20
 
+GAME_YEAR = 25 # Change to 26 to simulate F1 25 2026 Season Pack (DLC 26)
+
 # Team ID to Name mapping (from TelemetryProcessingService.java)
 # 0: Mercedes, 1: Ferrari, 2: Red Bull Racing, 3: Williams,
 # 4: Aston Martin, 5: Alpine, 6: RB, 7: Haas,
-# 8: McLaren, 9: Sauber
+# 8: McLaren, 9: Sauber, 10: Cadillac
 DRIVERS_CONFIG = [
     ("Max Verstappen", 2), ("Sergio Perez", 2),
     ("Lewis Hamilton", 0), ("George Russell", 0),
@@ -24,6 +26,19 @@ DRIVERS_CONFIG = [
     ("Daniel Ricciardo", 6), ("Yuki Tsunoda", 6),
     ("Valtteri Bottas", 9), ("Guanyu Zhou", 9),
     ("Nico Hulkenberg", 7), ("Kevin Magnussen", 7)
+]
+
+DRIVERS_CONFIG_2026 = [
+    ("Max Verstappen", 2), ("Liam Lawson", 2),
+    ("Lewis Hamilton", 0), ("George Russell", 0),
+    ("Charles Leclerc", 1), ("Carlos Sainz", 1),
+    ("Lando Norris", 8), ("Oscar Piastri", 8),
+    ("Fernando Alonso", 4), ("Lance Stroll", 4),
+    ("Pierre Gasly", 5), ("Esteban Ocon", 5),
+    ("Alexander Albon", 3), ("Oliver Bearman", 3),
+    ("Daniel Ricciardo", 6), ("Yuki Tsunoda", 6),
+    ("Valtteri Bottas", 10), ("Sergio Perez", 10),  # Cadillac
+    ("Nico Hulkenberg", 9), ("Gabriel Bortoleto", 9)  # Audi (reuses ID 9)
 ]
 
 class CarState:
@@ -98,11 +113,11 @@ class CarState:
             self.last_lap_time = int(self.session_time * 1000)
 
 def create_header(packet_id, session_uid=12345678, frame_id=1, session_time=0.0, car_index=0):
-    # F1 25 Header:
+    # F1 25/26 Header:
     # uint16 (packetFormat), uint8 x 5 (gameYear, major, minor, version, packetId)
     # uint64 (sessionUID), float (sessionTime), uint32 (frameIdentifier)
     # uint64 (overallFrameIdentifier), uint8 (playerCarIndex), uint8 (secondary)
-    return struct.pack("<HBBBBBQfI QBB", 2025, 25, 1, 0, 1, packet_id, session_uid, session_time, frame_id, frame_id, car_index, 255)
+    return struct.pack("<HBBBBBQfI QBB", 2025, GAME_YEAR, 1, 0, 1, packet_id, session_uid, session_time, frame_id, frame_id, car_index, 255)
 
 def pack_participants(cars):
     header = create_header(4, car_index=0)
@@ -126,7 +141,8 @@ def pack_session(cars):
     header = create_header(1, session_time=cars[0].session_time)
     # PacketSessionData: uint8, int8, int8, uint8, uint16, uint8, int8, uint8, uint16, uint16, uint8, uint8, uint8, uint8, uint8, uint8
     # trackId is the 7th field (index 6 in pack)
-    data = header + struct.pack("<BbbBHBbBHHBBBBBB", 0, 30, 25, 50, int(TRACK_LENGTH), 10, 17, 0, 1800, 3600, 80, 0, 0, 0, 0, 0)
+    track_id = 42 if GAME_YEAR == 26 else 17 # 42: Madrid, 17: Austria
+    data = header + struct.pack("<BbbBHBbBHHBBBBBB", 0, 30, 25, 50, int(TRACK_LENGTH), 10, track_id, 0, 1800, 3600, 80, 0, 0, 0, 0, 0)
     # Skip MarshalZones (105 bytes)
     data += b"\x00" * 105
     # uint8, uint8, uint8
@@ -233,7 +249,8 @@ def pack_final_classification(cars, frame_id):
 
 def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    cars = [CarState(i, DRIVERS_CONFIG[i][0], DRIVERS_CONFIG[i][1]) for i in range(NUM_CARS)]
+    config = DRIVERS_CONFIG_2026 if GAME_YEAR == 26 else DRIVERS_CONFIG
+    cars = [CarState(i, config[i][0], config[i][1]) for i in range(NUM_CARS)]
     
     print(f"Starting simulation with {NUM_CARS} drivers. Sending data to {IP}:{PORT}...")
     

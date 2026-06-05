@@ -68,6 +68,7 @@ erDiagram
     league ||--o{ tier : "contains"
     league ||--o{ driver_mapping : "defines names"
     league ||--o{ session_point_config : "scoring"
+    league ||--o{ extra_point_rule : "defines"
     
     tier ||--o{ event : "contains"
     tier ||--|| live_state : "current status"
@@ -78,6 +79,8 @@ erDiagram
     
     event ||--o{ session_result : "records"
     session_result ||--o{ driver_result : "results"
+    session_result ||--o{ manual_penalty : "contains"
+    driver_mapping ||--o{ manual_penalty : "applies to"
     driver_result ||--o{ lap_result : "laps"
     driver_result ||--o{ tyre_stint : "stints"
 ```

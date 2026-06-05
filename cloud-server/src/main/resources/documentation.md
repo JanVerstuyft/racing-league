@@ -12,6 +12,7 @@
     - [Consistency Rating](#consistency-rating)
 - [5. Season Settings](#5-season-settings)
 - [6. Points configuration overrides](#6-points-configuration-overrides)
+- [7. Incident & Penalty System](#7-incident--penalty-system)
 
 ## 1. Collector Setup
 ### 1a. Local Collector Setup
@@ -164,3 +165,15 @@ League administrators can customize the points awarded for any session type via 
     * **Exclude AI drivers:** Exclude computer-controlled drivers from participating in extra points.
 
 * **Standings Integration:** Any points awarded via custom overrides or extra rules are automatically added to the driver and team standings.
+
+## 7. Incident & Penalty System
+League stewards can issue manual penalties and points deductions for race incidents via the **Penalties** dashboard.
+
+* **Accessing the Dashboard:** Navigate to the **Race Weekends** tab on the Season Details page, and click **Penalties** next to the specific event.
+* **Steward Penalty Types:**
+    * **Time Penalties (seconds):** Positive or negative seconds added directly to the driver's total race time. Drivers who finished the race are automatically re-classified (re-ranked) based on their adjusted total times.
+    * **Points Deductions:** Point values subtracted from the driver's final points awarded for the session.
+    * **Reason / Comment:** Stewards must specify a comment describing the incident or reason for the penalty.
+* **Standings & Visibility:**
+    * Incident stats are aggregated across all sessions and displayed in the **Standings > Penalties** (tier-specific) and **League Penalties** (league-wide) dashboards.
+    * Existing penalties can be deleted by administrators to automatically trigger recalculation of positions and standings.

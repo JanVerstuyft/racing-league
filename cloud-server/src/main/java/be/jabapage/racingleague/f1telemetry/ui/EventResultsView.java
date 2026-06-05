@@ -194,7 +194,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             driverCombo.setWidthFull();
 
             ComboBox<String> teamCombo = new ComboBox<>("Team");
-            teamCombo.setItems("Mercedes", "Ferrari", "Red Bull Racing", "Williams", "Aston Martin", "Alpine", "RB", "Haas", "McLaren", "Sauber");
+            teamCombo.setItems("Mercedes", "Ferrari", "Red Bull Racing", "Williams", "Aston Martin", "Alpine", "RB", "Haas", "McLaren", "Sauber", "Audi", "Cadillac");
             teamCombo.setWidthFull();
 
             NumberField posField = new NumberField("Position");

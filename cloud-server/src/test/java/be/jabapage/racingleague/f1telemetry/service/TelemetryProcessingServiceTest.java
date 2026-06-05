@@ -243,4 +243,23 @@ public class TelemetryProcessingServiceTest {
         assertEquals(10, stats.get(0).getLaps());
         assertEquals("Soft", stats.get(0).getTyreCompound());
     }
+
+    @Test
+    public void testGetTeamName() {
+        // Test standard 2025 season mappings
+        assertEquals("Mercedes", TelemetryProcessingService.getTeamName(0, 25));
+        assertEquals("Sauber", TelemetryProcessingService.getTeamName(9, 25));
+        assertEquals("Unknown", TelemetryProcessingService.getTeamName(10, 25));
+
+        // Test 2026 season mappings
+        assertEquals("Mercedes", TelemetryProcessingService.getTeamName(0, 26));
+        assertEquals("Audi", TelemetryProcessingService.getTeamName(9, 26));
+        assertEquals("Cadillac", TelemetryProcessingService.getTeamName(10, 26));
+        assertEquals("Unknown", TelemetryProcessingService.getTeamName(11, 26));
+    }
+
+    @Test
+    public void testTrackNamesIncludesMadrid() {
+        assertEquals("Madrid", TelemetryProcessingService.TRACK_NAMES.get(42));
+    }
 }

@@ -168,7 +168,10 @@ public class TelemetryResultsService {
             driverResult.setDriverId(driverId);
             driverResult.setAi(isAi(state, participant, i));
             driverResult.setCountry(CountryProvider.getCountryInfo(participant.getNationality()).getName());
-            driverResult.setTeamName(TelemetryProcessingService.TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
+            int gameYear = (state.getCurrentSession() != null && state.getCurrentSession().getHeader() != null)
+                    ? state.getCurrentSession().getHeader().getGameYear()
+                    : 25;
+            driverResult.setTeamName(TelemetryProcessingService.getTeamName(participant.getTeamId(), gameYear));
             driverResult.setPosition(data.getPosition());
             driverResult.setRawPosition(data.getPosition());
             driverResult.setNumLaps(data.getNumLaps());
@@ -304,7 +307,10 @@ public class TelemetryResultsService {
             driverResult.setDriverId(participant.getDriverId());
             driverResult.setAi(isAi(state, participant, i));
             driverResult.setCountry(CountryProvider.getCountryInfo(participant.getNationality()).getName());
-            driverResult.setTeamName(TelemetryProcessingService.TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
+            int gameYear = (state.getCurrentSession() != null && state.getCurrentSession().getHeader() != null)
+                    ? state.getCurrentSession().getHeader().getGameYear()
+                    : 25;
+            driverResult.setTeamName(TelemetryProcessingService.getTeamName(participant.getTeamId(), gameYear));
             driverResult.setPosition(ld.getCarPosition());
             driverResult.setRawPosition(ld.getCarPosition());
             int completedLaps = ld.getCurrentLapNum() - 1;

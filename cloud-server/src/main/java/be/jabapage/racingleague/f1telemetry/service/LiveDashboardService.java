@@ -105,7 +105,10 @@ public class LiveDashboardService {
             driverState.setName(getDriverName(state, p));
             driverState.setRaceNumber(p.getRaceNumber());
             driverState.setAi(isAi(state, p, i));
-            driverState.setTeam(TelemetryProcessingService.TEAM_NAMES.getOrDefault(p.getTeamId(), "Unknown"));
+            int gameYear = (state.getCurrentSession() != null && state.getCurrentSession().getHeader() != null)
+                    ? state.getCurrentSession().getHeader().getGameYear()
+                    : 25;
+            driverState.setTeam(TelemetryProcessingService.getTeamName(p.getTeamId(), gameYear));
             driverState.setCountry(CountryProvider.getCountryInfo(p.getNationality()).getName());
             driverState.setTyreCompound(TelemetryProcessingService.TYRE_COMPOUNDS.getOrDefault(csd.getVisualTyreCompound(), "Unknown"));
             driverState.setTyreAge(csd.getTyresAgeLaps());

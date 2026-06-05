@@ -327,7 +327,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             dialog.setHeaderTitle("Add Manual Weekend");
             
             com.vaadin.flow.component.combobox.ComboBox<Integer> trackCombo = new com.vaadin.flow.component.combobox.ComboBox<>("Track");
-            trackCombo.setItems(java.util.stream.IntStream.rangeClosed(0, 41).boxed().toList());
+            trackCombo.setItems(java.util.stream.IntStream.rangeClosed(0, 42).boxed().toList());
             trackCombo.setItemLabelGenerator(id -> TelemetryProcessingService.TRACK_NAMES.getOrDefault(id, "Track " + id));
             trackCombo.setWidthFull();
 
