@@ -452,8 +452,13 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 .setPartNameGenerator(dr -> (dr.getBestLapTime() != null && fastestLap > 0 && dr.getBestLapTime() == fastestLap) ? "fastest-lap" : null);
 
         if (!isQualifying) {
-            grid.addColumn(dr -> formatLapTime(dr.getTotalTime() != null ? dr.getTotalTime().floatValue() : 0.0f)).setHeader("Total Time");
-            grid.addColumn(dr -> dr.getGapToLeader() != null ? dr.getGapToLeader() : "-").setHeader("Gap");
+            grid.addColumn(dr -> {
+                if (dr.getPosition() != null && dr.getPosition() == 1) {
+                    return formatLapTime(dr.getTotalTime() != null ? dr.getTotalTime().floatValue() : 0.0f);
+                } else {
+                    return dr.getGapToLeader() != null ? dr.getGapToLeader() : "-";
+                }
+            }).setHeader("Time");
         }
 
         if (isQualifying) {

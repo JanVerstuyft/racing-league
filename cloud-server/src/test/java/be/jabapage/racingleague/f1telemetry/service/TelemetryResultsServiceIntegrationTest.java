@@ -337,5 +337,6 @@ public class TelemetryResultsServiceIntegrationTest {
         assertFalse(eventRepository.findById(event.getId()).isPresent());
         assertTrue(sessionResultRepository.findBySessionUID(88889999L).isEmpty());
         assertTrue(driverResultRepository.findAll().stream().filter(d -> d.getDriverName().equals("Driver Del")).findFirst().isEmpty());
+        assertTrue(lapResultRepository.findBySessionUID(88889999L).isEmpty());
     }
 }

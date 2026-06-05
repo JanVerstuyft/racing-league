@@ -105,13 +105,9 @@ public class TelemetryResultsService {
                 sessionUID, existing.get().getId());
             SessionResult oldSession = existing.get();
             
-            for (DriverResult dr : oldSession.getDriverResults()) {
-                for (LapResult lap : dr.getLapResults()) {
-                    lap.setDriverResult(null);
-                    lapResultRepository.save(lap);
-                }
-                dr.getLapResults().clear();
-            }
+            // Delete all lap results for this session UID to prevent orphaned records
+            List<LapResult> oldLaps = lapResultRepository.findBySessionUID(sessionUID);
+            lapResultRepository.deleteAll(oldLaps);
             lapResultRepository.flush();
 
             if (oldSession.getEvent() != null) {
@@ -294,7 +290,11 @@ public class TelemetryResultsService {
             driverResult.setCountry(CountryProvider.getCountryInfo(participant.getNationality()).getName());
             driverResult.setTeamName(TelemetryProcessingService.TEAM_NAMES.getOrDefault(participant.getTeamId(), "Unknown"));
             driverResult.setPosition(ld.getCarPosition());
-            driverResult.setNumLaps(ld.getCurrentLapNum() - 1);
+            int completedLaps = ld.getCurrentLapNum() - 1;
+            if (ld.getResultStatus() == 3) {
+                completedLaps = ld.getCurrentLapNum();
+            }
+            driverResult.setNumLaps(completedLaps);
             driverResult.setGridPosition(ld.getGridPosition());
             driverResult.setBestLapTime(state.getDriverBestLap()[i] / 1000.0f);
             driverResult.setResultStatus(ld.getResultStatus());
@@ -314,7 +314,7 @@ public class TelemetryResultsService {
                 if (lap.getLapTimeInMS() != null) totalTimeMs += lap.getLapTimeInMS();
             }
             if (totalTimeMs > 0) {
-                driverResult.setTotalTime(totalTimeMs / 1000.0);
+                driverResult.setTotalTime(totalTimeMs / 1000.0 + ld.getPenalties());
             }
 
             if (!laps.isEmpty()) {

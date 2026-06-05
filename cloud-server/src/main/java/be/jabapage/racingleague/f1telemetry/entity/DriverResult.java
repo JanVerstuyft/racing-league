@@ -67,10 +67,10 @@ public class DriverResult {
     @Column(name = "warnings", nullable = false, columnDefinition = "int default 0")
     private Integer warnings;
 
-    @OneToMany(mappedBy = "driverResult", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "driverResult", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private java.util.Set<TyreStint> tyreStints = new java.util.LinkedHashSet<>();
 
-    @OneToMany(mappedBy = "driverResult", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "driverResult", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private java.util.Set<LapResult> lapResults = new java.util.LinkedHashSet<>();
 
     @Override

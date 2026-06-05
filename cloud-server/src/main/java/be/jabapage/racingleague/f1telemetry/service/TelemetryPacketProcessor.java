@@ -146,7 +146,10 @@ public class TelemetryPacketProcessor {
                 state.getLapInvalid()[carIndex] = true;
             }
 
-            if (state.getLastLapNum()[carIndex] > 0 && ld.getCurrentLapNum() > state.getLastLapNum()[carIndex]) {
+            boolean lapFinished = state.getLastLapNum()[carIndex] > 0 && ld.getCurrentLapNum() > state.getLastLapNum()[carIndex];
+            boolean raceFinished = state.getLastLapNum()[carIndex] > 0 && ld.getResultStatus() == 3 && ld.getCurrentLapNum() == state.getLastLapNum()[carIndex];
+
+            if (lapFinished || raceFinished) {
                 long lastLapTime = ld.getLastLapTimeInMS();
                 long s1 = state.getLastS1()[carIndex];
                 long s2 = state.getLastS2()[carIndex];
@@ -184,9 +187,15 @@ public class TelemetryPacketProcessor {
 
                 lapResultRepository.save(result);
                 state.getLapInvalid()[carIndex] = false;
+
+                if (raceFinished) {
+                    state.getLastLapNum()[carIndex] = ld.getCurrentLapNum() + 1;
+                }
             }
 
-            state.getLastLapNum()[carIndex] = ld.getCurrentLapNum();
+            if (ld.getResultStatus() != 3) {
+                state.getLastLapNum()[carIndex] = ld.getCurrentLapNum();
+            }
             if (state.getCurrentCarStatus() != null && carIndex < state.getCurrentCarStatus().getCarStatusData().size()) {
                 state.getLastTyre()[carIndex] = state.getCurrentCarStatus().getCarStatusData().get(carIndex).getVisualTyreCompound();
             }
