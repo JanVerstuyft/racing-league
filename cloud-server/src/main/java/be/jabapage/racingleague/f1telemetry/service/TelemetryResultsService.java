@@ -135,6 +135,10 @@ public class TelemetryResultsService {
         sessionResult.setEvent(event);
         sessionResult.setSessionType(state.getCurrentSession().getSessionType());
         sessionResult.setTrackId(trackIdStr);
+        int gameYear = (state.getCurrentSession() != null && state.getCurrentSession().getHeader() != null)
+                ? state.getCurrentSession().getHeader().getGameYear()
+                : 25;
+        sessionResult.setCarType(TelemetryProcessingService.detectCarType(state.getCurrentParticipants(), gameYear));
 
         boolean isRace = (state.getCurrentSession().getSessionType() >= 15 && state.getCurrentSession().getSessionType() <= 17) || state.getCurrentSession().getSessionType() == 19;
 
@@ -168,10 +172,7 @@ public class TelemetryResultsService {
             driverResult.setDriverId(driverId);
             driverResult.setAi(isAi(state, participant, i));
             driverResult.setCountry(CountryProvider.getCountryInfo(participant.getNationality()).getName());
-            int gameYear = (state.getCurrentSession() != null && state.getCurrentSession().getHeader() != null)
-                    ? state.getCurrentSession().getHeader().getGameYear()
-                    : 25;
-            driverResult.setTeamName(TelemetryProcessingService.getTeamName(participant.getTeamId(), gameYear));
+            driverResult.setTeamId(participant.getTeamId());
             driverResult.setPosition(data.getPosition());
             driverResult.setRawPosition(data.getPosition());
             driverResult.setNumLaps(data.getNumLaps());
@@ -287,6 +288,10 @@ public class TelemetryResultsService {
         sessionResult.setSessionUID(sessionUID);
         sessionResult.setSessionType(sessionType);
         sessionResult.setTrackId(trackIdStr);
+        int gameYear = (state.getCurrentSession() != null && state.getCurrentSession().getHeader() != null)
+                ? state.getCurrentSession().getHeader().getGameYear()
+                : 25;
+        sessionResult.setCarType(TelemetryProcessingService.detectCarType(state.getCurrentParticipants(), gameYear));
 
         boolean isRace = (sessionType >= 15 && sessionType <= 17) || sessionType == 19;
 
@@ -307,10 +312,7 @@ public class TelemetryResultsService {
             driverResult.setDriverId(participant.getDriverId());
             driverResult.setAi(isAi(state, participant, i));
             driverResult.setCountry(CountryProvider.getCountryInfo(participant.getNationality()).getName());
-            int gameYear = (state.getCurrentSession() != null && state.getCurrentSession().getHeader() != null)
-                    ? state.getCurrentSession().getHeader().getGameYear()
-                    : 25;
-            driverResult.setTeamName(TelemetryProcessingService.getTeamName(participant.getTeamId(), gameYear));
+            driverResult.setTeamId(participant.getTeamId());
             driverResult.setPosition(ld.getCarPosition());
             driverResult.setRawPosition(ld.getCarPosition());
             int completedLaps = ld.getCurrentLapNum() - 1;
@@ -535,15 +537,14 @@ public class TelemetryResultsService {
         ds.setRaceNumber(raceNumber);
         ds.setCountry(result.getCountry());
         
-        String currentTeams = ds.getTeamName();
-        String newTeam = result.getTeamName();
         if (isReserve) {
-            ds.setTeamName("Reserve Driver");
-        } else if (currentTeams == null || currentTeams.isEmpty() || "Reserve Driver".equals(currentTeams)) {
-            ds.setTeamName(newTeam);
-        } else if (!currentTeams.contains(newTeam)) {
-            ds.setTeamName(currentTeams + ", " + newTeam);
+            ds.setTeamId(-1);
+        } else {
+            ds.setTeamId(result.getTeamId());
         }
+        ds.setCarType(result.getSessionResult() != null && result.getSessionResult().getCarType() != null
+                ? result.getSessionResult().getCarType()
+                : "F1 25");
 
         ds.setPoints((ds.getPoints() != null ? ds.getPoints() : 0) + result.getPointsAwarded());
         if (isRaceSession) {
@@ -552,16 +553,22 @@ public class TelemetryResultsService {
         }
         driverStandingRepository.save(ds);
 
-        TeamStanding ts = teamStandingRepository.findByTierAndTeamName(tier, result.getTeamName())
-                .orElseGet(() -> {
-                    TeamStanding newTs = new TeamStanding();
-                    newTs.setTier(tier);
-                    newTs.setTeamName(result.getTeamName());
-                    newTs.setPoints(0);
-                    return newTs;
-                });
-        ts.setPoints((ts.getPoints() != null ? ts.getPoints() : 0) + result.getPointsAwarded());
-        teamStandingRepository.save(ts);
+        if (result.getTeamId() != null && result.getTeamId() != -1) {
+            String carType = result.getSessionResult() != null && result.getSessionResult().getCarType() != null
+                    ? result.getSessionResult().getCarType()
+                    : "F1 25";
+            TeamStanding ts = teamStandingRepository.findByTierAndTeamId(tier, result.getTeamId())
+                    .orElseGet(() -> {
+                        TeamStanding newTs = new TeamStanding();
+                        newTs.setTier(tier);
+                        newTs.setTeamId(result.getTeamId());
+                        newTs.setCarType(carType);
+                        newTs.setPoints(0);
+                        return newTs;
+                    });
+            ts.setPoints((ts.getPoints() != null ? ts.getPoints() : 0) + result.getPointsAwarded());
+            teamStandingRepository.save(ts);
+        }
     }
 
     public void calculateGaps(SessionResult session) {

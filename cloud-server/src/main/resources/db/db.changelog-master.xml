@@ -10,4 +10,6 @@
     <include file="changelog/007_add_manual_penalties.xml" relativeToChangelogFile="true"/>
     <include file="changelog/008_add_steward_penalties_to_driver_result.xml" relativeToChangelogFile="true"/>
     <include file="changelog/009_change_manual_penalty_to_session_result.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/010_add_team_mapping.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/011_update_team_mapping.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>

@@ -15,8 +15,9 @@ public class PacketParticipantsData {
         PacketParticipantsData packet = new PacketParticipantsData();
         packet.setHeader(header);
         packet.setNumActiveCars(buffer.get() & 0xFF);
-        for (int i = 0; i < 22; i++) {
-            packet.getParticipants().add(ParticipantData.fromByteBuffer(buffer));
+        int maxCars = header.getPacketFormat() == 2026 ? 24 : 22;
+        for (int i = 0; i < maxCars; i++) {
+            packet.getParticipants().add(ParticipantData.fromByteBuffer(buffer, header.getPacketFormat()));
         }
         return packet;
     }

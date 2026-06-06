@@ -40,8 +40,13 @@ public class DriverResult {
         return ai != null && ai;
     }
 
-    @Column(name = "team_name")
-    private String teamName;
+    @Column(name = "team_id")
+    private Integer teamId;
+
+    public String getTeamName() {
+        return be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService.getTeamNameStatic(teamId, sessionResult != null ? sessionResult.getCarType() : "F1 25");
+    }
+
     private Integer position;
 
     @Column(name = "raw_position")

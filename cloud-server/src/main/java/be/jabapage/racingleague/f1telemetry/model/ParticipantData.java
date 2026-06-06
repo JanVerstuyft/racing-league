@@ -29,11 +29,21 @@ public class ParticipantData {
     }
 
     public static ParticipantData fromByteBuffer(ByteBuffer buffer) {
+        return fromByteBuffer(buffer, 2025);
+    }
+
+    public static ParticipantData fromByteBuffer(ByteBuffer buffer, int packetFormat) {
         ParticipantData data = new ParticipantData();
         data.setAiControlled(buffer.get() & 0xFF);
-        data.setDriverId(buffer.get() & 0xFF);
-        data.setNetworkId(buffer.get() & 0xFF);
-        data.setTeamId(buffer.get() & 0xFF);
+        if (packetFormat == 2026) {
+            data.setDriverId(buffer.getShort() & 0xFFFF);
+            data.setNetworkId(buffer.getShort() & 0xFFFF);
+            data.setTeamId(buffer.getShort() & 0xFFFF);
+        } else {
+            data.setDriverId(buffer.get() & 0xFF);
+            data.setNetworkId(buffer.get() & 0xFF);
+            data.setTeamId(buffer.get() & 0xFF);
+        }
         data.setMyTeam(buffer.get() & 0xFF);
         data.setRaceNumber(buffer.get() & 0xFF);
         data.setNationality(buffer.get() & 0xFF);

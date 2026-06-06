@@ -18,8 +18,26 @@ public class TeamStanding {
     @JoinColumn(name = "tier_id")
     private Tier tier;
 
-    @Column(name = "team_name")
-    private String teamName;
+    @Column(name = "team_id")
+    private Integer teamId;
+
+    @Column(name = "car_type")
+    private String carType;
+
+    @Transient
+    private String transientTeamName;
+
+    public void setTeamName(String teamName) {
+        this.transientTeamName = teamName;
+    }
+
+    public String getTeamName() {
+        if (transientTeamName != null) {
+            return transientTeamName;
+        }
+        return be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService.getTeamNameStatic(teamId, carType);
+    }
+
     private Integer points;
 
     @Override

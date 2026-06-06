@@ -1,0 +1,40 @@
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="011_update_team_mapping" author="antigravity">
+        <!-- 1. Remove obsolete/placeholder F1 26 team mappings -->
+        <sql>
+            DELETE FROM team_mapping WHERE car_type = 'F1 26';
+        </sql>
+
+        <!-- 2. Populate actual F1 26 team mappings (both 2026 format and truncated 2025 format) -->
+        <sql>
+            -- 2026 format mappings (uint16)
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (476, 'F1 26', 'Mercedes');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (477, 'F1 26', 'Ferrari');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (478, 'F1 26', 'Red Bull Racing');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (479, 'F1 26', 'Williams');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (480, 'F1 26', 'Aston Martin');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (481, 'F1 26', 'Alpine');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (482, 'F1 26', 'RB');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (483, 'F1 26', 'Haas');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (484, 'F1 26', 'McLaren');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (485, 'F1 26', 'Audi');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (486, 'F1 26', 'Cadillac');
+
+            -- Truncated 2025 format mappings (uint8)
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (220, 'F1 26', 'Mercedes');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (221, 'F1 26', 'Ferrari');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (222, 'F1 26', 'Red Bull Racing');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (223, 'F1 26', 'Williams');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (224, 'F1 26', 'Aston Martin');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (225, 'F1 26', 'Alpine');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (226, 'F1 26', 'RB');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (227, 'F1 26', 'Haas');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (228, 'F1 26', 'McLaren');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (229, 'F1 26', 'Audi');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (230, 'F1 26', 'Cadillac');
+        </sql>
+    </changeSet>
+</databaseChangeLog>

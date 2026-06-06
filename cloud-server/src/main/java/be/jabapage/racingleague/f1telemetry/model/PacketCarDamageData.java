@@ -13,7 +13,8 @@ public class PacketCarDamageData {
     public static PacketCarDamageData fromByteBuffer(ByteBuffer buffer, PacketHeader header) {
         PacketCarDamageData packet = new PacketCarDamageData();
         packet.setHeader(header);
-        for (int i = 0; i < 22; i++) {
+        int maxCars = header.getPacketFormat() == 2026 ? 24 : 22;
+        for (int i = 0; i < maxCars; i++) {
             packet.getCarDamageData().add(CarDamageData.fromByteBuffer(buffer));
         }
         return packet;

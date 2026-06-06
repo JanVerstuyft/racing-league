@@ -15,7 +15,8 @@ public class PacketLapData {
     public static PacketLapData fromByteBuffer(ByteBuffer buffer, PacketHeader header) {
         PacketLapData packet = new PacketLapData();
         packet.setHeader(header);
-        for (int i = 0; i < 22; i++) {
+        int maxCars = header.getPacketFormat() == 2026 ? 24 : 22;
+        for (int i = 0; i < maxCars; i++) {
             packet.getLapData().add(LapData.fromByteBuffer(buffer));
         }
         packet.setTimeTrialPBCarIdx(buffer.get() & 0xFF);

@@ -10,6 +10,6 @@ import java.util.Optional;
 
 @Repository
 public interface TeamStandingRepository extends JpaRepository<TeamStanding, Long> {
-    Optional<TeamStanding> findByTierAndTeamName(Tier tier, String teamName);
+    Optional<TeamStanding> findByTierAndTeamId(Tier tier, Integer teamId);
     List<TeamStanding> findByTier(Tier tier);
 }

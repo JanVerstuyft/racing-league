@@ -32,6 +32,10 @@ public class CarStatusData {
     private int networkPaused;            // uint8
 
     public static CarStatusData fromByteBuffer(ByteBuffer buffer) {
+        return fromByteBuffer(buffer, 2025);
+    }
+
+    public static CarStatusData fromByteBuffer(ByteBuffer buffer, int packetFormat) {
         CarStatusData data = new CarStatusData();
         data.setTractionControl(buffer.get() & 0xFF);
         data.setAntiLockBrakes(buffer.get() & 0xFF);
@@ -56,6 +60,9 @@ public class CarStatusData {
         data.setErsDeployMode(buffer.get() & 0xFF);
         data.setErsHarvestedThisLapMGUK(buffer.getFloat());
         data.setErsHarvestedThisLapMGUH(buffer.getFloat());
+        if (packetFormat == 2026) {
+            buffer.getFloat(); // skip ersHarvestLimitPerLap
+        }
         data.setErsDeployedThisLap(buffer.getFloat());
         data.setNetworkPaused(buffer.get() & 0xFF);
         return data;

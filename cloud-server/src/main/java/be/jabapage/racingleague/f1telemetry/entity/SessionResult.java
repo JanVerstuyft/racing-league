@@ -35,6 +35,9 @@ public class SessionResult {
     @Column(name = "session_type")
     private Integer sessionType;
 
+    @Column(name = "car_type")
+    private String carType;
+
     @OneToMany(mappedBy = "sessionResult", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @ToString.Exclude
     private Set<DriverResult> driverResults = new LinkedHashSet<>();

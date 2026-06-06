@@ -1,0 +1,118 @@
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="010_add_team_mapping" author="antigravity">
+        <!-- 1. Create team_mapping table -->
+        <createTable tableName="team_mapping">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="team_mapping_pkey"/>
+            </column>
+            <column name="team_id" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="car_type" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="team_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint columnNames="team_id, car_type" constraintName="uk_team_mapping_id_type" tableName="team_mapping"/>
+
+        <!-- 2. Pre-populate default F1 25 and F1 26 team mappings -->
+        <sql>
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (0, 'F1 25', 'Mercedes');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (1, 'F1 25', 'Ferrari');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (2, 'F1 25', 'Red Bull Racing');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (3, 'F1 25', 'Williams');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (4, 'F1 25', 'Aston Martin');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (5, 'F1 25', 'Alpine');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (6, 'F1 25', 'RB');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (7, 'F1 25', 'Haas');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (8, 'F1 25', 'McLaren');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (9, 'F1 25', 'Sauber');
+
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (0, 'F1 26', 'Mercedes');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (1, 'F1 26', 'Ferrari');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (2, 'F1 26', 'Red Bull Racing');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (3, 'F1 26', 'Williams');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (4, 'F1 26', 'Aston Martin');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (5, 'F1 26', 'Alpine');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (6, 'F1 26', 'RB');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (7, 'F1 26', 'Haas');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (8, 'F1 26', 'McLaren');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (9, 'F1 26', 'Audi');
+            INSERT INTO team_mapping (team_id, car_type, team_name) VALUES (10, 'F1 26', 'Cadillac');
+        </sql>
+
+        <!-- 3. Add car_type and team_id columns -->
+        <addColumn tableName="session_result">
+            <column name="car_type" type="VARCHAR(50)"/>
+        </addColumn>
+        <addColumn tableName="driver_result">
+            <column name="team_id" type="INTEGER"/>
+        </addColumn>
+        <addColumn tableName="driver_standing">
+            <column name="team_id" type="INTEGER"/>
+            <column name="car_type" type="VARCHAR(50)"/>
+        </addColumn>
+        <addColumn tableName="team_standing">
+            <column name="team_id" type="INTEGER"/>
+            <column name="car_type" type="VARCHAR(50)"/>
+        </addColumn>
+
+        <!-- 4. Migrate existing data -->
+        <sql>
+            UPDATE session_result SET car_type = 'F1 25' WHERE car_type IS NULL;
+            UPDATE driver_standing SET car_type = 'F1 25' WHERE car_type IS NULL;
+            UPDATE team_standing SET car_type = 'F1 25' WHERE car_type IS NULL;
+
+            UPDATE driver_result SET team_id = 0 WHERE team_name = 'Mercedes';
+            UPDATE driver_result SET team_id = 1 WHERE team_name = 'Ferrari';
+            UPDATE driver_result SET team_id = 2 WHERE team_name = 'Red Bull Racing';
+            UPDATE driver_result SET team_id = 3 WHERE team_name = 'Williams';
+            UPDATE driver_result SET team_id = 4 WHERE team_name = 'Aston Martin';
+            UPDATE driver_result SET team_id = 5 WHERE team_name = 'Alpine';
+            UPDATE driver_result SET team_id = 6 WHERE team_name = 'RB';
+            UPDATE driver_result SET team_id = 7 WHERE team_name = 'Haas';
+            UPDATE driver_result SET team_id = 8 WHERE team_name = 'McLaren';
+            UPDATE driver_result SET team_id = 9 WHERE team_name = 'Sauber';
+            UPDATE driver_result SET team_id = 9 WHERE team_name = 'Audi';
+            UPDATE driver_result SET team_id = 10 WHERE team_name = 'Cadillac';
+
+            UPDATE driver_standing SET team_id = 0 WHERE team_name = 'Mercedes';
+            UPDATE driver_standing SET team_id = 1 WHERE team_name = 'Ferrari';
+            UPDATE driver_standing SET team_id = 2 WHERE team_name = 'Red Bull Racing';
+            UPDATE driver_standing SET team_id = 3 WHERE team_name = 'Williams';
+            UPDATE driver_standing SET team_id = 4 WHERE team_name = 'Aston Martin';
+            UPDATE driver_standing SET team_id = 5 WHERE team_name = 'Alpine';
+            UPDATE driver_standing SET team_id = 6 WHERE team_name = 'RB';
+            UPDATE driver_standing SET team_id = 7 WHERE team_name = 'Haas';
+            UPDATE driver_standing SET team_id = 8 WHERE team_name = 'McLaren';
+            UPDATE driver_standing SET team_id = 9 WHERE team_name = 'Sauber';
+            UPDATE driver_standing SET team_id = 9 WHERE team_name = 'Audi';
+            UPDATE driver_standing SET team_id = 10 WHERE team_name = 'Cadillac';
+            UPDATE driver_standing SET team_id = -1 WHERE team_name = 'Reserve Driver';
+
+            UPDATE team_standing SET team_id = 0 WHERE team_name = 'Mercedes';
+            UPDATE team_standing SET team_id = 1 WHERE team_name = 'Ferrari';
+            UPDATE team_standing SET team_id = 2 WHERE team_name = 'Red Bull Racing';
+            UPDATE team_standing SET team_id = 3 WHERE team_name = 'Williams';
+            UPDATE team_standing SET team_id = 4 WHERE team_name = 'Aston Martin';
+            UPDATE team_standing SET team_id = 5 WHERE team_name = 'Alpine';
+            UPDATE team_standing SET team_id = 6 WHERE team_name = 'RB';
+            UPDATE team_standing SET team_id = 7 WHERE team_name = 'Haas';
+            UPDATE team_standing SET team_id = 8 WHERE team_name = 'McLaren';
+            UPDATE team_standing SET team_id = 9 WHERE team_name = 'Sauber';
+            UPDATE team_standing SET team_id = 9 WHERE team_name = 'Audi';
+            UPDATE team_standing SET team_id = 10 WHERE team_name = 'Cadillac';
+        </sql>
+
+        <!-- 5. Drop old team_name columns -->
+        <dropColumn tableName="driver_result" columnName="team_name"/>
+        <dropColumn tableName="driver_standing" columnName="team_name"/>
+        <dropColumn tableName="team_standing" columnName="team_name"/>
+    </changeSet>
+</databaseChangeLog>

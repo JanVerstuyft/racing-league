@@ -1,7 +1,9 @@
 package be.jabapage.racingleague.f1telemetry.service;
 
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
+import be.jabapage.racingleague.f1telemetry.entity.TeamMapping;
 import be.jabapage.racingleague.f1telemetry.model.*;
+import be.jabapage.racingleague.f1telemetry.repository.TeamMappingRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -30,6 +32,26 @@ public class TelemetryProcessingService {
     @Autowired
     private TelemetryResultsService telemetryResultsService;
 
+    @Autowired
+    private TeamMappingRepository teamMappingRepository;
+
+    private static final java.util.concurrent.ConcurrentHashMap<String, String> teamCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        refreshTeamCache();
+    }
+
+    public void refreshTeamCache() {
+        teamCache.clear();
+        if (teamMappingRepository != null) {
+            List<TeamMapping> mappings = teamMappingRepository.findAll();
+            for (TeamMapping m : mappings) {
+                teamCache.put(m.getTeamId() + "|" + m.getCarType(), m.getTeamName());
+            }
+        }
+    }
+
     // Team ID to Name mapping (package-private for access from other services)
     static final Map<Integer, String> TEAM_NAMES = Map.of(
             0, "Mercedes", 1, "Ferrari", 2, "Red Bull Racing", 3, "Williams",
@@ -37,14 +59,56 @@ public class TelemetryProcessingService {
             8, "McLaren", 9, "Sauber"
     );
 
+    static final Map<Integer, String> TEAM_NAMES_F1_26 = Map.ofEntries(
+            Map.entry(476, "Mercedes"), Map.entry(220, "Mercedes"),
+            Map.entry(477, "Ferrari"), Map.entry(221, "Ferrari"),
+            Map.entry(478, "Red Bull Racing"), Map.entry(222, "Red Bull Racing"),
+            Map.entry(479, "Williams"), Map.entry(223, "Williams"),
+            Map.entry(480, "Aston Martin"), Map.entry(224, "Aston Martin"),
+            Map.entry(481, "Alpine"), Map.entry(225, "Alpine"),
+            Map.entry(482, "RB"), Map.entry(226, "RB"),
+            Map.entry(483, "Haas"), Map.entry(227, "Haas"),
+            Map.entry(484, "McLaren"), Map.entry(228, "McLaren"),
+            Map.entry(485, "Audi"), Map.entry(229, "Audi"),
+            Map.entry(486, "Cadillac"), Map.entry(230, "Cadillac")
+    );
+
+    public static String getTeamNameStatic(Integer teamId, String carType) {
+        if (teamId == null) return "Unknown";
+        String key = teamId + "|" + (carType != null ? carType : "F1 25");
+        String name = teamCache.get(key);
+        if (name != null) return name;
+
+        // Fallback for tests or when DB mappings are not loaded
+        if ("F1 26".equals(carType)) {
+            return TEAM_NAMES_F1_26.getOrDefault(teamId, "Unknown (ID: " + teamId + ")");
+        }
+        return TEAM_NAMES.getOrDefault(teamId, "Unknown (ID: " + teamId + ")");
+    }
+
     public static String getTeamName(int teamId, int gameYear) {
-        if (teamId == 9) {
-            return gameYear == 26 ? "Audi" : "Sauber";
+        return getTeamNameStatic(teamId, gameYear == 26 ? "F1 26" : "F1 25");
+    }
+
+    public static String detectCarType(PacketParticipantsData participants, int gameYear) {
+        if (gameYear == 26) {
+            return "F1 26";
         }
-        if (teamId == 10) {
-            return gameYear == 26 ? "Cadillac" : "Unknown";
+        if (participants != null && participants.getParticipants() != null) {
+            for (ParticipantData p : participants.getParticipants()) {
+                int teamId = p.getTeamId();
+                if ((teamId >= 220 && teamId <= 230) || (teamId >= 476 && teamId <= 486)) {
+                    return "F1 26";
+                }
+                if (p.getName() != null && !p.getName().isEmpty()) {
+                    String upperName = p.getName().toUpperCase();
+                    if (upperName.contains("BORTOLETO") || upperName.contains("LINDBLAD")) {
+                        return "F1 26";
+                    }
+                }
+            }
         }
-        return TEAM_NAMES.getOrDefault(teamId, "Unknown");
+        return "F1 25";
     }
 
     // Track ID to Name mapping

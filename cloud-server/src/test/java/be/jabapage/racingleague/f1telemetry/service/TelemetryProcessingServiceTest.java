@@ -4,6 +4,8 @@ import be.jabapage.racingleague.f1telemetry.entity.*;
 import be.jabapage.racingleague.f1telemetry.model.ConsistencyStats;
 import be.jabapage.racingleague.f1telemetry.model.LongestStintStats;
 import be.jabapage.racingleague.f1telemetry.model.RacePaceStats;
+import be.jabapage.racingleague.f1telemetry.model.PacketParticipantsData;
+import be.jabapage.racingleague.f1telemetry.model.ParticipantData;
 import be.jabapage.racingleague.f1telemetry.repository.SessionResultRepository;
 import be.jabapage.racingleague.f1telemetry.repository.DriverResultRepository;
 import be.jabapage.racingleague.f1telemetry.repository.LapResultRepository;
@@ -137,7 +139,7 @@ public class TelemetryProcessingServiceTest {
 
         DriverResult dr = new DriverResult();
         dr.setDriverName("Driver 1");
-        dr.setTeamName("Mercedes");
+        dr.setTeamId(0);
         dr.setCountry("Belgium");
         dr.setAi(false);
 
@@ -175,7 +177,7 @@ public class TelemetryProcessingServiceTest {
 
         DriverResult dr = new DriverResult();
         dr.setDriverName("Driver 1");
-        dr.setTeamName("Mercedes");
+        dr.setTeamId(0);
         dr.setCountry("Belgium");
         dr.setAi(false);
 
@@ -209,7 +211,7 @@ public class TelemetryProcessingServiceTest {
 
         DriverResult dr = new DriverResult();
         dr.setDriverName("Driver 1");
-        dr.setTeamName("Mercedes");
+        dr.setTeamId(0);
         dr.setCountry("Belgium");
         dr.setAi(false);
 
@@ -249,13 +251,46 @@ public class TelemetryProcessingServiceTest {
         // Test standard 2025 season mappings
         assertEquals("Mercedes", TelemetryProcessingService.getTeamName(0, 25));
         assertEquals("Sauber", TelemetryProcessingService.getTeamName(9, 25));
-        assertEquals("Unknown", TelemetryProcessingService.getTeamName(10, 25));
+        assertEquals("Unknown (ID: 10)", TelemetryProcessingService.getTeamName(10, 25));
 
         // Test 2026 season mappings
-        assertEquals("Mercedes", TelemetryProcessingService.getTeamName(0, 26));
-        assertEquals("Audi", TelemetryProcessingService.getTeamName(9, 26));
-        assertEquals("Cadillac", TelemetryProcessingService.getTeamName(10, 26));
-        assertEquals("Unknown", TelemetryProcessingService.getTeamName(11, 26));
+        assertEquals("Mercedes", TelemetryProcessingService.getTeamName(476, 26));
+        assertEquals("Mercedes", TelemetryProcessingService.getTeamName(220, 26));
+        assertEquals("Audi", TelemetryProcessingService.getTeamName(485, 26));
+        assertEquals("Audi", TelemetryProcessingService.getTeamName(229, 26));
+        assertEquals("Cadillac", TelemetryProcessingService.getTeamName(486, 26));
+        assertEquals("Cadillac", TelemetryProcessingService.getTeamName(230, 26));
+        assertEquals("Unknown (ID: 0)", TelemetryProcessingService.getTeamName(0, 26));
+    }
+
+    @Test
+    public void testDetectCarType() {
+        // gameYear 26 is always F1 26
+        assertEquals("F1 26", TelemetryProcessingService.detectCarType(null, 26));
+
+        // gameYear 25 with no participants is F1 25
+        assertEquals("F1 25", TelemetryProcessingService.detectCarType(null, 25));
+
+        // gameYear 25 with participants containing teamId 486 (Cadillac) is F1 26
+        PacketParticipantsData participants = new PacketParticipantsData();
+        ParticipantData p = new ParticipantData();
+        p.setTeamId(486);
+        participants.getParticipants().add(p);
+        assertEquals("F1 26", TelemetryProcessingService.detectCarType(participants, 25));
+
+        // gameYear 25 with participants containing teamId 230 (Cadillac in uint8) is F1 26
+        PacketParticipantsData participants3 = new PacketParticipantsData();
+        ParticipantData p3 = new ParticipantData();
+        p3.setTeamId(230);
+        participants3.getParticipants().add(p3);
+        assertEquals("F1 26", TelemetryProcessingService.detectCarType(participants3, 25));
+
+        // gameYear 25 with name containing BORTOLETO is F1 26
+        PacketParticipantsData participants2 = new PacketParticipantsData();
+        ParticipantData p2 = new ParticipantData();
+        p2.setName("Gabriel Bortoleto");
+        participants2.getParticipants().add(p2);
+        assertEquals("F1 26", TelemetryProcessingService.detectCarType(participants2, 25));
     }
 
     @Test

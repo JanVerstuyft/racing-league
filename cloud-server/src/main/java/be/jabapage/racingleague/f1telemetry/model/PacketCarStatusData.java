@@ -13,8 +13,9 @@ public class PacketCarStatusData {
     public static PacketCarStatusData fromByteBuffer(ByteBuffer buffer, PacketHeader header) {
         PacketCarStatusData packet = new PacketCarStatusData();
         packet.setHeader(header);
-        for (int i = 0; i < 22; i++) {
-            packet.getCarStatusData().add(CarStatusData.fromByteBuffer(buffer));
+        int maxCars = header.getPacketFormat() == 2026 ? 24 : 22;
+        for (int i = 0; i < maxCars; i++) {
+            packet.getCarStatusData().add(CarStatusData.fromByteBuffer(buffer, header.getPacketFormat()));
         }
         return packet;
     }

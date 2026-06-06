@@ -31,17 +31,17 @@ public class LeagueSessionState {
     // Set of "telemetryName|raceNumber|driverId|country" for reserve drivers
     private final java.util.Set<String> reserveDrivers = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
-    private final int[] lastLapNum = new int[22];
-    private final long[] lastS1 = new long[22];
-    private final long[] lastS2 = new long[22];
-    private final int[] lastTyre = new int[22];
-    private final boolean[] lapInvalid = new boolean[22];
-    private final boolean[] isHuman = new boolean[22];
+    private final int[] lastLapNum = new int[24];
+    private final long[] lastS1 = new long[24];
+    private final long[] lastS2 = new long[24];
+    private final int[] lastTyre = new int[24];
+    private final boolean[] lapInvalid = new boolean[24];
+    private final boolean[] isHuman = new boolean[24];
 
-    private final long[] driverBestLap = new long[22];
-    private final long[] driverBestS1 = new long[22];
-    private final long[] driverBestS2 = new long[22];
-    private final long[] driverBestS3 = new long[22];
+    private final long[] driverBestLap = new long[24];
+    private final long[] driverBestS1 = new long[24];
+    private final long[] driverBestS2 = new long[24];
+    private final long[] driverBestS3 = new long[24];
 
     private long sessionBestS1 = Long.MAX_VALUE;
     private long sessionBestS2 = Long.MAX_VALUE;

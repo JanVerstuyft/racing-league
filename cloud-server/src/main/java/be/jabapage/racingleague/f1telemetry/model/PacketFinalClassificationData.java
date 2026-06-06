@@ -15,7 +15,8 @@ public class PacketFinalClassificationData {
         PacketFinalClassificationData packet = new PacketFinalClassificationData();
         packet.setHeader(header);
         packet.setNumCars(buffer.get() & 0xFF);
-        for (int i = 0; i < 22; i++) {
+        int maxCars = header.getPacketFormat() == 2026 ? 24 : 22;
+        for (int i = 0; i < maxCars; i++) {
             packet.getClassificationData().add(FinalClassificationData.fromByteBuffer(buffer));
         }
         return packet;

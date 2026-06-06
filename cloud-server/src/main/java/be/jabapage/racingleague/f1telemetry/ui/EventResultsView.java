@@ -8,10 +8,12 @@ import be.jabapage.racingleague.f1telemetry.model.RacePaceStats;
 import be.jabapage.racingleague.f1telemetry.model.LongestStintStats;
 import be.jabapage.racingleague.f1telemetry.model.ConsistencyStats;
 import be.jabapage.racingleague.f1telemetry.entity.DriverMapping;
+import be.jabapage.racingleague.f1telemetry.entity.TeamMapping;
 import be.jabapage.racingleague.f1telemetry.repository.DriverMappingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.DriverResultRepository;
 import be.jabapage.racingleague.f1telemetry.repository.EventRepository;
 import be.jabapage.racingleague.f1telemetry.repository.SessionResultRepository;
+import be.jabapage.racingleague.f1telemetry.repository.TeamMappingRepository;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
 import be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService;
 import be.jabapage.racingleague.f1telemetry.util.CountryProvider;
@@ -57,6 +59,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     private final DriverMappingRepository driverMappingRepository;
     private final TelemetryProcessingService telemetryProcessingService;
     private final SecurityService securityService;
+    private final TeamMappingRepository teamMappingRepository;
 
     private final H2 eventHeader = new H2();
     private final RouterLink backToSeason = new RouterLink("Back to Season", SeasonDetailsView.class, 0L);
@@ -82,13 +85,15 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                             DriverResultRepository driverResultRepository,
                             DriverMappingRepository driverMappingRepository,
                             TelemetryProcessingService telemetryProcessingService,
-                            SecurityService securityService) {
+                            SecurityService securityService,
+                            TeamMappingRepository teamMappingRepository) {
         this.eventRepository = eventRepository;
         this.sessionResultRepository = sessionResultRepository;
         this.driverResultRepository = driverResultRepository;
         this.driverMappingRepository = driverMappingRepository;
         this.telemetryProcessingService = telemetryProcessingService;
         this.securityService = securityService;
+        this.teamMappingRepository = teamMappingRepository;
         setSizeFull();
 
         // Main Tabs
@@ -193,8 +198,10 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             driverCombo.setItemLabelGenerator(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty() ? m.getOverriddenName() : m.getTelemetryName());
             driverCombo.setWidthFull();
 
-            ComboBox<String> teamCombo = new ComboBox<>("Team");
-            teamCombo.setItems("Mercedes", "Ferrari", "Red Bull Racing", "Williams", "Aston Martin", "Alpine", "RB", "Haas", "McLaren", "Sauber", "Audi", "Cadillac");
+            ComboBox<TeamMapping> teamCombo = new ComboBox<>("Team");
+            String carType = session.getCarType() != null ? session.getCarType() : "F1 25";
+            teamCombo.setItems(teamMappingRepository.findByCarType(carType));
+            teamCombo.setItemLabelGenerator(TeamMapping::getTeamName);
             teamCombo.setWidthFull();
 
             NumberField posField = new NumberField("Position");
@@ -237,7 +244,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 dr.setRaceNumber(driverCombo.getValue().getRaceNumber());
                 dr.setDriverId(driverCombo.getValue().getDriverId());
                 dr.setCountry(driverCombo.getValue().getCountry());
-                dr.setTeamName(teamCombo.getValue());
+                dr.setTeamId(teamCombo.getValue().getTeamId());
                 dr.setPosition(posField.getValue().intValue());
                 dr.setRawPosition(dr.getPosition());
                 dr.setNumLaps(lapsField.getValue() != null ? lapsField.getValue() : 0);

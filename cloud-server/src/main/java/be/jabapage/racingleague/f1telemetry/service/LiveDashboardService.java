@@ -89,7 +89,8 @@ public class LiveDashboardService {
         boolean isQualifying = state.getCurrentSession().getSessionType() >= 5 && state.getCurrentSession().getSessionType() <= 14;
 
         List<DriverBoardState> board = new ArrayList<>();
-        for (int i = 0; i < 22; i++) {
+        int maxCars = (state.getCurrentSession() != null && state.getCurrentSession().getHeader() != null && state.getCurrentSession().getHeader().getPacketFormat() == 2026) ? 24 : 22;
+        for (int i = 0; i < maxCars; i++) {
             if (i >= state.getCurrentParticipants().getParticipants().size() || 
                 i >= state.getCurrentLapData().getLapData().size() || 
                 i >= state.getCurrentCarStatus().getCarStatusData().size()) break;
@@ -108,7 +109,8 @@ public class LiveDashboardService {
             int gameYear = (state.getCurrentSession() != null && state.getCurrentSession().getHeader() != null)
                     ? state.getCurrentSession().getHeader().getGameYear()
                     : 25;
-            driverState.setTeam(TelemetryProcessingService.getTeamName(p.getTeamId(), gameYear));
+            String carType = TelemetryProcessingService.detectCarType(state.getCurrentParticipants(), gameYear);
+            driverState.setTeam(TelemetryProcessingService.getTeamNameStatic(p.getTeamId(), carType));
             driverState.setCountry(CountryProvider.getCountryInfo(p.getNationality()).getName());
             driverState.setTyreCompound(TelemetryProcessingService.TYRE_COMPOUNDS.getOrDefault(csd.getVisualTyreCompound(), "Unknown"));
             driverState.setTyreAge(csd.getTyresAgeLaps());
