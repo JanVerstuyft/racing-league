@@ -281,7 +281,7 @@ public class TelemetryStateServiceTest {
         telemetryStateService.syncDistributedState();
 
         // Should broadcast to listeners
-        verify(broadcaster).broadcastLeaderboard(eq(10L), anyList());
-        verify(broadcaster).broadcastSessionInfo(eq(10L), any());
+        verify(liveDashboardService).broadcastLeaderboard(any(LeagueSessionState.class));
+        verify(liveDashboardService).broadcastSessionInfo(any(LeagueSessionState.class));
     }
 }

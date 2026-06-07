@@ -306,6 +306,10 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
     }
 
     private void updateLeaderboard(List<DriverBoardState> data) {
+        if (data == null) {
+            grid.setItems(List.of());
+            return;
+        }
         if (!data.isEmpty()) {
             DriverBoardState first = data.get(0);
             boolean isQuali = first.isQualifying();
@@ -320,6 +324,7 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
     }
 
     private void updateSessionInfo(SessionInfo info) {
+        if (info == null) return;
         this.currentSessionInfo = info;
         String titleText = "LIVE LEADERBOARD - " + info.getSessionType().toUpperCase();
         if (info.isRace()) {

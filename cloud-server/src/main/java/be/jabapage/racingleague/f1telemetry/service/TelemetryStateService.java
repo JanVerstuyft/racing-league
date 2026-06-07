@@ -123,8 +123,8 @@ public class TelemetryStateService {
                                     entry.getValue().setShowErs(l.isShowErs());
                                 });
 
-                                broadcaster.broadcastLeaderboard(entry.getValue().getTierId(), liveDashboardService.buildLeaderboard(entry.getValue()));
-                                broadcaster.broadcastSessionInfo(entry.getValue().getTierId(), liveDashboardService.buildSessionInfo(entry.getValue()));
+                                liveDashboardService.broadcastLeaderboard(entry.getValue());
+                                liveDashboardService.broadcastSessionInfo(entry.getValue());
                             } catch (Exception e) {
                                 log.error("Sync: Failed to update tier {}: {}", remote.getTierId(), e.getMessage());
                             }
@@ -161,8 +161,8 @@ public class TelemetryStateService {
                 state.setHideAi(l.isHideAi());
                 state.setShowTyreWear(l.isShowTyreWear());
                 state.setShowErs(l.isShowErs());
-                broadcaster.broadcastLeaderboard(state.getTierId(), liveDashboardService.buildLeaderboard(state));
-                broadcaster.broadcastSessionInfo(state.getTierId(), liveDashboardService.buildSessionInfo(state));
+                liveDashboardService.broadcastLeaderboard(state);
+                liveDashboardService.broadcastSessionInfo(state);
             });
         } catch (Exception e) {
             log.error("Failed to load and broadcast tier {}: {}", remote.getTierId(), e.getMessage());
