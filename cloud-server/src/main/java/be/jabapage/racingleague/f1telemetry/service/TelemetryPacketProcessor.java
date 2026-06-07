@@ -122,7 +122,7 @@ public class TelemetryPacketProcessor {
             case 8:
                 PacketFinalClassificationData classification = PacketFinalClassificationData.fromByteBuffer(buffer, header);
                 telemetryResultsService.handleFinalClassification(state, classification);
-                telemetryStateService.clearState(state.getLeagueId());
+                telemetryStateService.clearState(state.getTierId());
                 break;
             default:
                 break;
@@ -197,7 +197,11 @@ public class TelemetryPacketProcessor {
                 state.getLastLapNum()[carIndex] = ld.getCurrentLapNum();
             }
             if (state.getCurrentCarStatus() != null && carIndex < state.getCurrentCarStatus().getCarStatusData().size()) {
-                state.getLastTyre()[carIndex] = state.getCurrentCarStatus().getCarStatusData().get(carIndex).getVisualTyreCompound();
+                int visualTyre = state.getCurrentCarStatus().getCarStatusData().get(carIndex).getVisualTyreCompound();
+                if (visualTyre == 0) {
+                    visualTyre = state.getCurrentCarStatus().getCarStatusData().get(carIndex).getActualTyreCompound();
+                }
+                state.getLastTyre()[carIndex] = visualTyre;
             }
         }
     }

@@ -127,9 +127,50 @@ public class TelemetryProcessingService {
     );
 
     // Tyre Compound ID to Name mapping
-    public static final Map<Integer, String> TYRE_COMPOUNDS = Map.of(
-            16, "Soft", 17, "Medium", 18, "Hard", 7, "Inter", 8, "Wet"
-    );
+    public static final Map<Integer, String> TYRE_COMPOUNDS = new java.util.AbstractMap<Integer, String>() {
+        @Override
+        public String get(Object key) {
+            if (key instanceof Integer compoundId) {
+                return getTyreCompoundName(compoundId);
+            }
+            return null;
+        }
+
+        @Override
+        public String getOrDefault(Object key, String defaultValue) {
+            if (key instanceof Integer compoundId) {
+                String name = getTyreCompoundName(compoundId);
+                return "Unknown".equals(name) ? defaultValue : name;
+            }
+            return defaultValue;
+        }
+
+        @Override
+        public java.util.Set<Entry<Integer, String>> entrySet() {
+            return java.util.Collections.emptySet();
+        }
+    };
+
+    public static String getTyreCompoundName(int compoundId) {
+        return switch (compoundId) {
+            case 16 -> "Soft";
+            case 17 -> "Medium";
+            case 18 -> "Hard";
+            case 7 -> "Inter";
+            case 8, 10 -> "Wet";
+            case 9 -> "Dry";
+            case 19 -> "C2";
+            case 20 -> "C1";
+            case 21 -> "C0";
+            case 22 -> "C6";
+            case 11 -> "Super Soft";
+            case 12 -> "Soft";
+            case 13 -> "Medium";
+            case 14 -> "Hard";
+            case 15 -> "Wet";
+            default -> "Unknown";
+        };
+    }
 
     // Session Type mapping
     public static final Map<Integer, String> SESSION_TYPE_NAMES = Map.ofEntries(

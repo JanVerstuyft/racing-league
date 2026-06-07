@@ -205,7 +205,11 @@ public class TelemetryResultsService {
                 TyreStint stint = new TyreStint();
                 stint.setDriverResult(driverResult);
                 stint.setStintOrder(j);
-                stint.setTyreCompound(data.getTyreStintsVisual()[j]);
+                int compound = data.getTyreStintsVisual()[j];
+                if (compound == 0) {
+                    compound = data.getTyreStintsActual()[j];
+                }
+                stint.setTyreCompound(compound);
                 
                 int endLap = data.getTyreStintsEndLaps()[j];
                 if (endLap == 255) {
@@ -403,8 +407,6 @@ public class TelemetryResultsService {
                 updateStandings(tier, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
             }
         }
-
-        telemetryStateService.clearState(state.getTierId());
 
         log.info("Saved Fallback {} results (from live state) for session UID: {} in event: {}", 
                 isRace ? "Race" : "Qualifying", sessionUID, event.getEventName());

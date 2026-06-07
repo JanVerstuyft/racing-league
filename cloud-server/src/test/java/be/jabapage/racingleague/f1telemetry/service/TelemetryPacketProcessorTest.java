@@ -243,6 +243,6 @@ public class TelemetryPacketProcessorTest {
         telemetryPacketProcessor.processPacket("test-token", header, buffer);
 
         verify(telemetryResultsService).handleFinalClassification(state, classification);
-        verify(telemetryStateService).clearState(1L); // Cleared by league ID after save
+        verify(telemetryStateService).clearState(10L); // Cleared by tier ID after save
     }
 }
