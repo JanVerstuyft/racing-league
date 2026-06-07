@@ -54,6 +54,7 @@ public class TelemetryPacketProcessorTest {
     private MockedStatic<PacketCarStatusData> mockedCarStatusData;
     private MockedStatic<PacketCarDamageData> mockedCarDamageData;
     private MockedStatic<PacketFinalClassificationData> mockedFinalClassificationData;
+    private MockedStatic<PacketSessionHistoryData> mockedSessionHistoryData;
 
     @BeforeEach
     public void setUp() {
@@ -75,6 +76,7 @@ public class TelemetryPacketProcessorTest {
         mockedCarStatusData = Mockito.mockStatic(PacketCarStatusData.class);
         mockedCarDamageData = Mockito.mockStatic(PacketCarDamageData.class);
         mockedFinalClassificationData = Mockito.mockStatic(PacketFinalClassificationData.class);
+        mockedSessionHistoryData = Mockito.mockStatic(PacketSessionHistoryData.class);
     }
 
     @AfterEach
@@ -87,6 +89,7 @@ public class TelemetryPacketProcessorTest {
         mockedCarStatusData.close();
         mockedCarDamageData.close();
         mockedFinalClassificationData.close();
+        mockedSessionHistoryData.close();
     }
 
     @Test
@@ -244,5 +247,63 @@ public class TelemetryPacketProcessorTest {
 
         verify(telemetryResultsService).handleFinalClassification(state, classification);
         verify(telemetryStateService).clearState(10L); // Cleared by tier ID after save
+    }
+
+    @Test
+    public void testProcessPacketSessionHistory() {
+        when(telemetryStateService.getOrCreateState("test-token")).thenReturn(state);
+        header.setPacketId((byte) 11);
+
+        PacketSessionHistoryData history = new PacketSessionHistoryData();
+        history.setCarIdx(2);
+        history.setNumLaps(3);
+        history.setBestLapTimeLapNum(2);
+        history.setBestSector1LapNum(1);
+        history.setBestSector2LapNum(2);
+        history.setBestSector3LapNum(2);
+
+        LapHistoryData lap1 = new LapHistoryData();
+        lap1.setLapTimeInMS(95000L);
+        lap1.setSector1TimeMinutesPart(0);
+        lap1.setSector1TimeMSPart(32000);
+        lap1.setSector2TimeMinutesPart(0);
+        lap1.setSector2TimeMSPart(42000);
+        lap1.setSector3TimeMinutesPart(0);
+        lap1.setSector3TimeMSPart(21000);
+        lap1.setLapValidBitFlags(0x0F); // all valid
+
+        LapHistoryData lap2 = new LapHistoryData();
+        lap2.setLapTimeInMS(90000L);
+        lap2.setSector1TimeMinutesPart(0);
+        lap2.setSector1TimeMSPart(30000);
+        lap2.setSector2TimeMinutesPart(0);
+        lap2.setSector2TimeMSPart(40000);
+        lap2.setSector3TimeMinutesPart(0);
+        lap2.setSector3TimeMSPart(20000);
+        lap2.setLapValidBitFlags(0x0F); // all valid
+
+        LapHistoryData lap3 = new LapHistoryData();
+        lap3.setLapTimeInMS(92000L);
+        lap3.setLapValidBitFlags(0x0F);
+
+        history.getLapHistoryData().add(lap1);
+        history.getLapHistoryData().add(lap2);
+        history.getLapHistoryData().add(lap3);
+
+        mockedSessionHistoryData.when(() -> PacketSessionHistoryData.fromByteBuffer(buffer, header)).thenReturn(history);
+
+        telemetryPacketProcessor.processPacket("test-token", header, buffer);
+
+        assertEquals(90000L, state.getDriverBestLap()[2]);
+        assertEquals(32000L, state.getDriverBestS1()[2]); // lap 1 has best sector 1 in history (bestSector1LapNum=1)
+        assertEquals(40000L, state.getDriverBestS2()[2]); // lap 2 has best sector 2 in history
+        assertEquals(20000L, state.getDriverBestS3()[2]); // lap 2 has best sector 3 in history
+
+        assertEquals(90000L, state.getSessionBestLap());
+        assertEquals(32000L, state.getSessionBestS1());
+        assertEquals(40000L, state.getSessionBestS2());
+        assertEquals(20000L, state.getSessionBestS3());
+
+        verify(liveDashboardService).broadcastLeaderboard(state);
     }
 }

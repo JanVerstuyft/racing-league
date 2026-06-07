@@ -119,6 +119,11 @@ public class TelemetryPacketProcessor {
                 state.setCurrentCarDamageData(PacketCarDamageData.fromByteBuffer(buffer, header));
                 liveDashboardService.broadcastLeaderboard(state);
                 break;
+            case 11:
+                PacketSessionHistoryData history = PacketSessionHistoryData.fromByteBuffer(buffer, header);
+                processSessionHistory(state, history);
+                liveDashboardService.broadcastLeaderboard(state);
+                break;
             case 8:
                 PacketFinalClassificationData classification = PacketFinalClassificationData.fromByteBuffer(buffer, header);
                 telemetryResultsService.handleFinalClassification(state, classification);
@@ -253,6 +258,67 @@ public class TelemetryPacketProcessor {
                 state.getDriverNameOverrides().put(key, existingMapping.getOverriddenName() != null ? existingMapping.getOverriddenName() : "");
                 if (existingMapping.isReserve()) {
                     state.getReserveDrivers().add(key);
+                }
+            }
+        }
+    }
+
+    private void processSessionHistory(LeagueSessionState state, PacketSessionHistoryData history) {
+        int carIdx = history.getCarIdx();
+        if (carIdx < 0 || carIdx >= state.getDriverBestLap().length) {
+            return;
+        }
+
+        int numLaps = history.getNumLaps();
+        
+        // 1. Process Best Lap
+        int bestLapIdx = history.getBestLapTimeLapNum() - 1;
+        if (bestLapIdx >= 0 && bestLapIdx < numLaps && bestLapIdx < history.getLapHistoryData().size()) {
+            LapHistoryData lap = history.getLapHistoryData().get(bestLapIdx);
+            if ((lap.getLapValidBitFlags() & 0x01) != 0 && lap.getLapTimeInMS() > 0) {
+                long time = lap.getLapTimeInMS();
+                state.getDriverBestLap()[carIdx] = time;
+                if (state.getSessionBestLap() == 0 || time < state.getSessionBestLap()) {
+                    state.setSessionBestLap(time);
+                }
+            }
+        }
+
+        // 2. Process Best Sector 1
+        int bestS1Idx = history.getBestSector1LapNum() - 1;
+        if (bestS1Idx >= 0 && bestS1Idx < numLaps && bestS1Idx < history.getLapHistoryData().size()) {
+            LapHistoryData lap = history.getLapHistoryData().get(bestS1Idx);
+            if ((lap.getLapValidBitFlags() & 0x02) != 0 && lap.getSector1TimeInMS() > 0) {
+                long time = lap.getSector1TimeInMS();
+                state.getDriverBestS1()[carIdx] = time;
+                if (state.getSessionBestS1() == 0 || time < state.getSessionBestS1()) {
+                    state.setSessionBestS1(time);
+                }
+            }
+        }
+
+        // 3. Process Best Sector 2
+        int bestS2Idx = history.getBestSector2LapNum() - 1;
+        if (bestS2Idx >= 0 && bestS2Idx < numLaps && bestS2Idx < history.getLapHistoryData().size()) {
+            LapHistoryData lap = history.getLapHistoryData().get(bestS2Idx);
+            if ((lap.getLapValidBitFlags() & 0x04) != 0 && lap.getSector2TimeInMS() > 0) {
+                long time = lap.getSector2TimeInMS();
+                state.getDriverBestS2()[carIdx] = time;
+                if (state.getSessionBestS2() == 0 || time < state.getSessionBestS2()) {
+                    state.setSessionBestS2(time);
+                }
+            }
+        }
+
+        // 4. Process Best Sector 3
+        int bestS3Idx = history.getBestSector3LapNum() - 1;
+        if (bestS3Idx >= 0 && bestS3Idx < numLaps && bestS3Idx < history.getLapHistoryData().size()) {
+            LapHistoryData lap = history.getLapHistoryData().get(bestS3Idx);
+            if ((lap.getLapValidBitFlags() & 0x08) != 0 && lap.getSector3TimeInMS() > 0) {
+                long time = lap.getSector3TimeInMS();
+                state.getDriverBestS3()[carIdx] = time;
+                if (state.getSessionBestS3() == 0 || time < state.getSessionBestS3()) {
+                    state.setSessionBestS3(time);
                 }
             }
         }

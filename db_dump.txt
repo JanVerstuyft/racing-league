@@ -1,0 +1,47 @@
+=== INSPECTING HOST DATABASE ===
+--- SESSION RESULTS ---
+ID: 181 | Track: 0 | UID: -3458590776461053521 | Type: 15 | CarType: F1 26
+ID: 180 | Track: 0 | UID: 7860957874367733839 | Type: 15 | CarType: F1 26
+ID: 179 | Track: 0 | UID: 8530457672972456843 | Type: 15 | CarType: F1 26
+ID: 178 | Track: 0 | UID: 5328532893991623021 | Type: 15 | CarType: F1 26
+ID: 177 | Track: 17 | UID: -1533087691939229193 | Type: 15 | CarType: F1 25
+--- DRIVER RESULTS (LATEST SESSION) ---
+ID: 3160 | Name: ANTONELLI | TeamID: 476 | Pos: 1 | SessionID: 181
+ID: 3156 | Name: RUSSELL | TeamID: 476 | Pos: 2 | SessionID: 181
+ID: 3155 | Name: LECLERC | TeamID: 477 | Pos: 3 | SessionID: 181
+ID: 3161 | Name: PIASTRI | TeamID: 484 | Pos: 4 | SessionID: 181
+ID: 3147 | Name: HAMILTON | TeamID: 477 | Pos: 5 | SessionID: 181
+ID: 3157 | Name: VERSTAPPEN | TeamID: 478 | Pos: 6 | SessionID: 181
+ID: 3158 | Name: HADJAR | TeamID: 478 | Pos: 7 | SessionID: 181
+ID: 3162 | Name: SAINZ | TeamID: 479 | Pos: 8 | SessionID: 181
+ID: 3152 | Name: OCON | TeamID: 483 | Pos: 9 | SessionID: 181
+ID: 3165 | Name: GASLY | TeamID: 481 | Pos: 10 | SessionID: 181
+ID: 3163 | Name: COLAPINTO | TeamID: 481 | Pos: 11 | SessionID: 181
+ID: 3150 | Name: ALBON | TeamID: 479 | Pos: 12 | SessionID: 181
+ID: 3166 | Name: LAWSON | TeamID: 482 | Pos: 13 | SessionID: 181
+ID: 3167 | Name: LINDBLAD | TeamID: 482 | Pos: 14 | SessionID: 181
+ID: 3151 | Name: BOTTAS | TeamID: 486 | Pos: 15 | SessionID: 181
+ID: 3149 | Name: HULKENBERG | TeamID: 485 | Pos: 16 | SessionID: 181
+ID: 3154 | Name: BEARMAN | TeamID: 483 | Pos: 17 | SessionID: 181
+ID: 3159 | Name: BORTOLETO | TeamID: 485 | Pos: 18 | SessionID: 181
+ID: 3153 | Name: ALONSO | TeamID: 480 | Pos: 19 | SessionID: 181
+ID: 3164 | Name: PÉREZ | TeamID: 486 | Pos: 20 | SessionID: 181
+ID: 3148 | Name: STROLL | TeamID: 480 | Pos: 21 | SessionID: 181
+ID: 3168 | Name: NORRIS | TeamID: 484 | Pos: 22 | SessionID: 181
+--- TEAM STANDINGS ---
+ID: 428 | TeamID: 476 | CarType: F1 26 | Points: 70 | TierID: 1
+ID: 417 | TeamID: 220 | CarType: F1 26 | Points: 68 | TierID: 1
+ID: 422 | TeamID: 477 | CarType: F1 26 | Points: 52 | TierID: 1
+ID: 411 | TeamID: 221 | CarType: F1 26 | Points: 51 | TierID: 1
+ID: 418 | TeamID: 222 | CarType: F1 26 | Points: 47 | TierID: 1
+ID: 430 | TeamID: 484 | CarType: F1 26 | Points: 34 | TierID: 1
+ID: 429 | TeamID: 478 | CarType: F1 26 | Points: 30 | TierID: 1
+ID: 408 | TeamID: 6 | CarType: F1 25 | Points: 25 | TierID: 1
+ID: 407 | TeamID: 3 | CarType: F1 25 | Points: 24 | TierID: 1
+ID: 406 | TeamID: 9 | CarType: F1 25 | Points: 23 | TierID: 1
+ID: 419 | TeamID: 228 | CarType: F1 26 | Points: 18 | TierID: 1
+ID: 402 | TeamID: 5 | CarType: F1 25 | Points: 12 | TierID: 1
+ID: 403 | TeamID: 2 | CarType: F1 25 | Points: 10 | TierID: 1
+ID: 416 | TeamID: 227 | CarType: F1 26 | Points: 10 | TierID: 1
+ID: 432 | TeamID: 482 | CarType: F1 26 | Points: 8 | TierID: 1
+=== END INSPECT ===
