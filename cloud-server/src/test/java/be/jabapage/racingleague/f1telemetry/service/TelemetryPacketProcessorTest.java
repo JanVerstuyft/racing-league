@@ -116,7 +116,7 @@ public class TelemetryPacketProcessorTest {
     @Test
     public void testProcessPacketTimeoutResetsState() {
         when(telemetryStateService.getOrCreateState("test-token")).thenReturn(state);
-        state.setLastPacketTime(System.currentTimeMillis() - 10000); // 10s ago (threshold is 5s)
+        state.setLastPacketTime(System.currentTimeMillis() - 1000000); // 1000s ago (threshold is 900s)
         header.setSessionUID(12345L); // Same UID but timed out
 
         telemetryPacketProcessor.processPacket("test-token", header, buffer);

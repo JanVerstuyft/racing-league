@@ -56,7 +56,7 @@ public class TelemetryPacketProcessor {
         }
 
         boolean sessionChanged = (packetSessionUID != 0 && packetSessionUID != state.getCurrentSessionUID());
-        boolean timeout = (now - state.getLastPacketTime() > 5000 && state.getLastPacketTime() > 0);
+        boolean timeout = (now - state.getLastPacketTime() > 900000 && state.getLastPacketTime() > 0);
 
         if (sessionChanged || timeout) {
             log.info("{} detected for league {}, resetting live tracking state. (New UID: {}, Old UID: {}, Gap: {}ms)",
