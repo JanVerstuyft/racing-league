@@ -2,7 +2,6 @@ package be.jabapage.racingleague.f1telemetry.ui;
 
 import be.jabapage.racingleague.f1telemetry.model.DriverBoardState;
 import be.jabapage.racingleague.f1telemetry.model.SessionInfo;
-import be.jabapage.racingleague.f1telemetry.entity.Tier;
 import be.jabapage.racingleague.f1telemetry.entity.League;
 import be.jabapage.racingleague.f1telemetry.entity.LeagueLogo;
 import be.jabapage.racingleague.f1telemetry.repository.TierRepository;
@@ -296,10 +295,12 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
 
     @Override
     protected void onAttach(AttachEvent attachEvent) {
+        super.onAttach(attachEvent);
         if (tierId == null) {
             title.setText("NO TIER SELECTED");
             return;
         }
+        updateLogo();
         UI ui = attachEvent.getUI();
         leaderboardRegistration = broadcaster.registerLeaderboard(tierId, data -> {
             if (attachEvent.getUI().isAttached()) {
@@ -354,6 +355,9 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
             heartbeatTimer.cancel();
             heartbeatTimer = null;
         }
+        detachEvent.getUI().getPage().executeJs(
+            "document.documentElement.style.removeProperty('--lumo-base-color'); document.body.style.backgroundColor = '';"
+        );
     }
 
     private void throttleLeaderboardUpdate(List<DriverBoardState> data) {
@@ -514,7 +518,19 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
             logoImg.setHeight("40px");
             logoContainer.add(logoImg);
         }
+        if (league != null && league.getLogoBackgroundColor() != null) {
+            getUI().ifPresent(ui -> ui.getPage().executeJs(
+                "document.documentElement.style.setProperty('--lumo-base-color', $0); document.body.style.backgroundColor = $0;",
+                league.getLogoBackgroundColor()
+            ));
+        } else {
+            getUI().ifPresent(ui -> ui.getPage().executeJs(
+                "document.documentElement.style.removeProperty('--lumo-base-color'); document.body.style.backgroundColor = '';"
+            ));
+        }
     }
+
+
 
     private static String getTeamColor(int teamId) {
         return switch (teamId) {

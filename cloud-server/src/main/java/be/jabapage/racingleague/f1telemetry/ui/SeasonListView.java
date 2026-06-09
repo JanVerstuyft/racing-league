@@ -148,4 +148,12 @@ public class SeasonListView extends VerticalLayout {
             grid.setItems(leagueRepository.findByUser(user));
         });
     }
+
+    @Override
+    protected void onAttach(com.vaadin.flow.component.AttachEvent attachEvent) {
+        super.onAttach(attachEvent);
+        attachEvent.getUI().getPage().executeJs(
+            "document.documentElement.style.removeProperty('--lumo-base-color'); document.body.style.backgroundColor = '';"
+        );
+    }
 }

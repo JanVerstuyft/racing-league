@@ -32,6 +32,9 @@ public class League {
     @Column(name = "has_logo", nullable = false)
     private Boolean hasLogo = false;
 
+    @Column(name = "logo_background_color")
+    private String logoBackgroundColor;
+
     public boolean getHasLogo() {
         return hasLogo != null && hasLogo;
     }

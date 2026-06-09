@@ -26,6 +26,8 @@ import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
+import com.vaadin.flow.component.html.H4;
+import com.vaadin.flow.component.html.Input;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
@@ -50,6 +52,7 @@ import be.jabapage.racingleague.f1telemetry.entity.DriverMapping;
 import be.jabapage.racingleague.f1telemetry.entity.SessionPointConfig;
 import be.jabapage.racingleague.f1telemetry.entity.ExtraPointRule;
 import be.jabapage.racingleague.f1telemetry.entity.ManualPenalty;
+import be.jabapage.racingleague.f1telemetry.util.ImageColorExtractor;
 import be.jabapage.racingleague.f1telemetry.repository.DriverMappingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.SessionPointConfigRepository;
 import be.jabapage.racingleague.f1telemetry.repository.ExtraPointRuleRepository;
@@ -97,6 +100,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final Checkbox showTyreWearCheckbox = new Checkbox("Show Tyre Wear on Live Leaderboard");
     private final Checkbox showErsCheckbox = new Checkbox("Show ERS on Live Leaderboard");
     private final com.vaadin.flow.component.textfield.IntegerField minLapsPctField = new com.vaadin.flow.component.textfield.IntegerField("Minimum Laps Percentage for Stats (%)");
+    private final TextField hexColorField = new TextField("Background Color (Hex)");
+    private final Input colorPicker = new Input();
+    private final VerticalLayout generalSettingsContent = new VerticalLayout();
+    private final VerticalLayout uiTweaksSettingsContent = new VerticalLayout();
     
     private final Grid<Event> eventGrid = new Grid<>(Event.class, false);
     private final Grid<DriverStanding> driverGrid = new Grid<>(DriverStanding.class, false);
@@ -341,8 +348,22 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 logo.setLogo(bytes);
                 leagueLogoRepository.save(logo);
                 
+                String bgColor = ImageColorExtractor.extractBackgroundColor(bytes);
+                league.setLogoBackgroundColor(bgColor);
                 league.setHasLogo(true);
                 league = leagueRepository.save(league);
+                
+                // Sync UI fields
+                isInitializing = true;
+                if (bgColor != null) {
+                    hexColorField.setValue(bgColor);
+                    colorPicker.setValue(bgColor);
+                } else {
+                    hexColorField.setValue("");
+                    colorPicker.setValue("#ffffff");
+                }
+                isInitializing = false;
+                
                 updateLogo();
                 Notification.show("Logo uploaded successfully!", 3000, Notification.Position.TOP_CENTER);
             } catch (java.io.IOException ex) {
@@ -359,7 +380,15 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             if (league != null) {
                 leagueLogoRepository.deleteById(league.getId());
                 league.setHasLogo(false);
+                league.setLogoBackgroundColor(null);
                 league = leagueRepository.save(league);
+                
+                // Sync UI fields
+                isInitializing = true;
+                hexColorField.setValue("");
+                colorPicker.setValue("#ffffff");
+                isInitializing = false;
+                
                 updateLogo();
                 Notification.show("Logo removed successfully!", 3000, Notification.Position.TOP_CENTER);
             }
@@ -371,9 +400,62 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         logoUploadLayout.setSpacing(true);
         logoUploadLayout.setVisible(false);
 
-        // Settings Layout
-        settingsLayout.add(new H3("Season Settings"));
-        settingsLayout.add(hideAiCheckbox, showTyreWearCheckbox, showErsCheckbox, minLapsPctField, logoUploadLayout);
+        // Color Picker Config & Sync
+        colorPicker.setType("color");
+        colorPicker.getStyle().set("width", "50px");
+        colorPicker.getStyle().set("height", "38px");
+        colorPicker.getStyle().set("padding", "0");
+        colorPicker.getStyle().set("border", "1px solid var(--lumo-contrast-30pct)");
+        colorPicker.getStyle().set("border-radius", "var(--lumo-border-radius-m)");
+        colorPicker.getStyle().set("cursor", "pointer");
+
+        colorPicker.addValueChangeListener(e -> {
+            String color = e.getValue();
+            if (color != null && !color.isEmpty() && !color.equalsIgnoreCase(hexColorField.getValue())) {
+                hexColorField.setValue(color);
+                saveBackgroundColor(color);
+            }
+        });
+
+        hexColorField.addValueChangeListener(e -> {
+            String val = e.getValue();
+            if (val != null && val.matches("^#[0-9a-fA-F]{6}$")) {
+                if (!val.equalsIgnoreCase(colorPicker.getValue())) {
+                    colorPicker.setValue(val);
+                }
+                saveBackgroundColor(val);
+            } else if (val == null || val.isEmpty()) {
+                saveBackgroundColor(null);
+            }
+        });
+
+        // Settings Layout sub-tabs
+        Tab generalSettingsTab = new Tab("Season Settings");
+        Tab uiTweaksTab = new Tab("UI Tweaks");
+        Tabs settingsTabs = new Tabs(generalSettingsTab, uiTweaksTab);
+        
+        generalSettingsContent.setPadding(true);
+        generalSettingsContent.setSpacing(true);
+        generalSettingsContent.add(hideAiCheckbox, minLapsPctField);
+        
+        uiTweaksSettingsContent.setPadding(true);
+        uiTweaksSettingsContent.setSpacing(true);
+        uiTweaksSettingsContent.add(
+            showTyreWearCheckbox, 
+            showErsCheckbox, 
+            new H4("League Logo & Background Color"),
+            logoUploadLayout,
+            new HorizontalLayout(hexColorField, colorPicker)
+        );
+        uiTweaksSettingsContent.setVisible(false);
+
+        settingsTabs.addSelectedChangeListener(event -> {
+            boolean isGeneral = event.getSelectedTab().equals(generalSettingsTab);
+            generalSettingsContent.setVisible(isGeneral);
+            uiTweaksSettingsContent.setVisible(!isGeneral);
+        });
+
+        settingsLayout.add(new H3("Settings"), settingsTabs, generalSettingsContent, uiTweaksSettingsContent);
         settingsLayout.setVisible(false);
         
         recalculateBtn.addClickListener(e -> {
@@ -924,6 +1006,14 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             showTyreWearCheckbox.setValue(league.isShowTyreWear());
             showErsCheckbox.setValue(league.isShowErs());
             minLapsPctField.setValue(league.getMinLapsPct() != null ? league.getMinLapsPct() : 60);
+            
+            if (league.getLogoBackgroundColor() != null) {
+                hexColorField.setValue(league.getLogoBackgroundColor());
+                colorPicker.setValue(league.getLogoBackgroundColor());
+            } else {
+                hexColorField.setValue("");
+                colorPicker.setValue("#ffffff");
+            }
             
             updateLogo();
             
@@ -1517,6 +1607,38 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             logoImg.setHeight("50px");
             logoContainer.add(logoImg);
         }
+        if (league != null && league.getLogoBackgroundColor() != null) {
+            getUI().ifPresent(ui -> ui.getPage().executeJs(
+                "document.documentElement.style.setProperty('--lumo-base-color', $0); document.body.style.backgroundColor = $0;",
+                league.getLogoBackgroundColor()
+            ));
+        } else {
+            getUI().ifPresent(ui -> ui.getPage().executeJs(
+                "document.documentElement.style.removeProperty('--lumo-base-color'); document.body.style.backgroundColor = '';"
+            ));
+        }
+    }
+
+    private void saveBackgroundColor(String color) {
+        if (league != null && !isInitializing) {
+            league.setLogoBackgroundColor(color);
+            league = leagueRepository.save(league);
+            updateLogo();
+        }
+    }
+
+    @Override
+    protected void onAttach(com.vaadin.flow.component.AttachEvent attachEvent) {
+        super.onAttach(attachEvent);
+        updateLogo();
+    }
+
+    @Override
+    protected void onDetach(com.vaadin.flow.component.DetachEvent detachEvent) {
+        super.onDetach(detachEvent);
+        detachEvent.getUI().getPage().executeJs(
+            "document.documentElement.style.removeProperty('--lumo-base-color'); document.body.style.backgroundColor = '';"
+        );
     }
 
     @Getter

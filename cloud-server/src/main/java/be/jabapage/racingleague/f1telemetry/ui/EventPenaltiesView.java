@@ -289,6 +289,30 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
                 logoImg.setHeight("40px");
                 logoContainer.add(logoImg);
             }
+            if (league.getLogoBackgroundColor() != null) {
+                getUI().ifPresent(ui -> ui.getPage().executeJs(
+                    "document.documentElement.style.setProperty('--lumo-base-color', $0); document.body.style.backgroundColor = $0;",
+                    league.getLogoBackgroundColor()
+                ));
+            } else {
+                getUI().ifPresent(ui -> ui.getPage().executeJs(
+                    "document.documentElement.style.removeProperty('--lumo-base-color'); document.body.style.backgroundColor = '';"
+                ));
+            }
         }
+    }
+
+    @Override
+    protected void onAttach(com.vaadin.flow.component.AttachEvent attachEvent) {
+        super.onAttach(attachEvent);
+        updateLogo();
+    }
+
+    @Override
+    protected void onDetach(com.vaadin.flow.component.DetachEvent detachEvent) {
+        super.onDetach(detachEvent);
+        detachEvent.getUI().getPage().executeJs(
+            "document.documentElement.style.removeProperty('--lumo-base-color'); document.body.style.backgroundColor = '';"
+        );
     }
 }

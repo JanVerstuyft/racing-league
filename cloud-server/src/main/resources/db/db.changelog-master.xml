@@ -14,4 +14,5 @@
     <include file="changelog/011_update_team_mapping.xml" relativeToChangelogFile="true"/>
     <include file="changelog/012_add_logo_to_league.xml" relativeToChangelogFile="true"/>
     <include file="changelog/013_refactor_league_logo.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/014_add_logo_background_color.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>
