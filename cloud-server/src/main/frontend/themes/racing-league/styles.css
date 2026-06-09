@@ -75,3 +75,8 @@ vaadin-grid::part(warning-danger) {
     border-top: 1px solid #444;
     padding-top: 10px;
 }
+
+vaadin-grid::part(highlighted-driver) {
+    background-color: rgba(255, 193, 7, 0.12) !important;
+}
+

@@ -1,6 +1,10 @@
 package be.jabapage.racingleague.f1telemetry.ui;
 
 import be.jabapage.racingleague.f1telemetry.entity.DriverMapping;
+import be.jabapage.racingleague.f1telemetry.entity.League;
+import com.vaadin.flow.component.html.Image;
+import com.vaadin.flow.server.StreamResource;
+import java.io.ByteArrayInputStream;
 import be.jabapage.racingleague.f1telemetry.entity.Event;
 import be.jabapage.racingleague.f1telemetry.entity.ManualPenalty;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
@@ -43,6 +47,7 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
     private final TelemetryProcessingService telemetryProcessingService;
     private final SecurityService securityService;
 
+    private final HorizontalLayout logoContainer = new HorizontalLayout();
     private final H2 eventHeader = new H2();
     private final RouterLink backToSeason = new RouterLink("Back to Season", SeasonDetailsView.class, 0L);
 
@@ -79,7 +84,12 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
         nav.add(new RouterLink("Documentation", DocumentationView.class));
         nav.setSpacing(true);
 
-        add(nav, eventHeader);
+        logoContainer.setAlignItems(Alignment.CENTER);
+        HorizontalLayout titleLayout = new HorizontalLayout(logoContainer, eventHeader);
+        titleLayout.setAlignItems(Alignment.CENTER);
+        titleLayout.setSpacing(true);
+
+        add(nav, titleLayout);
 
         boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
 
@@ -223,6 +233,7 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
             this.currentEvent = e;
             eventHeader.setText("Manage Penalties: " + currentEvent.getEventName());
             backToSeason.setRoute(SeasonDetailsView.class, currentEvent.getTier().getLeague().getId());
+            updateLogo();
             
             // Populate session ComboBox (filter to race sessions only)
             List<SessionResult> raceSessions = currentEvent.getSessionResults().stream()
@@ -253,6 +264,20 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
             } else {
                 List<ManualPenalty> penalties = manualPenaltyRepository.findBySessionResultIn(currentEvent.getSessionResults());
                 penaltyGrid.setItems(penalties);
+            }
+        }
+    }
+
+    private void updateLogo() {
+        logoContainer.removeAll();
+        if (currentEvent != null && currentEvent.getTier() != null && currentEvent.getTier().getLeague() != null) {
+            League league = currentEvent.getTier().getLeague();
+            if (league.getLogo() != null) {
+                StreamResource resource = new StreamResource("logo-" + league.getId() + "-" + System.currentTimeMillis() + ".png",
+                        () -> new ByteArrayInputStream(league.getLogo()));
+                Image logoImg = new Image(resource, "logo");
+                logoImg.setHeight("40px");
+                logoContainer.add(logoImg);
             }
         }
     }

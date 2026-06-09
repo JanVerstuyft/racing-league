@@ -137,8 +137,10 @@ public class LiveDashboardService {
             driverState.setShowTyreWear(state.isShowTyreWear());
             driverState.setShowErs(state.isShowErs());
 
+            driverState.setBestLapTime(formatLapTimeFull(state.getDriverBestLap()[i]));
+            driverState.setBestLap(state.getDriverBestLap()[i] > 0 && state.getDriverBestLap()[i] == state.getSessionBestLap());
+
             if (isQualifying) {
-                driverState.setBestLapTime(formatLapTimeFull(state.getDriverBestLap()[i]));
                 driverState.setS1Time(formatLapTimeFull(state.getDriverBestS1()[i]));
                 driverState.setS2Time(formatLapTimeFull(state.getDriverBestS2()[i]));
                 driverState.setS3Time(formatLapTimeFull(state.getDriverBestS3()[i]));

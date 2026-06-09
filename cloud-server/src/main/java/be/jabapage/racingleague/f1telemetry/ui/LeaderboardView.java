@@ -3,7 +3,11 @@ package be.jabapage.racingleague.f1telemetry.ui;
 import be.jabapage.racingleague.f1telemetry.model.DriverBoardState;
 import be.jabapage.racingleague.f1telemetry.model.SessionInfo;
 import be.jabapage.racingleague.f1telemetry.entity.Tier;
+import be.jabapage.racingleague.f1telemetry.entity.League;
 import be.jabapage.racingleague.f1telemetry.repository.TierRepository;
+import com.vaadin.flow.component.html.Image;
+import com.vaadin.flow.server.StreamResource;
+import java.io.ByteArrayInputStream;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
 import be.jabapage.racingleague.f1telemetry.service.Broadcaster;
 import be.jabapage.racingleague.f1telemetry.util.CountryProvider;
@@ -39,6 +43,8 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
     private final be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService telemetryProcessingService;
     private final TierRepository tierRepository;
     private final Grid<DriverBoardState> grid = new Grid<>(DriverBoardState.class, false);
+    private final HorizontalLayout logoContainer = new HorizontalLayout();
+    private League league;
     private final H2 title = new H2("LIVE LEADERBOARD");
     private final Span scStatus = new Span();
     private final Span drsStatus = new Span();
@@ -51,6 +57,7 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
     private java.util.Timer heartbeatTimer;
     private Long tierId;
     private SessionInfo currentSessionInfo;
+    private final java.util.Set<String> highlightedDrivers = new java.util.HashSet<>();
 
     public LeaderboardView(Broadcaster broadcaster, SecurityService securityService, be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService telemetryProcessingService, TierRepository tierRepository) {
         this.broadcaster = broadcaster;
@@ -71,8 +78,9 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         weatherLayout.getStyle().set("margin-left", "var(--lumo-space-m)");
         weatherLayout.addClickListener(e -> showWeatherForecast());
 
-        HorizontalLayout header = new HorizontalLayout(title, scStatus, drsStatus, weatherLayout, keepScreenOn);
-        header.setAlignItems(Alignment.BASELINE);
+        logoContainer.setAlignItems(Alignment.CENTER);
+        HorizontalLayout header = new HorizontalLayout(logoContainer, title, scStatus, drsStatus, weatherLayout, keepScreenOn);
+        header.setAlignItems(Alignment.CENTER);
         header.setSpacing(true);
         header.expand(title);
 
@@ -92,12 +100,29 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
     public void setParameter(BeforeEvent event, Long parameter) {
         this.tierId = parameter;
         tierRepository.findById(tierId).ifPresent(tier -> {
-            backLink.setRoute(SeasonDetailsView.class, tier.getLeague().getId());
+            this.league = tier.getLeague();
+            backLink.setRoute(SeasonDetailsView.class, league.getId());
+            updateLogo();
         });
     }
 
     private void configureGrid() {
         grid.setSizeFull();
+        grid.addComponentColumn(state -> {
+            Icon star = new Icon(highlightedDrivers.contains(state.getName()) ? VaadinIcon.STAR : VaadinIcon.STAR_O);
+            star.getStyle().set("cursor", "pointer");
+            star.setColor(highlightedDrivers.contains(state.getName()) ? "#ffcc00" : "#888888");
+            star.addClickListener(e -> {
+                if (highlightedDrivers.contains(state.getName())) {
+                    highlightedDrivers.remove(state.getName());
+                } else {
+                    highlightedDrivers.add(state.getName());
+                }
+                grid.getDataProvider().refreshAll();
+            });
+            return star;
+        }).setWidth("50px").setFlexGrow(0).setHeader("");
+
         grid.addColumn(state -> {
             int status = state.getResultStatus();
             if (status == 4) return "DNF";
@@ -180,19 +205,26 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         Grid.Column<DriverBoardState> s3Col = grid.addColumn(DriverBoardState::getS3Time).setHeader("S3");
 
         warnCol.setPartNameGenerator(state -> state.getWarnings() == 2 ? "warning-danger" : null);
+        bestLapCol.setPartNameGenerator(state -> state.isBestLap() ? "fastest-lap" : null);
         s1Col.setPartNameGenerator(state -> state.isBestS1() ? "best-sector" : null);
         s2Col.setPartNameGenerator(state -> state.isBestS2() ? "best-sector" : null);
         s3Col.setPartNameGenerator(state -> state.isBestS3() ? "best-sector" : null);
 
         grid.setPartNameGenerator(state -> {
             int status = state.getResultStatus();
-            if (status >= 4) return "status-retired";
-            return null;
+            StringBuilder parts = new StringBuilder();
+            if (status >= 4) {
+                parts.append("status-retired ");
+            }
+            if (highlightedDrivers.contains(state.getName())) {
+                parts.append("highlighted-driver ");
+            }
+            return parts.length() > 0 ? parts.toString().trim() : null;
         });
 
         // Store columns for easy toggling
         this.raceColumns = List.of(tyreCol, ageCol, pitsCol, penCol, warnCol, gapLdrCol, intervalCol);
-        this.qualiColumns = List.of(bestLapCol, gapBestCol, s1Col, s2Col, s3Col);
+        this.qualiColumns = List.of(gapBestCol, s1Col, s2Col, s3Col);
         
         this.wearCol = wearCol;
         this.ersCol = ersCol;
@@ -414,5 +446,16 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         int minutes = totalSeconds / 60;
         int seconds = totalSeconds % 60;
         return String.format("%02d:%02d", minutes, seconds);
+    }
+
+    private void updateLogo() {
+        logoContainer.removeAll();
+        if (league != null && league.getLogo() != null) {
+            StreamResource resource = new StreamResource("logo-" + league.getId() + "-" + System.currentTimeMillis() + ".png",
+                    () -> new ByteArrayInputStream(league.getLogo()));
+            Image logoImg = new Image(resource, "logo");
+            logoImg.setHeight("40px");
+            logoContainer.add(logoImg);
+        }
     }
 }

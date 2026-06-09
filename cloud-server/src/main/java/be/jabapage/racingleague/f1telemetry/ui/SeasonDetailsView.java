@@ -59,6 +59,11 @@ import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.combobox.MultiSelectComboBox;
+import com.vaadin.flow.component.html.Image;
+import com.vaadin.flow.component.upload.Upload;
+import com.vaadin.flow.component.upload.receivers.MemoryBuffer;
+import com.vaadin.flow.server.StreamResource;
+import java.io.ByteArrayInputStream;
 
 @AnonymousAllowed
 @PageTitle("Season Details | F1 Telemetry")
@@ -81,6 +86,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private List<Tier> leagueTiers = new ArrayList<>();
     private Tier selectedTier;
 
+    private final HorizontalLayout logoContainer = new HorizontalLayout();
+    private final HorizontalLayout logoUploadLayout = new HorizontalLayout();
     private final H2 seasonName = new H2();
     private final ComboBox<Tier> tierSelector = new ComboBox<>("Active Tier");
     private final Checkbox hideAiCheckbox = new Checkbox("Hide AI Drivers");
@@ -176,8 +183,9 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             }
         });
 
-        HorizontalLayout header = new HorizontalLayout(seasonName, tierSelector);
-        header.setAlignItems(Alignment.BASELINE);
+        logoContainer.setAlignItems(Alignment.CENTER);
+        HorizontalLayout header = new HorizontalLayout(logoContainer, seasonName, tierSelector);
+        header.setAlignItems(Alignment.CENTER);
         header.setSpacing(true);
 
         // Top level tabs
@@ -307,9 +315,45 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             }
         });
 
+        // Logo Upload Config
+        MemoryBuffer buffer = new MemoryBuffer();
+        Upload upload = new Upload(buffer);
+        upload.setAcceptedFileTypes("image/png", "image/jpeg", "image/gif");
+        upload.setMaxFiles(1);
+        upload.setMaxFileSize(1048576); // 1MB
+        upload.setDropLabel(new Span("Drop logo image here (max 1MB)"));
+        upload.setUploadButton(new Button("Upload Logo"));
+        
+        upload.addSucceededListener(ev -> {
+            try {
+                byte[] bytes = buffer.getInputStream().readAllBytes();
+                league.setLogo(bytes);
+                league = leagueRepository.save(league);
+                updateLogo();
+                Notification.show("Logo uploaded successfully!", 3000, Notification.Position.TOP_CENTER);
+            } catch (java.io.IOException ex) {
+                Notification.show("Failed to upload logo: " + ex.getMessage(), 5000, Notification.Position.TOP_CENTER);
+            }
+        });
+
+        Button removeLogoBtn = new Button("Remove Logo", ev -> {
+            if (league != null) {
+                league.setLogo(null);
+                league = leagueRepository.save(league);
+                updateLogo();
+                Notification.show("Logo removed successfully!", 3000, Notification.Position.TOP_CENTER);
+            }
+        });
+        removeLogoBtn.addThemeVariants(ButtonVariant.LUMO_ERROR);
+
+        logoUploadLayout.add(upload, removeLogoBtn);
+        logoUploadLayout.setAlignItems(Alignment.CENTER);
+        logoUploadLayout.setSpacing(true);
+        logoUploadLayout.setVisible(false);
+
         // Settings Layout
         settingsLayout.add(new H3("Season Settings"));
-        settingsLayout.add(hideAiCheckbox, showTyreWearCheckbox, showErsCheckbox, minLapsPctField);
+        settingsLayout.add(hideAiCheckbox, showTyreWearCheckbox, showErsCheckbox, minLapsPctField, logoUploadLayout);
         settingsLayout.setVisible(false);
         
         recalculateBtn.addClickListener(e -> {
@@ -860,6 +904,13 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             showTyreWearCheckbox.setValue(league.isShowTyreWear());
             showErsCheckbox.setValue(league.isShowErs());
             minLapsPctField.setValue(league.getMinLapsPct() != null ? league.getMinLapsPct() : 60);
+            
+            updateLogo();
+            
+            boolean isOwner = securityService.getAuthenticatedUserEntity()
+                    .map(user -> league.getUser() != null && league.getUser().getId().equals(user.getId()))
+                    .orElse(false);
+            logoUploadLayout.setVisible(isOwner);
             
             updateTierSelector();
             
@@ -1430,6 +1481,17 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         });
 
         return rows;
+    }
+
+    private void updateLogo() {
+        logoContainer.removeAll();
+        if (league != null && league.getLogo() != null) {
+            StreamResource resource = new StreamResource("logo-" + league.getId() + "-" + System.currentTimeMillis() + ".png",
+                    () -> new ByteArrayInputStream(league.getLogo()));
+            Image logoImg = new Image(resource, "logo");
+            logoImg.setHeight("50px");
+            logoContainer.add(logoImg);
+        }
     }
 
     @Getter

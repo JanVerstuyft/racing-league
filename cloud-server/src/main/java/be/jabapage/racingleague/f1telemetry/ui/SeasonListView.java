@@ -20,6 +20,10 @@ import com.vaadin.flow.router.RouterLink;
 import jakarta.annotation.security.PermitAll;
 
 import java.util.UUID;
+import com.vaadin.flow.component.html.Image;
+import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.server.StreamResource;
+import java.io.ByteArrayInputStream;
 
 @PermitAll
 @PageTitle("Seasons | F1 Telemetry")
@@ -53,6 +57,18 @@ public class SeasonListView extends VerticalLayout {
 
     private void configureGrid() {
         grid.setSizeFull();
+        
+        grid.addComponentColumn(league -> {
+            if (league.getLogo() != null) {
+                StreamResource resource = new StreamResource("logo-" + league.getId() + "-" + System.currentTimeMillis() + ".png",
+                        () -> new ByteArrayInputStream(league.getLogo()));
+                Image img = new Image(resource, "logo");
+                img.setHeight("40px");
+                return img;
+            }
+            return new Span("-");
+        }).setHeader("Logo").setWidth("80px").setFlexGrow(0);
+
         grid.addColumn(League::getName).setHeader("Season Name").setAutoWidth(true);
         
         grid.addComponentColumn(league -> {

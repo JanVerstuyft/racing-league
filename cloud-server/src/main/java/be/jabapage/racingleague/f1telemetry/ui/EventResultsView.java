@@ -2,8 +2,12 @@ package be.jabapage.racingleague.f1telemetry.ui;
 
 import be.jabapage.racingleague.f1telemetry.entity.DriverResult;
 import be.jabapage.racingleague.f1telemetry.entity.Event;
+import be.jabapage.racingleague.f1telemetry.entity.League;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
 import be.jabapage.racingleague.f1telemetry.entity.LapResult;
+import com.vaadin.flow.component.html.Image;
+import com.vaadin.flow.server.StreamResource;
+import java.io.ByteArrayInputStream;
 import be.jabapage.racingleague.f1telemetry.model.RacePaceStats;
 import be.jabapage.racingleague.f1telemetry.model.LongestStintStats;
 import be.jabapage.racingleague.f1telemetry.model.ConsistencyStats;
@@ -61,6 +65,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     private final SecurityService securityService;
     private final TeamMappingRepository teamMappingRepository;
 
+    private final HorizontalLayout logoContainer = new HorizontalLayout();
     private final H2 eventHeader = new H2();
     private final RouterLink backToSeason = new RouterLink("Back to Season", SeasonDetailsView.class, 0L);
     
@@ -142,7 +147,12 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         nav.add(new RouterLink("Documentation", DocumentationView.class));
         nav.setSpacing(true);
 
-        add(nav, eventHeader, mainTabs, resultsContainer, statsContainer);
+        logoContainer.setAlignItems(Alignment.CENTER);
+        HorizontalLayout titleLayout = new HorizontalLayout(logoContainer, eventHeader);
+        titleLayout.setAlignItems(Alignment.CENTER);
+        titleLayout.setSpacing(true);
+
+        add(nav, titleLayout, mainTabs, resultsContainer, statsContainer);
         
         configureManualEntry();
     }
@@ -370,6 +380,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             this.currentEvent = e;
             eventHeader.setText("Event: " + currentEvent.getEventName());
             backToSeason.setRoute(SeasonDetailsView.class, currentEvent.getTier().getLeague().getId());
+            updateLogo();
             setupSessionTabs();
             setupStatsSessionTabs();
             updateSessionContent();
@@ -858,5 +869,19 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 .filter(l -> l.getIsValid() != null && l.getIsValid() && l.getLapTimeInMS() != null && l.getLapTimeInMS() > 0)
                 .min(Comparator.comparingLong(LapResult::getLapTimeInMS))
                 .orElse(null);
+    }
+
+    private void updateLogo() {
+        logoContainer.removeAll();
+        if (currentEvent != null && currentEvent.getTier() != null && currentEvent.getTier().getLeague() != null) {
+            League league = currentEvent.getTier().getLeague();
+            if (league.getLogo() != null) {
+                StreamResource resource = new StreamResource("logo-" + league.getId() + "-" + System.currentTimeMillis() + ".png",
+                        () -> new ByteArrayInputStream(league.getLogo()));
+                Image logoImg = new Image(resource, "logo");
+                logoImg.setHeight("40px");
+                logoContainer.add(logoImg);
+            }
+        }
     }
 }

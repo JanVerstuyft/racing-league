@@ -27,6 +27,7 @@ public class DriverBoardState {
     // Qualifying fields
     private boolean qualifying;
     private String bestLapTime;
+    private boolean bestLap;
     private String gapToLeaderBest;
     private String s1Time;
     private String s2Time;
