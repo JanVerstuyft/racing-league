@@ -12,4 +12,6 @@
     <include file="changelog/009_change_manual_penalty_to_session_result.xml" relativeToChangelogFile="true"/>
     <include file="changelog/010_add_team_mapping.xml" relativeToChangelogFile="true"/>
     <include file="changelog/011_update_team_mapping.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/012_add_logo_to_league.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/013_refactor_league_logo.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>

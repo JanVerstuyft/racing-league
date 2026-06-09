@@ -183,10 +183,6 @@ public class TelemetryProcessingService {
             Map.entry(19, "Sprint Race")
     );
 
-    @Scheduled(fixedDelay = 1000)
-    public void syncDistributedState() {
-        telemetryStateService.syncDistributedState();
-    }
 
     public void refreshHideAiSetting(Long leagueId) {
         telemetryStateService.refreshHideAiSetting(leagueId);

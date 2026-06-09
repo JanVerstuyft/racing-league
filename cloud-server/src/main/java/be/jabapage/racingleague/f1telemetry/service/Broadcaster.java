@@ -27,6 +27,9 @@ public class Broadcaster {
                 List<Consumer<List<DriverBoardState>>> listeners = leaderboardListeners.get(tierId);
                 if (listeners != null) {
                     listeners.remove(listener);
+                    if (listeners.isEmpty()) {
+                        leaderboardListeners.remove(tierId);
+                    }
                 }
             }
         };
@@ -40,6 +43,9 @@ public class Broadcaster {
                 List<Consumer<SessionInfo>> listeners = sessionInfoListeners.get(tierId);
                 if (listeners != null) {
                     listeners.remove(listener);
+                    if (listeners.isEmpty()) {
+                        sessionInfoListeners.remove(tierId);
+                    }
                 }
             }
         };

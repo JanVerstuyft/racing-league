@@ -1,13 +1,20 @@
 package be.jabapage.racingleague.f1telemetry.model;
 
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 @Data
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class DriverBoardState {
     private int position;
+    
+    @EqualsAndHashCode.Include
     private String name;
+    
+    @EqualsAndHashCode.Include
     private int raceNumber;
     private String team;
+    private int teamId;
     private String country;
     private String tyreCompound;
     private int tyreAge;

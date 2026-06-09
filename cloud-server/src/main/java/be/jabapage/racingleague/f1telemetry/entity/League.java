@@ -29,8 +29,12 @@ public class League {
     @Column(name = "min_laps_pct", nullable = false)
     private Integer minLapsPct = 60;
 
-    @Column(name = "logo", columnDefinition = "bytea")
-    private byte[] logo;
+    @Column(name = "has_logo", nullable = false)
+    private Boolean hasLogo = false;
+
+    public boolean getHasLogo() {
+        return hasLogo != null && hasLogo;
+    }
 
     public boolean isHideAi() {
         return hideAi != null && hideAi;

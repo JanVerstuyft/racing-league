@@ -7,6 +7,8 @@ import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
 import be.jabapage.racingleague.f1telemetry.entity.LapResult;
 import com.vaadin.flow.component.html.Image;
 import com.vaadin.flow.server.StreamResource;
+import be.jabapage.racingleague.f1telemetry.entity.LeagueLogo;
+import be.jabapage.racingleague.f1telemetry.repository.LeagueLogoRepository;
 import java.io.ByteArrayInputStream;
 import be.jabapage.racingleague.f1telemetry.model.RacePaceStats;
 import be.jabapage.racingleague.f1telemetry.model.LongestStintStats;
@@ -84,6 +86,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     
     private Long currentEventId;
     private Event currentEvent;
+    private final LeagueLogoRepository leagueLogoRepository;
 
     public EventResultsView(EventRepository eventRepository,
                             SessionResultRepository sessionResultRepository,
@@ -91,7 +94,8 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                             DriverMappingRepository driverMappingRepository,
                             TelemetryProcessingService telemetryProcessingService,
                             SecurityService securityService,
-                            TeamMappingRepository teamMappingRepository) {
+                            TeamMappingRepository teamMappingRepository,
+                            LeagueLogoRepository leagueLogoRepository) {
         this.eventRepository = eventRepository;
         this.sessionResultRepository = sessionResultRepository;
         this.driverResultRepository = driverResultRepository;
@@ -99,6 +103,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         this.telemetryProcessingService = telemetryProcessingService;
         this.securityService = securityService;
         this.teamMappingRepository = teamMappingRepository;
+        this.leagueLogoRepository = leagueLogoRepository;
         setSizeFull();
 
         // Main Tabs
@@ -875,9 +880,14 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         logoContainer.removeAll();
         if (currentEvent != null && currentEvent.getTier() != null && currentEvent.getTier().getLeague() != null) {
             League league = currentEvent.getTier().getLeague();
-            if (league.getLogo() != null) {
+            if (league.getHasLogo()) {
                 StreamResource resource = new StreamResource("logo-" + league.getId() + "-" + System.currentTimeMillis() + ".png",
-                        () -> new ByteArrayInputStream(league.getLogo()));
+                        () -> {
+                            byte[] logoBytes = leagueLogoRepository.findById(league.getId())
+                                    .map(LeagueLogo::getLogo)
+                                    .orElse(new byte[0]);
+                            return new ByteArrayInputStream(logoBytes);
+                        });
                 Image logoImg = new Image(resource, "logo");
                 logoImg.setHeight("40px");
                 logoContainer.add(logoImg);

@@ -7,11 +7,13 @@ import be.jabapage.racingleague.f1telemetry.entity.Tier;
 import lombok.Getter;
 import lombok.Setter;
 import be.jabapage.racingleague.f1telemetry.entity.TeamStanding;
+import be.jabapage.racingleague.f1telemetry.entity.LeagueLogo;
 import be.jabapage.racingleague.f1telemetry.repository.DriverStandingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.EventRepository;
 import be.jabapage.racingleague.f1telemetry.repository.LeagueRepository;
 import be.jabapage.racingleague.f1telemetry.repository.TierRepository;
 import be.jabapage.racingleague.f1telemetry.repository.TeamStandingRepository;
+import be.jabapage.racingleague.f1telemetry.repository.LeagueLogoRepository;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
 import be.jabapage.racingleague.f1telemetry.entity.DriverResult;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
@@ -79,6 +81,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final SessionPointConfigRepository sessionPointConfigRepository;
     private final ExtraPointRuleRepository extraPointRuleRepository;
     private final ManualPenaltyRepository manualPenaltyRepository;
+    private final LeagueLogoRepository leagueLogoRepository;
     private final SecurityService securityService;
     private final TelemetryProcessingService telemetryProcessingService;
     
@@ -148,6 +151,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                              SessionPointConfigRepository sessionPointConfigRepository,
                              ExtraPointRuleRepository extraPointRuleRepository,
                              ManualPenaltyRepository manualPenaltyRepository,
+                             LeagueLogoRepository leagueLogoRepository,
                              TelemetryProcessingService telemetryProcessingService,
                              SecurityService securityService) {
         this.leagueRepository = leagueRepository;
@@ -159,6 +163,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         this.sessionPointConfigRepository = sessionPointConfigRepository;
         this.extraPointRuleRepository = extraPointRuleRepository;
         this.manualPenaltyRepository = manualPenaltyRepository;
+        this.leagueLogoRepository = leagueLogoRepository;
         this.telemetryProcessingService = telemetryProcessingService;
         this.securityService = securityService;
 
@@ -327,7 +332,16 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         upload.addSucceededListener(ev -> {
             try {
                 byte[] bytes = buffer.getInputStream().readAllBytes();
-                league.setLogo(bytes);
+                LeagueLogo logo = leagueLogoRepository.findById(league.getId())
+                        .orElseGet(() -> {
+                            LeagueLogo lLogo = new LeagueLogo();
+                            lLogo.setLeagueId(league.getId());
+                            return lLogo;
+                        });
+                logo.setLogo(bytes);
+                leagueLogoRepository.save(logo);
+                
+                league.setHasLogo(true);
                 league = leagueRepository.save(league);
                 updateLogo();
                 Notification.show("Logo uploaded successfully!", 3000, Notification.Position.TOP_CENTER);
@@ -336,9 +350,15 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             }
         });
 
+        upload.addFileRejectedListener(ev -> {
+            Notification notification = Notification.show("Upload failed: " + ev.getErrorMessage(), 5000, Notification.Position.TOP_CENTER);
+            notification.addThemeVariants(com.vaadin.flow.component.notification.NotificationVariant.LUMO_ERROR);
+        });
+
         Button removeLogoBtn = new Button("Remove Logo", ev -> {
             if (league != null) {
-                league.setLogo(null);
+                leagueLogoRepository.deleteById(league.getId());
+                league.setHasLogo(false);
                 league = leagueRepository.save(league);
                 updateLogo();
                 Notification.show("Logo removed successfully!", 3000, Notification.Position.TOP_CENTER);
@@ -1485,9 +1505,14 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
     private void updateLogo() {
         logoContainer.removeAll();
-        if (league != null && league.getLogo() != null) {
+        if (league != null && league.getHasLogo()) {
             StreamResource resource = new StreamResource("logo-" + league.getId() + "-" + System.currentTimeMillis() + ".png",
-                    () -> new ByteArrayInputStream(league.getLogo()));
+                    () -> {
+                        byte[] logoBytes = leagueLogoRepository.findById(league.getId())
+                                .map(LeagueLogo::getLogo)
+                                .orElse(new byte[0]);
+                        return new ByteArrayInputStream(logoBytes);
+                    });
             Image logoImg = new Image(resource, "logo");
             logoImg.setHeight("50px");
             logoContainer.add(logoImg);

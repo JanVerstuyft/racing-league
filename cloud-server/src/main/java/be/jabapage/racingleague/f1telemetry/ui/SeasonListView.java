@@ -2,8 +2,10 @@ package be.jabapage.racingleague.f1telemetry.ui;
 
 import be.jabapage.racingleague.f1telemetry.entity.League;
 import be.jabapage.racingleague.f1telemetry.entity.Tier;
+import be.jabapage.racingleague.f1telemetry.entity.LeagueLogo;
 import be.jabapage.racingleague.f1telemetry.repository.LeagueRepository;
 import be.jabapage.racingleague.f1telemetry.repository.TierRepository;
+import be.jabapage.racingleague.f1telemetry.repository.LeagueLogoRepository;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
 import be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService;
 import com.vaadin.flow.component.button.Button;
@@ -32,6 +34,7 @@ public class SeasonListView extends VerticalLayout {
 
     private final LeagueRepository leagueRepository;
     private final TierRepository tierRepository;
+    private final LeagueLogoRepository leagueLogoRepository;
     private final TelemetryProcessingService telemetryProcessingService;
     private final SecurityService securityService;
     private final Grid<League> grid = new Grid<>(League.class, false);
@@ -39,10 +42,12 @@ public class SeasonListView extends VerticalLayout {
 
     public SeasonListView(LeagueRepository leagueRepository, 
                           TierRepository tierRepository,
+                          LeagueLogoRepository leagueLogoRepository,
                           TelemetryProcessingService telemetryProcessingService,
                           SecurityService securityService) {
         this.leagueRepository = leagueRepository;
         this.tierRepository = tierRepository;
+        this.leagueLogoRepository = leagueLogoRepository;
         this.telemetryProcessingService = telemetryProcessingService;
         this.securityService = securityService;
         
@@ -59,9 +64,14 @@ public class SeasonListView extends VerticalLayout {
         grid.setSizeFull();
         
         grid.addComponentColumn(league -> {
-            if (league.getLogo() != null) {
+            if (league.getHasLogo()) {
                 StreamResource resource = new StreamResource("logo-" + league.getId() + "-" + System.currentTimeMillis() + ".png",
-                        () -> new ByteArrayInputStream(league.getLogo()));
+                        () -> {
+                            byte[] logoBytes = leagueLogoRepository.findById(league.getId())
+                                    .map(LeagueLogo::getLogo)
+                                    .orElse(new byte[0]);
+                            return new ByteArrayInputStream(logoBytes);
+                        });
                 Image img = new Image(resource, "logo");
                 img.setHeight("40px");
                 return img;

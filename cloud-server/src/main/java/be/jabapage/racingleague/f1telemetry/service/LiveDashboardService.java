@@ -21,11 +21,46 @@ public class LiveDashboardService {
     @Autowired
     private Broadcaster broadcaster;
 
+    private final java.util.concurrent.ScheduledExecutorService scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+    private final Map<Long, Long> lastLeaderboardBroadcast = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<Long, Boolean> leaderboardBroadcastScheduled = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<Long, Long> lastSessionInfoBroadcast = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<Long, Boolean> sessionInfoBroadcastScheduled = new java.util.concurrent.ConcurrentHashMap<>();
+
+    @jakarta.annotation.PreDestroy
+    public void destroy() {
+        scheduler.shutdown();
+    }
+
     public void broadcastSessionInfo(LeagueSessionState state) {
         if (state.getTierId() == null) return;
-        SessionInfo info = buildSessionInfo(state);
-        if (info != null) {
-            broadcaster.broadcastSessionInfo(state.getTierId(), info);
+        long tierId = state.getTierId();
+        long now = System.currentTimeMillis();
+        long last = lastSessionInfoBroadcast.getOrDefault(tierId, 0L);
+        
+        if (now - last >= 500) {
+            lastSessionInfoBroadcast.put(tierId, now);
+            sessionInfoBroadcastScheduled.put(tierId, false);
+            SessionInfo info = buildSessionInfo(state);
+            if (info != null) {
+                broadcaster.broadcastSessionInfo(tierId, info);
+            }
+        } else {
+            if (sessionInfoBroadcastScheduled.putIfAbsent(tierId, true) == null || !sessionInfoBroadcastScheduled.get(tierId)) {
+                sessionInfoBroadcastScheduled.put(tierId, true);
+                long delay = 500 - (now - last);
+                try {
+                    scheduler.schedule(() -> {
+                        sessionInfoBroadcastScheduled.put(tierId, false);
+                        telemetryStateService.getLeagueStates().values().stream()
+                            .filter(s -> Objects.equals(s.getTierId(), tierId))
+                            .findFirst()
+                            .ifPresent(this::broadcastSessionInfo);
+                    }, delay, java.util.concurrent.TimeUnit.MILLISECONDS);
+                } catch (Exception e) {
+                    sessionInfoBroadcastScheduled.put(tierId, false);
+                }
+            }
         }
     }
 
@@ -69,9 +104,33 @@ public class LiveDashboardService {
 
     public void broadcastLeaderboard(LeagueSessionState state) {
         if (state.getTierId() == null) return;
-        List<DriverBoardState> board = buildLeaderboard(state);
-        if (board != null) {
-            broadcaster.broadcastLeaderboard(state.getTierId(), board);
+        long tierId = state.getTierId();
+        long now = System.currentTimeMillis();
+        long last = lastLeaderboardBroadcast.getOrDefault(tierId, 0L);
+        
+        if (now - last >= 500) {
+            lastLeaderboardBroadcast.put(tierId, now);
+            leaderboardBroadcastScheduled.put(tierId, false);
+            List<DriverBoardState> board = buildLeaderboard(state);
+            if (board != null) {
+                broadcaster.broadcastLeaderboard(tierId, board);
+            }
+        } else {
+            if (leaderboardBroadcastScheduled.putIfAbsent(tierId, true) == null || !leaderboardBroadcastScheduled.get(tierId)) {
+                leaderboardBroadcastScheduled.put(tierId, true);
+                long delay = 500 - (now - last);
+                try {
+                    scheduler.schedule(() -> {
+                        leaderboardBroadcastScheduled.put(tierId, false);
+                        telemetryStateService.getLeagueStates().values().stream()
+                            .filter(s -> Objects.equals(s.getTierId(), tierId))
+                            .findFirst()
+                            .ifPresent(this::broadcastLeaderboard);
+                    }, delay, java.util.concurrent.TimeUnit.MILLISECONDS);
+                } catch (Exception e) {
+                    leaderboardBroadcastScheduled.put(tierId, false);
+                }
+            }
         }
     }
 
@@ -111,6 +170,7 @@ public class LiveDashboardService {
                     : 25;
             String carType = TelemetryProcessingService.detectCarType(state.getCurrentParticipants(), gameYear);
             driverState.setTeam(TelemetryProcessingService.getTeamNameStatic(p.getTeamId(), carType));
+            driverState.setTeamId(p.getTeamId());
             driverState.setCountry(CountryProvider.getCountryInfo(p.getNationality()).getName());
             driverState.setTyreCompound(TelemetryProcessingService.TYRE_COMPOUNDS.getOrDefault(csd.getVisualTyreCompound(), "Unknown"));
             driverState.setTyreAge(csd.getTyresAgeLaps());

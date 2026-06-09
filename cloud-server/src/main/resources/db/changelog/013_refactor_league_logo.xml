@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="013_refactor_league_logo" author="antigravity">
+        <!-- 1. Create the new league_logo table -->
+        <createTable tableName="league_logo">
+            <column name="league_id" type="BIGINT">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="logo" type="bytea"/>
+        </createTable>
+
+        <!-- 2. Add foreign key constraint with cascade delete -->
+        <addForeignKeyConstraint baseTableName="league_logo" baseColumnNames="league_id"
+                                 constraintName="fk_league_logo_league"
+                                 referencedTableName="league" referencedColumnNames="id"
+                                 onDelete="CASCADE"/>
+
+        <!-- 3. Add has_logo column to league table -->
+        <addColumn tableName="league">
+            <column name="has_logo" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <!-- 4. Copy existing logo data and set has_logo flags -->
+        <sql>
+            INSERT INTO league_logo (league_id, logo)
+            SELECT id, logo FROM league WHERE logo IS NOT NULL;
+            
+            UPDATE league SET has_logo = true WHERE logo IS NOT NULL;
+        </sql>
+
+        <!-- 5. Drop the old logo column from league -->
+        <dropColumn tableName="league" columnName="logo"/>
+    </changeSet>
+</databaseChangeLog>
