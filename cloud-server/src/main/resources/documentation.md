@@ -14,6 +14,7 @@
 - [6. Points configuration overrides](#6-points-configuration-overrides)
 - [7. Incident & Penalty System](#7-incident--penalty-system)
 - [8. Event Lineups](#8-event-lineups)
+- [9. Provisional vs Finalized Race Weekends](#9-provisional-vs-finalized-race-weekends)
 
 ## 1. Collector Setup
 ### 1a. Local Collector Setup
@@ -193,3 +194,13 @@ Coordinators can manage the grid lineup for each race weekend via the Event Deta
 
 * **Lineup Settings & Styling:** League owners can define an **Accent Color** in the Season Settings. This color is dynamically applied to display ribbons on the lineup layout. The ribbons also proudly display the League Name.
 * **Lineup Syncing (Update with Real Lineup):** When a session has been driven, administrators can click **Update with Real Lineup** in the Lineup view. This action clears the pre-race lineup configuration and automatically queries telemetry results for that event, mapping all recorded human participants and their team IDs to form the correct actual race lineup automatically.
+
+## 9. Provisional vs Finalized Race Weekends
+To ensure data integrity and give league stewards time to review incidents and apply penalties before standings are permanently affected, the system implements a provisional versus finalized event workflow.
+
+* **Default Status:** When a new race weekend (event) is created or when telemetry is first received, the event is marked as **Provisional** (displayed with a red "Provisional" badge in the UI).
+* **Standings Updates:** Driver and team standings are **not** updated while an event is provisional. Standings are only updated after a steward explicitly marks the race weekend as **Final** (displayed with a green "Final" badge).
+* **Locking Penalties:** When a race weekend is marked as final, the event's results are locked. Stewards can no longer add new manual penalties or delete existing ones.
+* **Managing Status (Stewards only):**
+    * Logged-in stewards can finalize a provisional event by clicking the **Mark Final** button on the Season Details or Event Results pages. This locks penalties and recalculates/updates all standings.
+    * If a finalized event needs to be adjusted, stewards can click **Reopen** to make it provisional again. This unlocks the penalty system and removes the event's results from the standings until it is finalized again.
