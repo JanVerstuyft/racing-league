@@ -13,4 +13,7 @@ public interface DriverMappingRepository extends JpaRepository<DriverMapping, Lo
     List<DriverMapping> findByLeague(League league);
     Optional<DriverMapping> findByLeagueAndTelemetryNameAndRaceNumberAndDriverId(League league, String telemetryName, Integer raceNumber, Integer driverId);
     Optional<DriverMapping> findByLeagueAndTelemetryNameAndRaceNumberAndDriverIdAndCountry(League league, String telemetryName, Integer raceNumber, Integer driverId, String country);
+    List<DriverMapping> findByTier(be.jabapage.racingleague.f1telemetry.entity.Tier tier);
+    Optional<DriverMapping> findByTierAndTelemetryNameAndRaceNumberAndDriverId(be.jabapage.racingleague.f1telemetry.entity.Tier tier, String telemetryName, Integer raceNumber, Integer driverId);
+    Optional<DriverMapping> findByTierAndTelemetryNameAndRaceNumberAndDriverIdAndCountry(be.jabapage.racingleague.f1telemetry.entity.Tier tier, String telemetryName, Integer raceNumber, Integer driverId, String country);
 }

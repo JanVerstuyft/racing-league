@@ -35,6 +35,28 @@ public class League {
     @Column(name = "logo_background_color")
     private String logoBackgroundColor;
 
+    @Column(name = "accent_color")
+    private String accentColor;
+
+    @Column(name = "youtube_handle")
+    private String youtubeHandle;
+
+    @Column(name = "tiktok_handle")
+    private String tiktokHandle;
+
+    @Column(name = "x_handle")
+    private String xHandle;
+
+    @Column(name = "instagram_handle")
+    private String instagramHandle;
+
+    @Column(name = "twitch_handle")
+    private String twitchHandle;
+
+    @Column(name = "car_type")
+    private String carType;
+
+
     public boolean getHasLogo() {
         return hasLogo != null && hasLogo;
     }

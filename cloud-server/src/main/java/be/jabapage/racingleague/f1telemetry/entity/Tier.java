@@ -39,7 +39,7 @@ public class Tier {
     @OneToMany(mappedBy = "tier", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<TeamStanding> teamStandings = new ArrayList<>();
 
-    @ManyToMany(mappedBy = "tiers", fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "tier", fetch = FetchType.LAZY)
     private Set<DriverMapping> driverMappings = new LinkedHashSet<>();
 
     @Override

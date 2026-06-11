@@ -229,7 +229,11 @@ public class TelemetryPacketProcessor {
             String key = p.getName() + "|" + p.getRaceNumber() + "|" + p.getDriverId() + "|" + country;
             if (state.getDriverNameOverrides().containsKey(key)) continue;
 
-            Optional<DriverMapping> mapping = driverMappingRepository.findByLeagueAndTelemetryNameAndRaceNumberAndDriverIdAndCountry(league, p.getName(), p.getRaceNumber(), p.getDriverId(), country);
+            Tier tier = tierRepository.findById(state.getTierId()).orElse(null);
+            Optional<DriverMapping> mapping = Optional.empty();
+            if (tier != null) {
+                mapping = driverMappingRepository.findByTierAndTelemetryNameAndRaceNumberAndDriverIdAndCountry(tier, p.getName(), p.getRaceNumber(), p.getDriverId(), country);
+            }
             if (mapping.isEmpty()) {
                 DriverMapping newMapping = new DriverMapping();
                 newMapping.setLeague(league);
@@ -237,11 +241,7 @@ public class TelemetryPacketProcessor {
                 newMapping.setRaceNumber(p.getRaceNumber());
                 newMapping.setDriverId(p.getDriverId());
                 newMapping.setCountry(CountryProvider.getCountryInfo(p.getNationality()).getName());
-                
-                Tier tier = tierRepository.findById(state.getTierId()).orElse(null);
-                if (tier != null) {
-                    newMapping.getTiers().add(tier);
-                }
+                newMapping.setTier(tier);
                 
                 driverMappingRepository.save(newMapping);
                 state.getDriverNameOverrides().put(key, "");
@@ -249,9 +249,8 @@ public class TelemetryPacketProcessor {
                 log.info("Auto-discovered new driver in league {}: {} (#{}, ID: {})", league.getId(), p.getName(), p.getRaceNumber(), p.getDriverId());
             } else {
                 DriverMapping existingMapping = mapping.get();
-                Tier tier = tierRepository.findById(state.getTierId()).orElse(null);
-                if (tier != null && !existingMapping.getTiers().contains(tier)) {
-                    existingMapping.getTiers().add(tier);
+                if (tier != null && existingMapping.getTier() == null) {
+                    existingMapping.setTier(tier);
                     driverMappingRepository.save(existingMapping);
                 }
                 state.getDriverNameOverrides().put(key, existingMapping.getOverriddenName() != null ? existingMapping.getOverriddenName() : "");

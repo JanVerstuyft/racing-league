@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="015_add_event_lineup" author="antigravity">
+        <createTable tableName="event_lineup">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="event_id" type="BIGINT">
+                <constraints nullable="false" referencedTableName="event" referencedColumnNames="id" foreignKeyName="fk_event_lineup_event"/>
+            </column>
+            <column name="driver_id" type="BIGINT">
+                <constraints nullable="false" referencedTableName="driver_mapping" referencedColumnNames="id" foreignKeyName="fk_event_lineup_driver"/>
+            </column>
+            <column name="team_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="car_type" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint tableName="event_lineup"
+                             columnNames="event_id, driver_id"
+                             constraintName="uq_event_lineup_event_driver"/>
+    </changeSet>
+</databaseChangeLog>

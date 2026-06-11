@@ -224,8 +224,8 @@ public class TelemetryPacketProcessorTest {
         participants.getParticipants().add(p);
 
         mockedParticipantsData.when(() -> PacketParticipantsData.fromByteBuffer(buffer, header)).thenReturn(participants);
-        when(driverMappingRepository.findByLeagueAndTelemetryNameAndRaceNumberAndDriverIdAndCountry(
-                eq(league), eq("Lewis"), eq(44), eq(1), eq("American")
+        when(driverMappingRepository.findByTierAndTelemetryNameAndRaceNumberAndDriverIdAndCountry(
+                eq(tier), eq("Lewis"), eq(44), eq(1), eq("American")
         )).thenReturn(Optional.empty()); // New driver mapping!
 
         telemetryPacketProcessor.processPacket("test-token", header, buffer);

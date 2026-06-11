@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="016_add_team_to_driver_mapping" author="antigravity">
+        <addColumn tableName="driver_mapping">
+            <column name="team_id" type="INTEGER"/>
+        </addColumn>
+
+        <sql>
+            -- For drivers with exactly 1 distinct team in driver_result (excluding team_id = -1 and nulls)
+            UPDATE driver_mapping dm
+            SET team_id = (
+                SELECT MIN(dr.team_id)
+                FROM driver_result dr
+                JOIN session_result sr ON dr.session_result_id = sr.id
+                JOIN tier t ON sr.tier_id = t.id
+                WHERE dr.telemetry_name = dm.telemetry_name
+                  AND dr.race_number = dm.race_number
+                  AND dr.driver_id = dm.driver_id
+                  AND COALESCE(dr.country, 'Unknown') = COALESCE(dm.country, 'Unknown')
+                  AND t.league_id = dm.league_id
+                  AND dr.team_id IS NOT NULL
+                  AND dr.team_id != -1
+            ), is_reserve = false
+            WHERE (
+                SELECT COUNT(DISTINCT dr.team_id)
+                FROM driver_result dr
+                JOIN session_result sr ON dr.session_result_id = sr.id
+                JOIN tier t ON sr.tier_id = t.id
+                WHERE dr.telemetry_name = dm.telemetry_name
+                  AND dr.race_number = dm.race_number
+                  AND dr.driver_id = dm.driver_id
+                  AND COALESCE(dr.country, 'Unknown') = COALESCE(dm.country, 'Unknown')
+                  AND t.league_id = dm.league_id
+                  AND dr.team_id IS NOT NULL
+                  AND dr.team_id != -1
+            ) = 1;
+
+            -- For drivers with multiple teams (or 0 teams) in driver_result
+            UPDATE driver_mapping dm
+            SET is_reserve = true, team_id = NULL
+            WHERE (
+                SELECT COUNT(DISTINCT dr.team_id)
+                FROM driver_result dr
+                JOIN session_result sr ON dr.session_result_id = sr.id
+                JOIN tier t ON sr.tier_id = t.id
+                WHERE dr.telemetry_name = dm.telemetry_name
+                  AND dr.race_number = dm.race_number
+                  AND dr.driver_id = dm.driver_id
+                  AND COALESCE(dr.country, 'Unknown') = COALESCE(dm.country, 'Unknown')
+                  AND t.league_id = dm.league_id
+                  AND dr.team_id IS NOT NULL
+                  AND dr.team_id != -1
+            ) != 1;
+        </sql>
+    </changeSet>
+</databaseChangeLog>

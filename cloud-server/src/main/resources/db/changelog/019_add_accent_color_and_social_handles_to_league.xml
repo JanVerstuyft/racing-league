@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="019_add_accent_color_and_social_handles_to_league" author="antigravity">
+        <addColumn tableName="league">
+            <column name="accent_color" type="VARCHAR(50)"/>
+            <column name="youtube_handle" type="VARCHAR(255)"/>
+            <column name="tiktok_handle" type="VARCHAR(255)"/>
+            <column name="x_handle" type="VARCHAR(255)"/>
+            <column name="instagram_handle" type="VARCHAR(255)"/>
+            <column name="twitch_handle" type="VARCHAR(255)"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

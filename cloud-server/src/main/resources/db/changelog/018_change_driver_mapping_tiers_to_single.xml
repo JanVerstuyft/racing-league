@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="018_change_driver_mapping_tiers_to_single" author="antigravity">
+        <!-- 1. Add tier_id column to driver_mapping -->
+        <addColumn tableName="driver_mapping">
+            <column name="tier_id" type="BIGINT"/>
+        </addColumn>
+
+        <!-- 2. Migrate data from driver_mapping_tier join table -->
+        <sql>
+            UPDATE driver_mapping dm
+            SET tier_id = (
+                SELECT MIN(dmt.tier_id)
+                FROM driver_mapping_tier dmt
+                WHERE dmt.driver_mapping_id = dm.id
+            );
+        </sql>
+
+        <!-- 3. Add foreign key constraint with SET NULL on delete -->
+        <addForeignKeyConstraint baseColumnNames="tier_id" baseTableName="driver_mapping"
+                                 constraintName="fk_driver_mapping_tier_ref" referencedColumnNames="id" referencedTableName="tier"
+                                 onDelete="SET NULL"/>
+
+        <!-- 4. Drop the obsolete driver_mapping_tier table -->
+        <dropTable tableName="driver_mapping_tier"/>
+    </changeSet>
+</databaseChangeLog>

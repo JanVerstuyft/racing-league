@@ -33,16 +33,15 @@ public class DriverMapping {
     @Column(name = "is_reserve")
     private Boolean reserve = false;
 
+    @Column(name = "team_id")
+    private Integer teamId;
+
     @Column(name = "country")
     private String country = "Unknown";
 
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(
-        name = "driver_mapping_tier",
-        joinColumns = @JoinColumn(name = "driver_mapping_id"),
-        inverseJoinColumns = @JoinColumn(name = "tier_id")
-    )
-    private java.util.Set<Tier> tiers = new java.util.LinkedHashSet<>();
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "tier_id")
+    private Tier tier;
 
     public boolean isReserve() {
         return reserve != null && reserve;

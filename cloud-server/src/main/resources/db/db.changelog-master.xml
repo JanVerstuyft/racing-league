@@ -15,4 +15,11 @@
     <include file="changelog/012_add_logo_to_league.xml" relativeToChangelogFile="true"/>
     <include file="changelog/013_refactor_league_logo.xml" relativeToChangelogFile="true"/>
     <include file="changelog/014_add_logo_background_color.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/015_add_event_lineup.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/016_add_team_to_driver_mapping.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/017_cascade_delete_live_state.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/018_change_driver_mapping_tiers_to_single.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/019_add_accent_color_and_social_handles_to_league.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/020_add_car_type_to_league.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>
+
