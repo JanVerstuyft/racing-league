@@ -854,7 +854,7 @@ public class TelemetryResultsService {
                 dr.setRawPosition(dr.getPosition());
             }
 
-            DriverMapping mapping = findMappingForDriverResult(dr, mappings);
+            DriverMapping mapping = findMappingForDriverResult(dr, mappings, session.getTier());
             int stewardSeconds = 0;
             if (mapping != null && secondsMap.containsKey(mapping.getId())) {
                 stewardSeconds = secondsMap.get(mapping.getId());
@@ -907,7 +907,7 @@ public class TelemetryResultsService {
         }
 
         for (DriverResult dr : session.getDriverResults()) {
-            DriverMapping mapping = findMappingForDriverResult(dr, mappings);
+            DriverMapping mapping = findMappingForDriverResult(dr, mappings, session.getTier());
             int pointDeducted = 0;
             if (mapping != null && deductionsMap.containsKey(mapping.getId())) {
                 pointDeducted = deductionsMap.get(mapping.getId());
@@ -921,7 +921,7 @@ public class TelemetryResultsService {
         driverResultRepository.saveAll(session.getDriverResults());
     }
 
-    private DriverMapping findMappingForDriverResult(DriverResult result, List<DriverMapping> mappings) {
+    private DriverMapping findMappingForDriverResult(DriverResult result, List<DriverMapping> mappings, Tier tier) {
         if (result.getTelemetryName() == null || result.getRaceNumber() == null || result.getDriverId() == null) {
             return null;
         }
@@ -930,7 +930,9 @@ public class TelemetryResultsService {
                     && Objects.equals(m.getRaceNumber(), result.getRaceNumber())
                     && Objects.equals(m.getDriverId(), result.getDriverId())
                     && Objects.equals(m.getCountry(), result.getCountry())) {
-                return m;
+                if (m.getTier() == null || (tier != null && Objects.equals(m.getTier().getId(), tier.getId()))) {
+                    return m;
+                }
             }
         }
         return null;

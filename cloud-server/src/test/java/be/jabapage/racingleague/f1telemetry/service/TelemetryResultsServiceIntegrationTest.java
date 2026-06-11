@@ -540,6 +540,106 @@ public class TelemetryResultsServiceIntegrationTest {
     }
 
     @Test
+    public void testRecalculateStandingsWithDuplicateDriverMappingsInDifferentTiers() {
+        // 1. Setup League
+        League league = new League();
+        league.setName("Duplicate Mappings League");
+        league.setMinLapsPct(50);
+        league = leagueRepository.saveAndFlush(league);
+
+        // 2. Setup Tier 1 and Tier 2
+        Tier tier1 = new Tier();
+        tier1.setName("Tier 1");
+        tier1.setToken("t1-tok");
+        tier1.setLeague(league);
+        tier1 = tierRepository.saveAndFlush(tier1);
+
+        Tier tier2 = new Tier();
+        tier2.setName("Tier 2");
+        tier2.setToken("t2-tok");
+        tier2.setLeague(league);
+        tier2 = tierRepository.saveAndFlush(tier2);
+
+        // 3. Create Duplicate Driver Mappings for telemetry name "Earbender1979", same race number, driver_id, and country.
+        // mapping 1 is in Tier 1.
+        DriverMapping m1 = new DriverMapping();
+        m1.setLeague(league);
+        m1.setTier(tier1);
+        m1.setTelemetryName("Earbender1979");
+        m1.setRaceNumber(79);
+        m1.setDriverId(255);
+        m1.setCountry("Belgian");
+        m1 = driverMappingRepository.saveAndFlush(m1);
+
+        // mapping 2 is in Tier 2.
+        DriverMapping m2 = new DriverMapping();
+        m2.setLeague(league);
+        m2.setTier(tier2);
+        m2.setTelemetryName("Earbender1979");
+        m2.setRaceNumber(79);
+        m2.setDriverId(255);
+        m2.setCountry("Belgian");
+        m2 = driverMappingRepository.saveAndFlush(m2);
+
+        // 4. Create Event & Session in Tier 1
+        Event event = new Event();
+        event.setEventName("GP 1");
+        event.setTrackId("17");
+        event.setTier(tier1);
+        event.setFinalized(true);
+        event = eventRepository.saveAndFlush(event);
+
+        SessionResult session = new SessionResult();
+        session.setSessionType(15); // Race
+        session.setSessionUID(111222L);
+        session.setEvent(event);
+        session.setTier(tier1);
+        session = sessionResultRepository.saveAndFlush(session);
+
+        DriverResult dr = new DriverResult();
+        dr.setDriverName("Earbender1979");
+        dr.setTelemetryName("Earbender1979");
+        dr.setRaceNumber(79);
+        dr.setDriverId(255);
+        dr.setCountry("Belgian");
+        dr.setPosition(1);
+        dr.setRawPosition(1);
+        dr.setTotalTime(1000.0);
+        dr.setRawTotalTime(1000.0);
+        dr.setSessionResult(session);
+        dr.setResultStatus(3);
+        dr.setPenalties(0);
+        dr.setWarnings(0);
+        final DriverResult savedDr = driverResultRepository.saveAndFlush(dr);
+
+        session.getDriverResults().add(savedDr);
+        session = sessionResultRepository.saveAndFlush(session);
+        event.getSessionResults().add(session);
+        event = eventRepository.saveAndFlush(event);
+
+        // 5. Setup manual penalty linked to m1 (Tier 1 mapping)
+        ManualPenalty penalty = new ManualPenalty();
+        penalty.setSessionResult(session);
+        penalty.setDriverMapping(m1);
+        penalty.setSeconds(-10);
+        penalty.setComment("Stewards correction");
+        manualPenaltyRepository.saveAndFlush(penalty);
+
+        // 6. Recalculate standings for Tier 1
+        telemetryResultsService.recalculateStandings(tier1.getId());
+
+        // 7. Verify penalty is applied: total time should be 990.0 and stewards penalty -10
+        List<DriverResult> updatedResults = driverResultRepository.findAll();
+        DriverResult updatedDr = updatedResults.stream()
+                .filter(r -> r.getId().equals(savedDr.getId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(-10, updatedDr.getStewardsPenalties());
+        assertEquals(990.0, updatedDr.getTotalTime());
+    }
+
+    @Test
     public void testHandleFinalClassificationOverwritesQualifyingSessionAndPreservesLapResults() {
         // 1. Setup League & Tier
         League league = new League();

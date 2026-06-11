@@ -268,7 +268,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             dialog.setHeaderTitle("Add Result to " + getDynamicSessionName(session.getSessionType(), types));
 
             ComboBox<DriverMapping> driverCombo = new ComboBox<>("Driver");
-            driverCombo.setItems(driverMappingRepository.findByLeague(currentEvent.getTier().getLeague()));
+            driverCombo.setItems(driverMappingRepository.findByTier(currentEvent.getTier()).stream()
+                    .sorted(Comparator.comparing(m -> m.getOverriddenName() != null ? m.getOverriddenName() : m.getTelemetryName()))
+                    .collect(Collectors.toList()));
             driverCombo.setItemLabelGenerator(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty() ? m.getOverriddenName() : m.getTelemetryName());
             driverCombo.setWidthFull();
 
@@ -1375,7 +1377,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         dialog.setHeaderTitle("Add Driver to Lineup");
 
         ComboBox<DriverMapping> driverCombo = new ComboBox<>("Driver");
-        driverCombo.setItems(driverMappingRepository.findByLeague(currentEvent.getTier().getLeague()));
+        driverCombo.setItems(driverMappingRepository.findByTier(currentEvent.getTier()).stream()
+                .sorted(Comparator.comparing(m -> m.getOverriddenName() != null ? m.getOverriddenName() : m.getTelemetryName()))
+                .collect(Collectors.toList()));
         driverCombo.setItemLabelGenerator(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty() 
             ? m.getOverriddenName() 
             : m.getTelemetryName());
@@ -1513,7 +1517,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
 
             driverMappingRepository.save(dm);
             
-            parentCombo.setItems(driverMappingRepository.findByLeague(currentEvent.getTier().getLeague()));
+            parentCombo.setItems(driverMappingRepository.findByTier(currentEvent.getTier()).stream()
+                    .sorted(Comparator.comparing(m -> m.getOverriddenName() != null ? m.getOverriddenName() : m.getTelemetryName()))
+                    .collect(Collectors.toList()));
             parentCombo.setValue(dm);
 
             dialog.close();
@@ -1654,7 +1660,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                     if (dr.isAi()) {
                         continue;
                     }
-                    DriverMapping mapping = findMappingForDriverResult(dr, mappings);
+                    DriverMapping mapping = findMappingForDriverResult(dr, mappings, currentEvent.getTier());
                     if (mapping != null && dr.getTeamId() != null && dr.getTeamId() != -1) {
                         driverToTeamMap.put(mapping, dr.getTeamId());
                     }
@@ -1685,7 +1691,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         dialog.open();
     }
 
-    private DriverMapping findMappingForDriverResult(DriverResult result, List<DriverMapping> mappings) {
+    private DriverMapping findMappingForDriverResult(DriverResult result, List<DriverMapping> mappings, Tier tier) {
         if (result.getTelemetryName() == null || result.getRaceNumber() == null || result.getDriverId() == null) {
             return null;
         }
@@ -1694,7 +1700,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                     && Objects.equals(m.getRaceNumber(), result.getRaceNumber())
                     && Objects.equals(m.getDriverId(), result.getDriverId())
                     && Objects.equals(m.getCountry(), result.getCountry())) {
-                return m;
+                if (m.getTier() == null || (tier != null && Objects.equals(m.getTier().getId(), tier.getId()))) {
+                    return m;
+                }
             }
         }
         return null;

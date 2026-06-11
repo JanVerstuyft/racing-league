@@ -52,6 +52,8 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
     private final HorizontalLayout logoContainer = new HorizontalLayout();
     private final H2 eventHeader = new H2();
     private final RouterLink backToSeason = new RouterLink("Back to Season", SeasonDetailsView.class, 0L);
+    private final Span statusBadge = new Span();
+    private final VerticalLayout formContainer = new VerticalLayout();
 
     private final Grid<ManualPenalty> penaltyGrid = new Grid<>(ManualPenalty.class, false);
 
@@ -90,7 +92,8 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
         nav.setSpacing(true);
 
         logoContainer.setAlignItems(Alignment.CENTER);
-        HorizontalLayout titleLayout = new HorizontalLayout(logoContainer, eventHeader);
+        statusBadge.getStyle().set("margin-left", "var(--lumo-space-m)");
+        HorizontalLayout titleLayout = new HorizontalLayout(logoContainer, eventHeader, statusBadge);
         titleLayout.setAlignItems(Alignment.CENTER);
         titleLayout.setSpacing(true);
 
@@ -116,7 +119,8 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
             addPenaltyBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
             addPenaltyBtn.addClickListener(e -> addPenalty());
 
-            VerticalLayout formContainer = new VerticalLayout(formTitle, formLayout, addPenaltyBtn);
+            formContainer.removeAll();
+            formContainer.add(formTitle, formLayout, addPenaltyBtn);
             formContainer.setPadding(false);
             formContainer.setSpacing(true);
             formContainer.setWidth("450px");
@@ -187,6 +191,7 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
                     dialog.open();
                 });
                 deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
+                deleteBtn.setVisible(currentEvent == null || !Boolean.TRUE.equals(currentEvent.getFinalized()));
                 return deleteBtn;
             }).setHeader("Actions").setAutoWidth(true);
         }
@@ -252,9 +257,21 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
             sessionCombo.setRequired(true);
             
             // Populate driver ComboBox
-            driverCombo.setItems(driverMappingRepository.findByLeague(currentEvent.getTier().getLeague()).stream()
+            driverCombo.setItems(driverMappingRepository.findByTier(currentEvent.getTier()).stream()
                     .sorted(Comparator.comparing(m -> m.getOverriddenName() != null ? m.getOverriddenName() : m.getTelemetryName()))
                     .collect(Collectors.toList()));
+
+            statusBadge.getElement().getThemeList().clear();
+            if (Boolean.TRUE.equals(currentEvent.getFinalized())) {
+                statusBadge.setText("Final");
+                statusBadge.getElement().getThemeList().add("badge success");
+            } else {
+                statusBadge.setText("Provisional");
+                statusBadge.getElement().getThemeList().add("badge error");
+            }
+
+            boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
+            formContainer.setVisible(loggedIn && !Boolean.TRUE.equals(currentEvent.getFinalized()));
             
             refreshPenalties();
         }, () -> {
