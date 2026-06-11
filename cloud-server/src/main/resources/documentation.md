@@ -13,6 +13,7 @@
 - [5. Season Settings](#5-season-settings)
 - [6. Points configuration overrides](#6-points-configuration-overrides)
 - [7. Incident & Penalty System](#7-incident--penalty-system)
+- [8. Event Lineups](#8-event-lineups)
 
 ## 1. Collector Setup
 ### 1a. Local Collector Setup
@@ -65,7 +66,13 @@ When a driver joins a session for the first time, they are automatically 'discov
 
 * **Display Names:** Use the Edit button to set a custom name. This name will be used in the standings and live leaderboard instead of the game's telemetry name.
 * **Manual Driver Additions:** Administrators can manually register drivers before their telemetry is received by using the **Add Manual Driver** button, with the option to pre-assign them to specific Tiers.
-* **Reserves:** Mark a driver as 'Reserve' to group them separately in the standings. They will still receive points, but their team will be displayed as 'Reserve Driver'.
+* **Reserves & Team Clearing:** Drivers can be marked as 'Reserve'. Checking 'Reserve' automatically clears and disables their team selector. If they are later unchecked, the selector is re-enabled for manual team assignments.
+* **Strict Team Capacity & Replacements:** Within any single tier, a team can have at most **2 active (non-reserve)** drivers. If you attempt to assign a third active driver to a team within the same tier:
+    - A replacement dialog displays the current 2 active drivers.
+    - Selecting one of the existing drivers will immediately set them to reserve (clearing their team) and assign their team slot to the new driver.
+* **Copy to Tier:** You can copy any driver mapping from one tier to another tier of the league.
+    - The system validates that the driver is not already mapped in the target tier (checking telemetry name, race number, driver ID, and country).
+    - You are prompted to set the destination reserve status and team, subject to the same strict 2-driver capacity limits in the target tier.
 
 ## 3. Public Pages
 You can share the following pages with your league members. They do not require a login to view:
@@ -101,6 +108,9 @@ Measures how stable a driver is during the race. A higher rating (0-100) indicat
 ## 5. Season Settings
 League administrators can customize the live leaderboard and stats calculation behavior via the **Settings** tab in the Season Details view.
 
+* **Car Type:** Determines the game and car generation for the league (**F1 25** or **F1 26**).
+    - Under **F1 26**, team selections across the app are automatically filtered to show only official 2026 teams (IDs >= 400).
+    - Legacy or truncated telemetry team IDs (e.g. truncated uint8 Mercedes ID 220) are matched by name to their official uint16 IDs (e.g. 476) automatically.
 * **Hide AI Drivers:** If enabled, AI drivers will be filtered out from the standings and the live leaderboard.
 * **Show Tyre Wear:** Displays the current maximum tyre wear percentage for each driver on the live leaderboard.
 * **Show ERS:** Displays the current ERS battery percentage for each driver on the live leaderboard. When a driver is actively using ERS (Overtake mode), the value is highlighted in bold yellow.
@@ -177,3 +187,9 @@ League stewards can issue manual penalties and points deductions for race incide
 * **Standings & Visibility:**
     * Incident stats are aggregated across all sessions and displayed in the **Standings > Penalties** (tier-specific) and **League Penalties** (league-wide) dashboards.
     * Existing penalties can be deleted by administrators to automatically trigger recalculation of positions and standings.
+
+## 8. Event Lineups
+Coordinators can manage the grid lineup for each race weekend via the Event Details view.
+
+* **Lineup Settings & Styling:** League owners can define an **Accent Color** in the Season Settings. This color is dynamically applied to display ribbons on the lineup layout. The ribbons also proudly display the League Name.
+* **Lineup Syncing (Update with Real Lineup):** When a session has been driven, administrators can click **Update with Real Lineup** in the Lineup view. This action clears the pre-race lineup configuration and automatically queries telemetry results for that event, mapping all recorded human participants and their team IDs to form the correct actual race lineup automatically.

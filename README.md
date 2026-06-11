@@ -14,6 +14,24 @@ A multi-tenant racing league management system designed for F1 25. This project 
 - **Custom Point Configurations**: Flexible point setups for any session type (Races, Sprints, etc.), with dynamic extra point rules (e.g., most places gained, fastest lap, closest gap, or cleanest driver) configurable via custom SpEL expressions.
 - **Live Spectator Dashboard**: Public real-time dashboard displaying tyre wear, ERS usage (with active overtake highlighting), and lap times.
 
+## Driver & Lineup Management
+
+The platform includes a robust driver mapping and event lineup system:
+
+- **Driver Mapping & Management**: Grid-based management of drivers mapped from telemetry names, race numbers, driver IDs, and countries to human-friendly display names. Supports manual driver mapping creation.
+- **Reserve Handling**: Easily toggle drivers as reserves. Checking a driver as a reserve automatically clears and disables their team assignment, since reserves do not belong to active teams.
+- **Strict 2-Driver-per-Team Capacity**: Enforced strictly per-tier. When attempting to assign a third active driver to a team within the same tier:
+  - A modal replacement dialog appears listing the 2 existing active drivers.
+  - Selecting an existing driver to replace immediately disables interaction, displays a busy message, and converts the replaced driver to a reserve with no team.
+- **Cross-Tier Copying**: Mapped drivers can be copied to other tiers within the same league.
+  - Validates that the driver is not already mapped in the target tier (checks matching telemetry name, race number, driver ID, and country).
+  - Prompts for reserve and team assignments, enforcing the same 2-driver team capacity rules in the target tier.
+- **Car Type & F1 26 Dual-Encoding**:
+  - League general settings determine the car type ("F1 25" or "F1 26").
+  - F1 26 configurations filter team choices to only show official 2026 teams (IDs >= 400).
+  - Telemetry dual-encoding (uint16 IDs like 476 and truncated uint8 IDs like 220) is handled seamlessly via name-based matching, ensuring the correct team is always pre-selected when editing.
+- **Event Lineup Syncing**: Under the Event Results page, coordinators can view and edit the event lineup. Clicking **Update with Real Lineup** clears the current lineup and automatically populates it with non-AI human drivers and team mappings recorded in actual telemetry session results.
+
 ## Project Structure
 
 - **`cloud-server`**: A Spring Boot + Vaadin web application that manages leagues, users, and displays live leaderboards.
