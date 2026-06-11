@@ -733,6 +733,46 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             deleteSessionBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
             sessionContent.add(deleteSessionBtn);
         }
+
+        if (!driverResults.isEmpty()) {
+            H2 posterHeader = new H2("Results Poster");
+            posterHeader.getStyle().set("margin-top", "30px");
+
+            List<SessionResult> allSessions = getOrderedSessions();
+            String sessName = getDynamicSessionName(session.getSessionType(), allSessions.stream().map(SessionResult::getSessionType).toList());
+
+            Div poster = createResultsPoster(session, driverResults);
+
+            Button downloadResultsBtn = new Button("Download Results Image");
+            downloadResultsBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
+            downloadResultsBtn.getStyle().set("margin-bottom", "15px");
+            downloadResultsBtn.addClickListener(e -> {
+                getElement().executeJs(
+                    "if (!window.html2canvas) {" +
+                    "  const script = document.createElement('script');" +
+                    "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
+                    "  script.onload = () => { downloadResultsPoster(); };" +
+                    "  document.head.appendChild(script);" +
+                    "} else {" +
+                    "  downloadResultsPoster();" +
+                    "}" +
+                    "function downloadResultsPoster() {" +
+                    "  const el = document.querySelector('.results-poster');" +
+                    "  if (el) {" +
+                    "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
+                    "      const link = document.createElement('a');" +
+                    "      link.download = 'results_' + $0 + '.png';" +
+                    "      link.href = canvas.toDataURL('image/png');" +
+                    "      link.click();" +
+                    "    });" +
+                    "  }" +
+                    "}",
+                    currentEvent.getEventName().toLowerCase().replace(" ", "_") + "_" + sessName.toLowerCase().replace(" ", "_")
+                );
+            });
+
+            sessionContent.add(posterHeader, downloadResultsBtn, poster);
+        }
     }
 
     private void updateStatsContent() {
@@ -1238,6 +1278,10 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         }
         poster.add(footer);
 
+        Span watermark = new Span("made by https://racingleague.jabapage.be");
+        watermark.addClassName("poster-watermark");
+        poster.add(watermark);
+
         posterWrapper.add(poster);
 
         Button downloadBtn = new Button("Download Lineup Image");
@@ -1734,5 +1778,236 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             teams = teams.stream().filter(t -> t.getTeamId() != null && t.getTeamId() >= 400).toList();
         }
         return teams;
+    }
+
+    private Div createResultsPoster(SessionResult session, List<DriverResult> driverResults) {
+        String carType = getCarTypeForEvent();
+        League league = currentEvent.getTier().getLeague();
+        boolean isQualifying = session.getSessionType() >= 5 && session.getSessionType() <= 14;
+
+        Div posterWrapper = new Div();
+        posterWrapper.addClassName("results-poster-wrapper");
+
+        Div poster = new Div();
+        poster.addClassName("results-poster");
+
+        if (league.getLogoBackgroundColor() != null && !league.getLogoBackgroundColor().isEmpty()) {
+            poster.getStyle().set("background", "linear-gradient(135deg, " + league.getLogoBackgroundColor() + " 0%, #090a0f 100%)");
+        }
+
+        // Accent color
+        String accentColor = league.getAccentColor() != null && !league.getAccentColor().isEmpty()
+                ? league.getAccentColor()
+                : "#eef30d";
+        poster.getStyle().set("--results-accent-color", accentColor);
+
+        // Ribbons
+        Div topLeftRibbon = new Div(new Span(league.getName()));
+        topLeftRibbon.addClassName("results-ribbon");
+        topLeftRibbon.addClassName("results-ribbon-top-left");
+
+        Div bottomRightRibbon = new Div(new Span(league.getName()));
+        bottomRightRibbon.addClassName("results-ribbon");
+        bottomRightRibbon.addClassName("results-ribbon-bottom-right");
+
+        poster.add(topLeftRibbon, bottomRightRibbon);
+
+        // Header
+        Div header = new Div();
+        header.addClassName("results-poster-header");
+        H4 subtitle = new H4(currentEvent.getTier().getName().toUpperCase());
+        subtitle.addClassName("results-poster-title-mini");
+
+        List<SessionResult> sessions = getOrderedSessions();
+        String sessionName = getDynamicSessionName(session.getSessionType(), sessions.stream().map(SessionResult::getSessionType).toList());
+        H1 title = new H1(currentEvent.getEventName().toUpperCase() + " " + sessionName.toUpperCase());
+        title.addClassName("results-poster-title-main");
+        header.add(subtitle, title);
+        poster.add(header);
+
+        // Body container
+        Div body = new Div();
+        body.addClassName("results-poster-body");
+
+        // Podium container
+        Div podiumContainer = new Div();
+        podiumContainer.addClassName("results-podium-container");
+
+        DriverResult first = driverResults.size() > 0 ? driverResults.get(0) : null;
+        DriverResult second = driverResults.size() > 1 ? driverResults.get(1) : null;
+        DriverResult third = driverResults.size() > 2 ? driverResults.get(2) : null;
+
+        // Render 2nd place
+        podiumContainer.add(createPodiumStep(second, 2, carType, isQualifying));
+        // Render 1st place
+        podiumContainer.add(createPodiumStep(first, 1, carType, isQualifying));
+        // Render 3rd place
+        podiumContainer.add(createPodiumStep(third, 3, carType, isQualifying));
+
+        body.add(podiumContainer);
+
+        // List container for the rest (positions 4+)
+        Div listContainer = new Div();
+        listContainer.addClassName("results-list-container");
+
+        if (driverResults.size() > 3) {
+            List<DriverResult> remaining = driverResults.subList(3, driverResults.size());
+
+            // Split remaining into 2 columns
+            int mid = (remaining.size() + 1) / 2;
+
+            Div leftCol = new Div();
+            leftCol.addClassName("results-list-column");
+            for (int i = 0; i < mid; i++) {
+                leftCol.add(createListRow(remaining.get(i), i + 4, carType));
+            }
+
+            Div rightCol = new Div();
+            rightCol.addClassName("results-list-column");
+            for (int i = mid; i < remaining.size(); i++) {
+                rightCol.add(createListRow(remaining.get(i), i + 4, carType));
+            }
+
+            listContainer.add(leftCol, rightCol);
+        }
+        body.add(listContainer);
+        poster.add(body);
+
+        // Footer
+        Div footer = new Div();
+        footer.addClassName("results-poster-footer");
+        if (league.getYoutubeHandle() != null && !league.getYoutubeHandle().isEmpty()) {
+            footer.add(createSocialItem("youtube", league.getYoutubeHandle()));
+        }
+        if (league.getTiktokHandle() != null && !league.getTiktokHandle().isEmpty()) {
+            footer.add(createSocialItem("tiktok", league.getTiktokHandle()));
+        }
+        if (league.getXHandle() != null && !league.getXHandle().isEmpty()) {
+            footer.add(createSocialItem("x", league.getXHandle()));
+        }
+        if (league.getInstagramHandle() != null && !league.getInstagramHandle().isEmpty()) {
+            footer.add(createSocialItem("instagram", league.getInstagramHandle()));
+        }
+        if (league.getTwitchHandle() != null && !league.getTwitchHandle().isEmpty()) {
+            footer.add(createSocialItem("twitch", league.getTwitchHandle()));
+        }
+        poster.add(footer);
+
+        // Watermark
+        Span watermark = new Span("made by https://racingleague.jabapage.be");
+        watermark.addClassName("poster-watermark");
+        poster.add(watermark);
+
+        posterWrapper.add(poster);
+        return posterWrapper;
+    }
+
+    private Div createPodiumStep(DriverResult dr, int place, String carType, boolean isQualifying) {
+        Div stepContainer = new Div();
+        stepContainer.addClassName("podium-step-container");
+        stepContainer.addClassName("place-" + place);
+
+        if (dr != null) {
+            stepContainer.getStyle().set("--team-color", getTeamColor(dr.getTeamId(), carType));
+
+            Div driverInfo = new Div();
+            driverInfo.addClassName("podium-driver-info");
+
+            Span name = new Span(dr.getDriverName());
+            name.addClassName("podium-driver-name");
+
+            Span team = new Span(dr.getTeamName() != null ? dr.getTeamName() : "");
+            team.addClassName("podium-team-name");
+
+            String timeText = "";
+            if (place == 1) {
+                if (isQualifying) {
+                    timeText = formatLapTime(dr.getBestLapTime() != null ? dr.getBestLapTime() : 0.0f);
+                } else {
+                    float totalTime = dr.getTotalTime() != null ? dr.getTotalTime().floatValue() : 0.0f;
+                    if (totalTime > 0) {
+                        timeText = formatLapTime(totalTime);
+                    } else {
+                        timeText = formatLapTime(dr.getBestLapTime() != null ? dr.getBestLapTime() : 0.0f);
+                    }
+                }
+            } else {
+                timeText = dr.getGapToLeader() != null && !dr.getGapToLeader().isEmpty() ? dr.getGapToLeader() : "";
+                if (timeText.isEmpty() && dr.getBestLapTime() != null && dr.getBestLapTime() > 0) {
+                    timeText = formatLapTime(dr.getBestLapTime());
+                }
+            }
+
+            Integer status = dr.getResultStatus();
+            if (status != null) {
+                if (status == 4) name.setText(name.getText() + " (DNF)");
+                else if (status == 5) name.setText(name.getText() + " (DSQ)");
+                else if (status == 6) name.setText(name.getText() + " (NC)");
+                else if (status == 7) name.setText(name.getText() + " (RET)");
+            }
+
+            Span time = new Span(timeText);
+            time.addClassName("podium-time");
+
+            driverInfo.add(name, team, time);
+            stepContainer.add(driverInfo);
+        } else {
+            stepContainer.getStyle().set("--team-color", "#3e404b");
+            Div driverInfo = new Div();
+            driverInfo.addClassName("podium-driver-info");
+            Span name = new Span("VACANT");
+            name.addClassName("podium-driver-name");
+            name.getStyle().set("color", "#3e404b");
+            name.getStyle().set("font-style", "italic");
+            driverInfo.add(name);
+            stepContainer.add(driverInfo);
+        }
+
+        Div step = new Div();
+        step.addClassName("podium-step");
+        step.addClassName("step-" + place);
+
+        Span number = new Span(String.valueOf(place));
+        number.addClassName("podium-number");
+        step.add(number);
+
+        stepContainer.add(step);
+        return stepContainer;
+    }
+
+    private Div createListRow(DriverResult dr, int pos, String carType) {
+        Div row = new Div();
+        row.addClassName("results-list-row");
+        row.getStyle().set("--team-color", getTeamColor(dr.getTeamId(), carType));
+
+        Span posSpan = new Span(String.valueOf(pos));
+        posSpan.addClassName("results-list-pos");
+
+        Div colorBar = new Div();
+        colorBar.addClassName("results-list-color-bar");
+
+        String nameText = dr.getDriverName();
+        Integer status = dr.getResultStatus();
+        if (status != null) {
+            if (status == 4) nameText += " (DNF)";
+            else if (status == 5) nameText += " (DSQ)";
+            else if (status == 6) nameText += " (NC)";
+            else if (status == 7) nameText += " (RET)";
+        }
+        Span nameSpan = new Span(nameText);
+        nameSpan.addClassName("results-list-name");
+
+        Span teamSpan = new Span(dr.getTeamName() != null ? dr.getTeamName() : "");
+        teamSpan.addClassName("results-list-team");
+
+        String timeText = dr.getGapToLeader() != null && !dr.getGapToLeader().isEmpty() ? dr.getGapToLeader() : "";
+        if (timeText.isEmpty() && dr.getBestLapTime() != null && dr.getBestLapTime() > 0) {
+            timeText = formatLapTime(dr.getBestLapTime());
+        }
+        Span timeSpan = new Span(timeText);
+        timeSpan.addClassName("results-list-time");
+
+        row.add(posSpan, colorBar, nameSpan, teamSpan, timeSpan);
+        return row;
     }
 }
