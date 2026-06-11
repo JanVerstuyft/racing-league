@@ -60,7 +60,7 @@ The Android Collector is a mobile app that acts as a bridge between your F1 game
 * Set UDP Telemetry to 'On'.
 * Set **UDP IP Address** to the IP shown in the Android App Dashboard.
 * Set **UDP Port** to the port configured in the app (default 20777).
-* Set UDP Format to '2025'.
+* Set UDP Format to '2025' or '2026' if you downloaded the DLC.
 
 ## 2. Managing Drivers & Names
 When a driver joins a session for the first time, they are automatically 'discovered' and added to the 'Drivers' tab in your Season details.
@@ -194,6 +194,7 @@ Coordinators can manage the grid lineup for each race weekend via the Event Deta
 
 * **Lineup Settings & Styling:** League owners can define an **Accent Color** in the Season Settings. This color is dynamically applied to display ribbons on the lineup layout. The ribbons also proudly display the League Name.
 * **Lineup Syncing (Update with Real Lineup):** When a session has been driven, administrators can click **Update with Real Lineup** in the Lineup view. This action clears the pre-race lineup configuration and automatically queries telemetry results for that event, mapping all recorded human participants and their team IDs to form the correct actual race lineup automatically.
+* **Reordering Race Weekends:** Administrators can customize the order of race weekends in the Season Details view. Use the **Up** (arrow up) and **Down** (arrow down) buttons in the event table actions column to move weekends. The adjusted sequence is saved to the database as the permanent display order, preserving it for all users when viewing standings and race results.
 
 ## 9. Provisional vs Finalized Race Weekends
 To ensure data integrity and give league stewards time to review incidents and apply penalties before standings are permanently affected, the system implements a provisional versus finalized event workflow.

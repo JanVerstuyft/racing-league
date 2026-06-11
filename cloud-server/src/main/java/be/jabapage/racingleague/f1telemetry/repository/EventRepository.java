@@ -13,7 +13,8 @@ import java.util.Optional;
 
 @Repository
 public interface EventRepository extends JpaRepository<Event, Long> {
-    List<Event> findByTier(Tier tier);
+    @Query("SELECT e FROM Event e WHERE e.tier = :tier ORDER BY e.displayOrder ASC, e.id ASC")
+    List<Event> findByTier(@Param("tier") Tier tier);
     Optional<Event> findByTierAndTrackId(Tier tier, String trackId);
 
     @Query("SELECT DISTINCT e FROM Event e " +

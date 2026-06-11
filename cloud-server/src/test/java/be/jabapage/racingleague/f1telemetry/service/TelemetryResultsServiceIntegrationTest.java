@@ -640,6 +640,52 @@ public class TelemetryResultsServiceIntegrationTest {
     }
 
     @Test
+    public void testEventDisplayOrdering() {
+        // 1. Setup League & Tier
+        League league = new League();
+        league.setName("Ordering League");
+        league.setMinLapsPct(50);
+        league = leagueRepository.saveAndFlush(league);
+
+        Tier tier = new Tier();
+        tier.setName("Tier 1");
+        tier.setToken("t1-tok-order");
+        tier.setLeague(league);
+        tier = tierRepository.saveAndFlush(tier);
+
+        // 2. Create three events with specified display orders
+        Event e1 = new Event();
+        e1.setEventName("Event 1");
+        e1.setTrackId("1");
+        e1.setTier(tier);
+        e1.setDisplayOrder(2);
+        e1 = eventRepository.saveAndFlush(e1);
+
+        Event e2 = new Event();
+        e2.setEventName("Event 2");
+        e2.setTrackId("2");
+        e2.setTier(tier);
+        e2.setDisplayOrder(0);
+        e2 = eventRepository.saveAndFlush(e2);
+
+        Event e3 = new Event();
+        e3.setEventName("Event 3");
+        e3.setTrackId("3");
+        e3.setTier(tier);
+        e3.setDisplayOrder(1);
+        e3 = eventRepository.saveAndFlush(e3);
+
+        // 3. Query using findByTier
+        List<Event> orderedEvents = eventRepository.findByTier(tier);
+        
+        // Expected order: Event 2 (displayOrder=0), Event 3 (displayOrder=1), Event 1 (displayOrder=2)
+        assertEquals(3, orderedEvents.size());
+        assertEquals("Event 2", orderedEvents.get(0).getEventName());
+        assertEquals("Event 3", orderedEvents.get(1).getEventName());
+        assertEquals("Event 1", orderedEvents.get(2).getEventName());
+    }
+
+    @Test
     public void testHandleFinalClassificationOverwritesQualifyingSessionAndPreservesLapResults() {
         // 1. Setup League & Tier
         League league = new League();

@@ -843,7 +843,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 statusBadge.getElement().getThemeList().add("badge error");
             }
             return statusBadge;
-        }).setHeader("Status").setAutoWidth(true);
+        }).setHeader("Status").setAutoWidth(true).setFlexGrow(0);
 
         actionsColumn = eventGrid.addComponentColumn(event -> {
             HorizontalLayout actions = new HorizontalLayout();
@@ -853,6 +853,25 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             if (securityService.getAuthenticatedUser().isPresent()) {
                 RouterLink penaltiesLink = new RouterLink("Penalties", EventPenaltiesView.class, event.getId());
                 actions.add(penaltiesLink);
+
+                List<Event> eventsList = eventRepository.findByTier(selectedTier);
+                int index = eventsList.indexOf(event);
+
+                Button moveUpBtn = new Button();
+                moveUpBtn.setIcon(com.vaadin.flow.component.icon.VaadinIcon.ARROW_UP.create());
+                moveUpBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
+                moveUpBtn.setEnabled(index > 0);
+                moveUpBtn.setTooltipText("Move Up");
+                moveUpBtn.addClickListener(e -> moveEventUp(event));
+
+                Button moveDownBtn = new Button();
+                moveDownBtn.setIcon(com.vaadin.flow.component.icon.VaadinIcon.ARROW_DOWN.create());
+                moveDownBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
+                moveDownBtn.setEnabled(index >= 0 && index < eventsList.size() - 1);
+                moveDownBtn.setTooltipText("Move Down");
+                moveDownBtn.addClickListener(e -> moveEventDown(event));
+
+                actions.add(moveUpBtn, moveDownBtn);
 
                 Button toggleFinalizedBtn = new Button();
                 toggleFinalizedBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
@@ -915,7 +934,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
             actions.setAlignItems(FlexComponent.Alignment.CENTER);
             return actions;
-        }).setHeader("Actions");
+        }).setHeader("Actions").setAutoWidth(true).setFlexGrow(0);
 
         driverGrid.addComponentColumn(ds -> {
             HorizontalLayout nameLayout = new HorizontalLayout();
@@ -2047,6 +2066,38 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         
         dialog.getFooter().add(new Button("Cancel", e -> dialog.close()), saveBtn);
         dialog.open();
+    }
+
+    private void moveEventUp(Event event) {
+        if (selectedTier == null) return;
+        List<Event> events = eventRepository.findByTier(selectedTier);
+        int index = events.indexOf(event);
+        if (index > 0) {
+            for (int i = 0; i < events.size(); i++) {
+                events.get(i).setDisplayOrder(i);
+            }
+            events.get(index).setDisplayOrder(index - 1);
+            events.get(index - 1).setDisplayOrder(index);
+            eventRepository.saveAll(events);
+            updateData();
+            Notification.show("Event order updated", 2000, Notification.Position.TOP_CENTER);
+        }
+    }
+
+    private void moveEventDown(Event event) {
+        if (selectedTier == null) return;
+        List<Event> events = eventRepository.findByTier(selectedTier);
+        int index = events.indexOf(event);
+        if (index >= 0 && index < events.size() - 1) {
+            for (int i = 0; i < events.size(); i++) {
+                events.get(i).setDisplayOrder(i);
+            }
+            events.get(index).setDisplayOrder(index + 1);
+            events.get(index + 1).setDisplayOrder(index);
+            eventRepository.saveAll(events);
+            updateData();
+            Notification.show("Event order updated", 2000, Notification.Position.TOP_CENTER);
+        }
     }
 
     @Override

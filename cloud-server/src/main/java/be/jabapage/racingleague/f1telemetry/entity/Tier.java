@@ -28,6 +28,7 @@ public class Tier {
     private League league;
 
     @OneToMany(mappedBy = "tier", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OrderBy("displayOrder ASC, id ASC")
     private Set<Event> events = new LinkedHashSet<>();
 
     @OneToMany(mappedBy = "tier", cascade = CascadeType.ALL, fetch = FetchType.LAZY)

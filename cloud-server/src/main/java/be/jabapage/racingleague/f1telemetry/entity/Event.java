@@ -27,6 +27,9 @@ public class Event {
     @Column(name = "finalized", nullable = false)
     private Boolean finalized = false;
 
+    @Column(name = "display_order", nullable = false)
+    private Integer displayOrder = 0;
+
 
     @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     @ToString.Exclude
