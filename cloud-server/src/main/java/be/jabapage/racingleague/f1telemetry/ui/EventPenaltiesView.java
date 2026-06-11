@@ -10,6 +10,8 @@ import java.io.ByteArrayInputStream;
 import be.jabapage.racingleague.f1telemetry.entity.Event;
 import be.jabapage.racingleague.f1telemetry.entity.ManualPenalty;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
+import be.jabapage.racingleague.f1telemetry.entity.EventLineupEntry;
+import be.jabapage.racingleague.f1telemetry.repository.EventLineupEntryRepository;
 import be.jabapage.racingleague.f1telemetry.repository.DriverMappingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.EventRepository;
 import be.jabapage.racingleague.f1telemetry.repository.ManualPenaltyRepository;
@@ -48,6 +50,7 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
     private final DriverMappingRepository driverMappingRepository;
     private final TelemetryProcessingService telemetryProcessingService;
     private final SecurityService securityService;
+    private final EventLineupEntryRepository eventLineupEntryRepository;
 
     private final HorizontalLayout logoContainer = new HorizontalLayout();
     private final H2 eventHeader = new H2();
@@ -74,13 +77,15 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
                               DriverMappingRepository driverMappingRepository,
                               TelemetryProcessingService telemetryProcessingService,
                               SecurityService securityService,
-                              LeagueLogoRepository leagueLogoRepository) {
+                              LeagueLogoRepository leagueLogoRepository,
+                              EventLineupEntryRepository eventLineupEntryRepository) {
         this.eventRepository = eventRepository;
         this.manualPenaltyRepository = manualPenaltyRepository;
         this.driverMappingRepository = driverMappingRepository;
         this.telemetryProcessingService = telemetryProcessingService;
         this.securityService = securityService;
         this.leagueLogoRepository = leagueLogoRepository;
+        this.eventLineupEntryRepository = eventLineupEntryRepository;
 
         setSizeFull();
 
@@ -256,9 +261,16 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
             sessionCombo.setItemLabelGenerator(s -> EventResultsView.getDynamicSessionName(s.getSessionType(), sessionTypes));
             sessionCombo.setRequired(true);
             
-            // Populate driver ComboBox
-            driverCombo.setItems(driverMappingRepository.findByTier(currentEvent.getTier()).stream()
-                    .sorted(Comparator.comparing(m -> m.getOverriddenName() != null ? m.getOverriddenName() : m.getTelemetryName()))
+            // Populate driver ComboBox (tier drivers + lineup drivers)
+            java.util.List<DriverMapping> tierDrivers = driverMappingRepository.findByTier(currentEvent.getTier());
+            java.util.List<DriverMapping> lineupDrivers = eventLineupEntryRepository.findByEvent(currentEvent).stream()
+                    .map(EventLineupEntry::getDriver)
+                    .toList();
+            java.util.Set<DriverMapping> allDrivers = new java.util.LinkedHashSet<>(tierDrivers);
+            allDrivers.addAll(lineupDrivers);
+
+            driverCombo.setItems(allDrivers.stream()
+                    .sorted(Comparator.comparing(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty() ? m.getOverriddenName() : m.getTelemetryName()))
                     .collect(Collectors.toList()));
 
             statusBadge.getElement().getThemeList().clear();
