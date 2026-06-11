@@ -8,6 +8,7 @@ import be.jabapage.racingleague.f1telemetry.entity.LapResult;
 import be.jabapage.racingleague.f1telemetry.entity.EventLineupEntry;
 import be.jabapage.racingleague.f1telemetry.entity.DriverStanding;
 import be.jabapage.racingleague.f1telemetry.entity.Tier;
+import be.jabapage.racingleague.f1telemetry.entity.TyreStint;
 import be.jabapage.racingleague.f1telemetry.repository.EventLineupEntryRepository;
 import be.jabapage.racingleague.f1telemetry.repository.DriverStandingRepository;
 import java.util.HashMap;
@@ -833,6 +834,49 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         grid.setItems(stats);
         grid.setAllRowsVisible(true);
         statsContent.add(grid);
+
+        // Consistency Poster
+        List<SessionResult> raceSessions = getRaceSessions();
+        int selectedStatsSessionIdx = statsSessionTabs.getSelectedIndex();
+        if (selectedStatsSessionIdx < 0 || selectedStatsSessionIdx >= raceSessions.size()) {
+            selectedStatsSessionIdx = 0;
+        }
+        SessionResult selectedSession = raceSessions.isEmpty() ? null : raceSessions.get(selectedStatsSessionIdx);
+
+        if (selectedSession != null) {
+            H2 posterHeader = new H2("Consistency Poster");
+            posterHeader.getStyle().set("margin-top", "30px");
+
+            Button downloadBtn = new Button("Download Consistency Image", com.vaadin.flow.component.icon.VaadinIcon.DOWNLOAD.create());
+            downloadBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+            String eventNameSafe = currentEvent.getEventName().toLowerCase().replace(" ", "_");
+            String sessNameSafe = getDynamicSessionName(selectedSession.getSessionType(), getOrderedSessions().stream().map(SessionResult::getSessionType).toList()).toLowerCase().replace(" ", "_");
+            downloadBtn.addClickListener(ev -> {
+                getElement().executeJs(
+                    "if (!window.html2canvas) {" +
+                    "  const script = document.createElement('script');" +
+                    "  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';" +
+                    "  document.head.appendChild(script);" +
+                    "  script.onload = () => { downloadConsistencyPoster(); };" +
+                    "} else {" +
+                    "  downloadConsistencyPoster();" +
+                    "}" +
+                    "function downloadConsistencyPoster() {" +
+                    "  const el = document.querySelector('.consistency-poster');" +
+                    "  if (!el) return;" +
+                    "  html2canvas(el, { backgroundColor: null, scale: 2 }).then(canvas => {" +
+                    "    const link = document.createElement('a');" +
+                    "    link.download = '" + eventNameSafe + "_" + sessNameSafe + "_consistency.png';" +
+                    "    link.href = canvas.toDataURL('image/png');" +
+                    "    link.click();" +
+                    "  });" +
+                    "}"
+                );
+            });
+
+            Div poster = createConsistencyPoster(selectedSession, stats);
+            statsContent.add(posterHeader, downloadBtn, poster);
+        }
     }
 
     private void updateLongestStintsData(Long sessionResultId) {
@@ -882,6 +926,49 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         grid.setItems(stats);
         grid.setAllRowsVisible(true);
         statsContent.add(grid);
+
+        // Longest Stints Poster
+        List<SessionResult> raceSessions = getRaceSessions();
+        int selectedStatsSessionIdx = statsSessionTabs.getSelectedIndex();
+        if (selectedStatsSessionIdx < 0 || selectedStatsSessionIdx >= raceSessions.size()) {
+            selectedStatsSessionIdx = 0;
+        }
+        SessionResult selectedSession = raceSessions.isEmpty() ? null : raceSessions.get(selectedStatsSessionIdx);
+
+        if (selectedSession != null) {
+            H2 posterHeader = new H2("Tyre Stints Poster");
+            posterHeader.getStyle().set("margin-top", "30px");
+
+            Button downloadBtn = new Button("Download Stints Image", com.vaadin.flow.component.icon.VaadinIcon.DOWNLOAD.create());
+            downloadBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+            String eventNameSafe = currentEvent.getEventName().toLowerCase().replace(" ", "_");
+            String sessNameSafe = getDynamicSessionName(selectedSession.getSessionType(), getOrderedSessions().stream().map(SessionResult::getSessionType).toList()).toLowerCase().replace(" ", "_");
+            downloadBtn.addClickListener(ev -> {
+                getElement().executeJs(
+                    "if (!window.html2canvas) {" +
+                    "  const script = document.createElement('script');" +
+                    "  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';" +
+                    "  document.head.appendChild(script);" +
+                    "  script.onload = () => { downloadStintsPoster(); };" +
+                    "} else {" +
+                    "  downloadStintsPoster();" +
+                    "}" +
+                    "function downloadStintsPoster() {" +
+                    "  const el = document.querySelector('.stints-poster');" +
+                    "  if (!el) return;" +
+                    "  html2canvas(el, { backgroundColor: null, scale: 2 }).then(canvas => {" +
+                    "    const link = document.createElement('a');" +
+                    "    link.download = '" + eventNameSafe + "_" + sessNameSafe + "_stints.png';" +
+                    "    link.href = canvas.toDataURL('image/png');" +
+                    "    link.click();" +
+                    "  });" +
+                    "}"
+                );
+            });
+
+            Div poster = createStintsPoster(selectedSession, stats);
+            statsContent.add(posterHeader, downloadBtn, poster);
+        }
     }
 
     private void updatePaceData(Long sessionResultId) {
@@ -967,6 +1054,49 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             </div>
             """);
         statsContent.add(legend);
+
+        // Pace Poster
+        List<SessionResult> raceSessions = getRaceSessions();
+        int selectedStatsSessionIdx = statsSessionTabs.getSelectedIndex();
+        if (selectedStatsSessionIdx < 0 || selectedStatsSessionIdx >= raceSessions.size()) {
+            selectedStatsSessionIdx = 0;
+        }
+        SessionResult selectedSession = raceSessions.isEmpty() ? null : raceSessions.get(selectedStatsSessionIdx);
+
+        if (selectedSession != null) {
+            H2 posterHeader = new H2("Pure Pace Poster");
+            posterHeader.getStyle().set("margin-top", "30px");
+
+            Button downloadBtn = new Button("Download Pace Image", com.vaadin.flow.component.icon.VaadinIcon.DOWNLOAD.create());
+            downloadBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+            String eventNameSafe = currentEvent.getEventName().toLowerCase().replace(" ", "_");
+            String sessNameSafe = getDynamicSessionName(selectedSession.getSessionType(), getOrderedSessions().stream().map(SessionResult::getSessionType).toList()).toLowerCase().replace(" ", "_");
+            downloadBtn.addClickListener(ev -> {
+                getElement().executeJs(
+                    "if (!window.html2canvas) {" +
+                    "  const script = document.createElement('script');" +
+                    "  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';" +
+                    "  document.head.appendChild(script);" +
+                    "  script.onload = () => { downloadPacePoster(); };" +
+                    "} else {" +
+                    "  downloadPacePoster();" +
+                    "}" +
+                    "function downloadPacePoster() {" +
+                    "  const el = document.querySelector('.pace-poster');" +
+                    "  if (!el) return;" +
+                    "  html2canvas(el, { backgroundColor: null, scale: 2 }).then(canvas => {" +
+                    "    const link = document.createElement('a');" +
+                    "    link.download = '" + eventNameSafe + "_" + sessNameSafe + "_pace.png';" +
+                    "    link.href = canvas.toDataURL('image/png');" +
+                    "    link.click();" +
+                    "  });" +
+                    "}"
+                );
+            });
+
+            Div poster = createPacePoster(selectedSession, stats);
+            statsContent.add(posterHeader, downloadBtn, poster);
+        }
     }
 
     private Span createPerformanceBadge(double perf) {
@@ -1780,22 +1910,20 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         return teams;
     }
 
-    private Div createResultsPoster(SessionResult session, List<DriverResult> driverResults) {
-        String carType = getCarTypeForEvent();
+    private Div createBasePoster(String titleText, Div bodyContent, String posterClass) {
         League league = currentEvent.getTier().getLeague();
-        boolean isQualifying = session.getSessionType() >= 5 && session.getSessionType() <= 14;
 
         Div posterWrapper = new Div();
         posterWrapper.addClassName("results-poster-wrapper");
 
         Div poster = new Div();
         poster.addClassName("results-poster");
+        poster.addClassName(posterClass);
 
         if (league.getLogoBackgroundColor() != null && !league.getLogoBackgroundColor().isEmpty()) {
             poster.getStyle().set("background", "linear-gradient(135deg, " + league.getLogoBackgroundColor() + " 0%, #090a0f 100%)");
         }
 
-        // Accent color
         String accentColor = league.getAccentColor() != null && !league.getAccentColor().isEmpty()
                 ? league.getAccentColor()
                 : "#eef30d";
@@ -1818,60 +1946,13 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         H4 subtitle = new H4(currentEvent.getTier().getName().toUpperCase());
         subtitle.addClassName("results-poster-title-mini");
 
-        List<SessionResult> sessions = getOrderedSessions();
-        String sessionName = getDynamicSessionName(session.getSessionType(), sessions.stream().map(SessionResult::getSessionType).toList());
-        H1 title = new H1(currentEvent.getEventName().toUpperCase() + " " + sessionName.toUpperCase());
+        H1 title = new H1(titleText.toUpperCase());
         title.addClassName("results-poster-title-main");
         header.add(subtitle, title);
         poster.add(header);
 
-        // Body container
-        Div body = new Div();
-        body.addClassName("results-poster-body");
-
-        // Podium container
-        Div podiumContainer = new Div();
-        podiumContainer.addClassName("results-podium-container");
-
-        DriverResult first = driverResults.size() > 0 ? driverResults.get(0) : null;
-        DriverResult second = driverResults.size() > 1 ? driverResults.get(1) : null;
-        DriverResult third = driverResults.size() > 2 ? driverResults.get(2) : null;
-
-        // Render 2nd place
-        podiumContainer.add(createPodiumStep(second, 2, carType, isQualifying));
-        // Render 1st place
-        podiumContainer.add(createPodiumStep(first, 1, carType, isQualifying));
-        // Render 3rd place
-        podiumContainer.add(createPodiumStep(third, 3, carType, isQualifying));
-
-        body.add(podiumContainer);
-
-        // List container for the rest (positions 4+)
-        Div listContainer = new Div();
-        listContainer.addClassName("results-list-container");
-
-        if (driverResults.size() > 3) {
-            List<DriverResult> remaining = driverResults.subList(3, driverResults.size());
-
-            // Split remaining into 2 columns
-            int mid = (remaining.size() + 1) / 2;
-
-            Div leftCol = new Div();
-            leftCol.addClassName("results-list-column");
-            for (int i = 0; i < mid; i++) {
-                leftCol.add(createListRow(remaining.get(i), i + 4, carType));
-            }
-
-            Div rightCol = new Div();
-            rightCol.addClassName("results-list-column");
-            for (int i = mid; i < remaining.size(); i++) {
-                rightCol.add(createListRow(remaining.get(i), i + 4, carType));
-            }
-
-            listContainer.add(leftCol, rightCol);
-        }
-        body.add(listContainer);
-        poster.add(body);
+        // Body
+        poster.add(bodyContent);
 
         // Footer
         Div footer = new Div();
@@ -1900,6 +1981,602 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
 
         posterWrapper.add(poster);
         return posterWrapper;
+    }
+
+    private String getTrackNameForEvent() {
+        if (currentEvent == null || currentEvent.getTrackId() == null) return "Unknown Track";
+        try {
+            int trackIdInt = Integer.parseInt(currentEvent.getTrackId());
+            return TelemetryProcessingService.TRACK_NAMES.getOrDefault(trackIdInt, "Unknown Track");
+        } catch (NumberFormatException e) {
+            return currentEvent.getTrackId();
+        }
+    }
+
+    private static class StintSegment {
+        final int laps;
+        final int endLap;
+        final String compound;
+
+        StintSegment(int laps, int endLap, String compound) {
+            this.laps = laps;
+            this.endLap = endLap;
+            this.compound = compound;
+        }
+    }
+
+    private Div createPitStopsPoster(SessionResult session, List<DriverResult> driverResults) {
+        String carType = getCarTypeForEvent();
+        Div body = new Div();
+        body.addClassName("results-poster-body");
+
+        Div rowsContainer = new Div();
+        rowsContainer.addClassName("pitstops-rows-container");
+
+        // Calculate max laps in the session
+        int maxLaps = driverResults.stream()
+                .mapToInt(dr -> dr.getNumLaps() != null ? dr.getNumLaps() : 0)
+                .max().orElse(50);
+        if (maxLaps <= 0) maxLaps = 50;
+
+        for (int i = 0; i < driverResults.size(); i++) {
+            DriverResult dr = driverResults.get(i);
+            Div row = new Div();
+            row.addClassName("pitstops-row");
+
+            Span posSpan = new Span(String.valueOf(i + 1));
+            posSpan.addClassName("pitstops-row-pos");
+
+            Span flagSpan = new Span(CountryProvider.getFlagByName(dr.getCountry()));
+            flagSpan.addClassName("pitstops-row-flag");
+
+            Span nameSpan = new Span(dr.getDriverName());
+            nameSpan.addClassName("pitstops-row-name");
+
+            Div timelineWrapper = new Div();
+            timelineWrapper.addClassName("pitstops-timeline-wrapper");
+
+            Div timeline = new Div();
+            timeline.addClassName("pitstops-timeline");
+
+            // Extract stints
+            List<TyreStint> stints = dr.getTyreStints().stream()
+                    .sorted(java.util.Comparator.comparingInt(TyreStint::getStintOrder))
+                    .toList();
+
+            int drLaps = dr.getNumLaps() != null ? dr.getNumLaps() : 0;
+            List<StintSegment> segments = new ArrayList<>();
+            if (stints.isEmpty() && drLaps > 0) {
+                segments.add(new StintSegment(drLaps, drLaps, "Dry"));
+            } else {
+                int currentEndLap = 0;
+                for (TyreStint stint : stints) {
+                    int laps = stint.getLaps();
+                    currentEndLap = stint.getEndLap() != null ? stint.getEndLap() : (currentEndLap + laps);
+                    String compound = TelemetryProcessingService.TYRE_COMPOUNDS.getOrDefault(stint.getTyreCompound(), "Dry");
+                    segments.add(new StintSegment(laps, currentEndLap, compound));
+                }
+            }
+
+            int activeLapsSum = 0;
+            for (StintSegment seg : segments) {
+                Div segmentDiv = new Div();
+                segmentDiv.addClassName("pitstops-segment");
+                segmentDiv.getStyle().set("flex", String.valueOf(seg.laps));
+
+                // Tyre compound style
+                switch (seg.compound) {
+                    case "Soft" -> segmentDiv.addClassName("tyre-soft");
+                    case "Medium" -> segmentDiv.addClassName("tyre-medium");
+                    case "Hard" -> segmentDiv.addClassName("tyre-hard");
+                    case "Inter" -> segmentDiv.addClassName("tyre-inter");
+                    case "Wet" -> segmentDiv.addClassName("tyre-wet");
+                    default -> segmentDiv.addClassName("tyre-unknown");
+                }
+
+                Span label = new Span(String.format("%02d", seg.endLap));
+                label.addClassName("pitstops-lap-label");
+                segmentDiv.add(label);
+
+                timeline.add(segmentDiv);
+                activeLapsSum += seg.laps;
+            }
+
+            // If retired/incomplete, add a spacer
+            if (activeLapsSum < maxLaps) {
+                Div spacerDiv = new Div();
+                spacerDiv.addClassName("pitstops-segment-spacer");
+                spacerDiv.getStyle().set("flex", String.valueOf(maxLaps - activeLapsSum));
+                timeline.add(spacerDiv);
+            }
+
+            timelineWrapper.add(timeline);
+            row.add(posSpan, flagSpan, nameSpan, timelineWrapper);
+            rowsContainer.add(row);
+        }
+
+        body.add(rowsContainer);
+
+        String trackName = getTrackNameForEvent();
+        String title = trackName + " Pit Stops";
+
+        return createBasePoster(title, body, "pitstops-poster");
+    }
+
+    private Div createResultsPoster(SessionResult session, List<DriverResult> driverResults) {
+        String carType = getCarTypeForEvent();
+        boolean isQualifying = session.getSessionType() >= 5 && session.getSessionType() <= 14;
+
+        Div body = new Div();
+        body.addClassName("results-poster-body");
+
+        // Podium container
+        Div podiumContainer = new Div();
+        podiumContainer.addClassName("results-podium-container");
+
+        DriverResult first = driverResults.size() > 0 ? driverResults.get(0) : null;
+        DriverResult second = driverResults.size() > 1 ? driverResults.get(1) : null;
+        DriverResult third = driverResults.size() > 2 ? driverResults.get(2) : null;
+
+        podiumContainer.add(createPodiumStep(second, 2, carType, isQualifying));
+        podiumContainer.add(createPodiumStep(first, 1, carType, isQualifying));
+        podiumContainer.add(createPodiumStep(third, 3, carType, isQualifying));
+        body.add(podiumContainer);
+
+        // List container
+        Div listContainer = new Div();
+        listContainer.addClassName("results-list-container");
+
+        if (driverResults.size() > 3) {
+            List<DriverResult> remaining = driverResults.subList(3, driverResults.size());
+            int mid = (remaining.size() + 1) / 2;
+
+            Div leftCol = new Div();
+            leftCol.addClassName("results-list-column");
+            for (int i = 0; i < mid; i++) {
+                leftCol.add(createListRow(remaining.get(i), i + 4, carType));
+            }
+
+            Div rightCol = new Div();
+            rightCol.addClassName("results-list-column");
+            for (int i = mid; i < remaining.size(); i++) {
+                rightCol.add(createListRow(remaining.get(i), i + 4, carType));
+            }
+
+            listContainer.add(leftCol, rightCol);
+        }
+        body.add(listContainer);
+
+        List<SessionResult> sessions = getOrderedSessions();
+        String sessionName = getDynamicSessionName(session.getSessionType(), sessions.stream().map(SessionResult::getSessionType).toList());
+        String title = currentEvent.getEventName() + " " + sessionName;
+
+        return createBasePoster(title, body, "results-poster");
+    }
+
+    private DriverResult findDriverResultByName(Event event, String driverName) {
+        if (event == null || driverName == null) return null;
+        for (SessionResult sr : event.getSessionResults()) {
+            for (DriverResult dr : sr.getDriverResults()) {
+                if (driverName.equals(dr.getDriverName())) {
+                    return dr;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Div createPacePoster(SessionResult session, List<RacePaceStats> stats) {
+        String carType = getCarTypeForEvent();
+        Div body = new Div();
+        body.addClassName("results-poster-body");
+
+        Div podiumContainer = new Div();
+        podiumContainer.addClassName("results-podium-container");
+
+        RacePaceStats first = stats.size() > 0 ? stats.get(0) : null;
+        RacePaceStats second = stats.size() > 1 ? stats.get(1) : null;
+        RacePaceStats third = stats.size() > 2 ? stats.get(2) : null;
+        double bestPace = first != null ? first.getPureRacePace() : 0.0;
+
+        podiumContainer.add(createPacePodiumStep(second, 2, carType, bestPace));
+        podiumContainer.add(createPacePodiumStep(first, 1, carType, bestPace));
+        podiumContainer.add(createPacePodiumStep(third, 3, carType, bestPace));
+        body.add(podiumContainer);
+
+        Div listContainer = new Div();
+        listContainer.addClassName("results-list-container");
+
+        if (stats.size() > 3) {
+            List<RacePaceStats> remaining = stats.subList(3, stats.size());
+            int mid = (remaining.size() + 1) / 2;
+
+            Div leftCol = new Div();
+            leftCol.addClassName("results-list-column");
+            for (int i = 0; i < mid; i++) {
+                leftCol.add(createPaceListRow(remaining.get(i), i + 4, carType, bestPace));
+            }
+
+            Div rightCol = new Div();
+            rightCol.addClassName("results-list-column");
+            for (int i = mid; i < remaining.size(); i++) {
+                rightCol.add(createPaceListRow(remaining.get(i), i + 4, carType, bestPace));
+            }
+
+            listContainer.add(leftCol, rightCol);
+        }
+        body.add(listContainer);
+
+        List<SessionResult> sessions = getOrderedSessions();
+        String sessionName = getDynamicSessionName(session.getSessionType(), sessions.stream().map(SessionResult::getSessionType).toList());
+        String title = currentEvent.getEventName() + " " + sessionName + " - Pure Pace";
+
+        return createBasePoster(title, body, "pace-poster");
+    }
+
+    private Div createPacePodiumStep(RacePaceStats stat, int place, String carType, double bestPace) {
+        Div stepContainer = new Div();
+        stepContainer.addClassName("podium-step-container");
+        stepContainer.addClassName("place-" + place);
+
+        if (stat != null) {
+            DriverResult dr = findDriverResultByName(currentEvent, stat.getDriverName());
+            Integer teamId = dr != null ? dr.getTeamId() : null;
+            stepContainer.getStyle().set("--team-color", getTeamColor(teamId, carType));
+
+            Div driverInfo = new Div();
+            driverInfo.addClassName("podium-driver-info");
+
+            Span name = new Span(stat.getDriverName());
+            name.addClassName("podium-driver-name");
+
+            Span team = new Span(stat.getTeamName() != null ? stat.getTeamName() : "");
+            team.addClassName("podium-team-name");
+
+            String timeText = "";
+            if (place == 1) {
+                timeText = formatLapTime((float) stat.getPureRacePace());
+            } else {
+                timeText = String.format("+%.3fs", stat.getPureRacePace() - bestPace);
+            }
+            Span time = new Span(timeText);
+            time.addClassName("podium-time");
+
+            driverInfo.add(name, team, time);
+            stepContainer.add(driverInfo);
+        } else {
+            stepContainer.getStyle().set("--team-color", "#3e404b");
+            Div driverInfo = new Div();
+            driverInfo.addClassName("podium-driver-info");
+            Span name = new Span("VACANT");
+            name.addClassName("podium-driver-name");
+            name.getStyle().set("color", "#3e404b").set("font-style", "italic");
+            driverInfo.add(name);
+            stepContainer.add(driverInfo);
+        }
+
+        Div step = new Div();
+        step.addClassName("podium-step");
+        step.addClassName("step-" + place);
+        Span number = new Span(String.valueOf(place));
+        number.addClassName("podium-number");
+        step.add(number);
+        stepContainer.add(step);
+
+        return stepContainer;
+    }
+
+    private Div createPaceListRow(RacePaceStats stat, int pos, String carType, double bestPace) {
+        Div row = new Div();
+        row.addClassName("results-list-row");
+        DriverResult dr = findDriverResultByName(currentEvent, stat.getDriverName());
+        Integer teamId = dr != null ? dr.getTeamId() : null;
+        row.getStyle().set("--team-color", getTeamColor(teamId, carType));
+
+        Span posSpan = new Span(String.valueOf(pos));
+        posSpan.addClassName("results-list-pos");
+
+        Div colorBar = new Div();
+        colorBar.addClassName("results-list-color-bar");
+
+        Span nameSpan = new Span(stat.getDriverName());
+        nameSpan.addClassName("results-list-name");
+
+        Span teamSpan = new Span(stat.getTeamName() != null ? stat.getTeamName() : "");
+        teamSpan.addClassName("results-list-team");
+
+        // Performance badges (S1, S2, S3)
+        Div perfCols = new Div();
+        perfCols.addClassName("results-list-perf-cols");
+        perfCols.add(createPosterPerformanceBadge(stat.getS1Performance()));
+        perfCols.add(createPosterPerformanceBadge(stat.getS2Performance()));
+        perfCols.add(createPosterPerformanceBadge(stat.getS3Performance()));
+
+        String timeText = stat.getPureRacePace() == bestPace
+                ? formatLapTime((float) stat.getPureRacePace())
+                : String.format("+%.3fs", stat.getPureRacePace() - bestPace);
+        Span timeSpan = new Span(timeText);
+        timeSpan.addClassName("results-list-time");
+
+        row.add(posSpan, colorBar, nameSpan, teamSpan, perfCols, timeSpan);
+        return row;
+    }
+
+    private Span createPosterPerformanceBadge(double perf) {
+        Span span = new Span(String.format("%.1f", perf));
+        span.addClassName("poster-perf-badge");
+        if (perf >= 9.0) {
+            span.addClassName("poster-perf-purple");
+        } else if (perf >= 7.0) {
+            span.addClassName("poster-perf-green");
+        } else if (perf >= 4.0) {
+            span.addClassName("poster-perf-yellow");
+        } else {
+            span.addClassName("poster-perf-red");
+        }
+        return span;
+    }
+
+    private Div createConsistencyPoster(SessionResult session, List<ConsistencyStats> stats) {
+        String carType = getCarTypeForEvent();
+        Div body = new Div();
+        body.addClassName("results-poster-body");
+
+        Div podiumContainer = new Div();
+        podiumContainer.addClassName("results-podium-container");
+
+        ConsistencyStats first = stats.size() > 0 ? stats.get(0) : null;
+        ConsistencyStats second = stats.size() > 1 ? stats.get(1) : null;
+        ConsistencyStats third = stats.size() > 2 ? stats.get(2) : null;
+
+        podiumContainer.add(createConsistencyPodiumStep(second, 2, carType));
+        podiumContainer.add(createConsistencyPodiumStep(first, 1, carType));
+        podiumContainer.add(createConsistencyPodiumStep(third, 3, carType));
+        body.add(podiumContainer);
+
+        Div listContainer = new Div();
+        listContainer.addClassName("results-list-container");
+
+        if (stats.size() > 3) {
+            List<ConsistencyStats> remaining = stats.subList(3, stats.size());
+            int mid = (remaining.size() + 1) / 2;
+
+            Div leftCol = new Div();
+            leftCol.addClassName("results-list-column");
+            for (int i = 0; i < mid; i++) {
+                leftCol.add(createConsistencyListRow(remaining.get(i), i + 4, carType));
+            }
+
+            Div rightCol = new Div();
+            rightCol.addClassName("results-list-column");
+            for (int i = mid; i < remaining.size(); i++) {
+                rightCol.add(createConsistencyListRow(remaining.get(i), i + 4, carType));
+            }
+
+            listContainer.add(leftCol, rightCol);
+        }
+        body.add(listContainer);
+
+        List<SessionResult> sessions = getOrderedSessions();
+        String sessionName = getDynamicSessionName(session.getSessionType(), sessions.stream().map(SessionResult::getSessionType).toList());
+        String title = currentEvent.getEventName() + " " + sessionName + " - Consistency";
+
+        return createBasePoster(title, body, "consistency-poster");
+    }
+
+    private Div createConsistencyPodiumStep(ConsistencyStats stat, int place, String carType) {
+        Div stepContainer = new Div();
+        stepContainer.addClassName("podium-step-container");
+        stepContainer.addClassName("place-" + place);
+
+        if (stat != null) {
+            DriverResult dr = findDriverResultByName(currentEvent, stat.getDriverName());
+            Integer teamId = dr != null ? dr.getTeamId() : null;
+            stepContainer.getStyle().set("--team-color", getTeamColor(teamId, carType));
+
+            Div driverInfo = new Div();
+            driverInfo.addClassName("podium-driver-info");
+
+            Span name = new Span(stat.getDriverName());
+            name.addClassName("podium-driver-name");
+
+            Span team = new Span(stat.getTeamName() != null ? stat.getTeamName() : "");
+            team.addClassName("podium-team-name");
+
+            Span time = new Span(String.format("Rating: %.1f", stat.getRating()));
+            time.addClassName("podium-time");
+
+            driverInfo.add(name, team, time);
+            stepContainer.add(driverInfo);
+        } else {
+            stepContainer.getStyle().set("--team-color", "#3e404b");
+            Div driverInfo = new Div();
+            driverInfo.addClassName("podium-driver-info");
+            Span name = new Span("VACANT");
+            name.addClassName("podium-driver-name");
+            name.getStyle().set("color", "#3e404b").set("font-style", "italic");
+            driverInfo.add(name);
+            stepContainer.add(driverInfo);
+        }
+
+        Div step = new Div();
+        step.addClassName("podium-step");
+        step.addClassName("step-" + place);
+        Span number = new Span(String.valueOf(place));
+        number.addClassName("podium-number");
+        step.add(number);
+        stepContainer.add(step);
+
+        return stepContainer;
+    }
+
+    private Div createConsistencyListRow(ConsistencyStats stat, int pos, String carType) {
+        Div row = new Div();
+        row.addClassName("results-list-row");
+        DriverResult dr = findDriverResultByName(currentEvent, stat.getDriverName());
+        Integer teamId = dr != null ? dr.getTeamId() : null;
+        row.getStyle().set("--team-color", getTeamColor(teamId, carType));
+
+        Span posSpan = new Span(String.valueOf(pos));
+        posSpan.addClassName("results-list-pos");
+
+        Div colorBar = new Div();
+        colorBar.addClassName("results-list-color-bar");
+
+        Span nameSpan = new Span(stat.getDriverName());
+        nameSpan.addClassName("results-list-name");
+
+        Span teamSpan = new Span(stat.getTeamName() != null ? stat.getTeamName() : "");
+        teamSpan.addClassName("results-list-team");
+
+        Span ratingSpan = new Span(String.format("%.1f", stat.getRating()));
+        ratingSpan.addClassName("results-list-rating");
+
+        Span diffSpan = new Span(String.format("%.3fs", stat.getAvgDiff()));
+        diffSpan.addClassName("results-list-diff");
+
+        row.add(posSpan, colorBar, nameSpan, teamSpan, ratingSpan, diffSpan);
+        return row;
+    }
+
+    private Div createStintsPoster(SessionResult session, List<LongestStintStats> stats) {
+        String carType = getCarTypeForEvent();
+        Div body = new Div();
+        body.addClassName("results-poster-body");
+
+        Div podiumContainer = new Div();
+        podiumContainer.addClassName("results-podium-container");
+
+        LongestStintStats first = stats.size() > 0 ? stats.get(0) : null;
+        LongestStintStats second = stats.size() > 1 ? stats.get(1) : null;
+        LongestStintStats third = stats.size() > 2 ? stats.get(2) : null;
+
+        podiumContainer.add(createStintsPodiumStep(second, 2, carType));
+        podiumContainer.add(createStintsPodiumStep(first, 1, carType));
+        podiumContainer.add(createStintsPodiumStep(third, 3, carType));
+        body.add(podiumContainer);
+
+        Div listContainer = new Div();
+        listContainer.addClassName("results-list-container");
+
+        if (stats.size() > 3) {
+            List<LongestStintStats> remaining = stats.subList(3, stats.size());
+            int mid = (remaining.size() + 1) / 2;
+
+            Div leftCol = new Div();
+            leftCol.addClassName("results-list-column");
+            for (int i = 0; i < mid; i++) {
+                leftCol.add(createStintsListRow(remaining.get(i), i + 4, carType));
+            }
+
+            Div rightCol = new Div();
+            rightCol.addClassName("results-list-column");
+            for (int i = mid; i < remaining.size(); i++) {
+                rightCol.add(createStintsListRow(remaining.get(i), i + 4, carType));
+            }
+
+            listContainer.add(leftCol, rightCol);
+        }
+        body.add(listContainer);
+
+        List<SessionResult> sessions = getOrderedSessions();
+        String sessionName = getDynamicSessionName(session.getSessionType(), sessions.stream().map(SessionResult::getSessionType).toList());
+        String title = currentEvent.getEventName() + " " + sessionName + " - Tyre Stints";
+
+        return createBasePoster(title, body, "stints-poster");
+    }
+
+    private Div createStintsPodiumStep(LongestStintStats stat, int place, String carType) {
+        Div stepContainer = new Div();
+        stepContainer.addClassName("podium-step-container");
+        stepContainer.addClassName("place-" + place);
+
+        if (stat != null) {
+            DriverResult dr = findDriverResultByName(currentEvent, stat.getDriverName());
+            Integer teamId = dr != null ? dr.getTeamId() : null;
+            stepContainer.getStyle().set("--team-color", getTeamColor(teamId, carType));
+
+            Div driverInfo = new Div();
+            driverInfo.addClassName("podium-driver-info");
+
+            Span name = new Span(stat.getDriverName());
+            name.addClassName("podium-driver-name");
+
+            Span team = new Span(stat.getTeamName() != null ? stat.getTeamName() : "");
+            team.addClassName("podium-team-name");
+
+            Span time = new Span(stat.getLaps() + " Laps (" + stat.getTyreCompound() + ")");
+            time.addClassName("podium-time");
+
+            driverInfo.add(name, team, time);
+            stepContainer.add(driverInfo);
+        } else {
+            stepContainer.getStyle().set("--team-color", "#3e404b");
+            Div driverInfo = new Div();
+            driverInfo.addClassName("podium-driver-info");
+            Span name = new Span("VACANT");
+            name.addClassName("podium-driver-name");
+            name.getStyle().set("color", "#3e404b").set("font-style", "italic");
+            driverInfo.add(name);
+            stepContainer.add(driverInfo);
+        }
+
+        Div step = new Div();
+        step.addClassName("podium-step");
+        step.addClassName("step-" + place);
+        Span number = new Span(String.valueOf(place));
+        number.addClassName("podium-number");
+        step.add(number);
+        stepContainer.add(step);
+
+        return stepContainer;
+    }
+
+    private Div createStintsListRow(LongestStintStats stat, int pos, String carType) {
+        Div row = new Div();
+        row.addClassName("results-list-row");
+        DriverResult dr = findDriverResultByName(currentEvent, stat.getDriverName());
+        Integer teamId = dr != null ? dr.getTeamId() : null;
+        row.getStyle().set("--team-color", getTeamColor(teamId, carType));
+
+        Span posSpan = new Span(String.valueOf(pos));
+        posSpan.addClassName("results-list-pos");
+
+        Div colorBar = new Div();
+        colorBar.addClassName("results-list-color-bar");
+
+        Span nameSpan = new Span(stat.getDriverName());
+        nameSpan.addClassName("results-list-name");
+
+        Span teamSpan = new Span(stat.getTeamName() != null ? stat.getTeamName() : "");
+        teamSpan.addClassName("results-list-team");
+
+        Div tyreStintContainer = new Div();
+        tyreStintContainer.addClassName("results-list-tyre-stint");
+
+        Span tyreBadge = new Span();
+        tyreBadge.addClassName("tyre-badge");
+        tyreBadge.setText(stat.getTyreCompound().substring(0, 1));
+        switch (stat.getTyreCompound()) {
+            case "Soft" -> tyreBadge.addClassName("tyre-soft");
+            case "Medium" -> tyreBadge.addClassName("tyre-medium");
+            case "Hard" -> tyreBadge.addClassName("tyre-hard");
+            case "Inter" -> tyreBadge.addClassName("tyre-inter");
+            case "Wet" -> tyreBadge.addClassName("tyre-wet");
+            default -> tyreBadge.addClassName("tyre-unknown");
+        }
+        tyreBadge.getStyle().set("width", "16px").set("height", "16px").set("font-size", "9px").set("line-height", "16px").set("margin-right", "8px");
+
+        Span lapsSpan = new Span(stat.getLaps() + " laps");
+        lapsSpan.getStyle().set("font-size", "12px").set("font-weight", "800");
+
+        tyreStintContainer.add(tyreBadge, lapsSpan);
+
+        Span timeSpan = new Span(formatLapTime((float) stat.getAvgLapTime()));
+        timeSpan.addClassName("results-list-time");
+
+        row.add(posSpan, colorBar, nameSpan, teamSpan, tyreStintContainer, timeSpan);
+        return row;
     }
 
     private Div createPodiumStep(DriverResult dr, int place, String carType, boolean isQualifying) {

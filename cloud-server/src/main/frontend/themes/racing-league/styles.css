@@ -94,10 +94,11 @@ vaadin-grid::part(highlighted-driver) {
 
 .lineup-poster {
     width: 1200px;
-    height: 675px; /* Fixed 16:9 Aspect Ratio for perfect screenshots */
+    min-height: 675px;
+    height: auto;
     background: linear-gradient(135deg, #090a0f 0%, #15161d 100%);
     position: relative;
-    padding: 30px;
+    padding: 30px 30px 45px 30px;
     box-sizing: border-box;
     overflow: hidden;
     color: white;
@@ -326,10 +327,11 @@ vaadin-grid::part(highlighted-driver) {
 
 .results-poster {
     width: 1200px;
-    height: 675px; /* Fixed 16:9 Aspect Ratio for perfect screenshots */
+    min-height: 675px;
+    height: auto;
     background: linear-gradient(135deg, #090a0f 0%, #15161d 100%);
     position: relative;
-    padding: 30px;
+    padding: 30px 30px 45px 30px;
     box-sizing: border-box;
     overflow: hidden;
     color: white;
@@ -633,5 +635,184 @@ vaadin-grid::part(highlighted-driver) {
 .results-poster .lineup-social-icon {
     color: var(--results-accent-color, #eef30d);
 }
+
+/* Stats visual poster specific styles */
+.results-list-perf-cols {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+    margin-right: 15px;
+    align-items: center;
+}
+
+.poster-perf-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 18px;
+    font-size: 10px;
+    font-weight: 800;
+    border-radius: 3px;
+    color: white;
+    text-align: center;
+    box-sizing: border-box;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.poster-perf-purple { background-color: #a020f0; }
+.poster-perf-green { background-color: #2ece2e; }
+.poster-perf-yellow { background-color: #cccc00; color: black; }
+.poster-perf-red { background-color: #e60000; }
+
+.results-list-rating {
+    font-size: 12px;
+    font-weight: 800;
+    color: #eef30d;
+    width: 50px;
+    text-align: right;
+    margin-left: auto;
+    margin-right: 15px;
+}
+
+.results-list-diff {
+    font-size: 12px;
+    font-weight: 700;
+    color: #a0a5b5;
+    width: 70px;
+    text-align: right;
+}
+
+.results-list-tyre-stint {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    margin-right: 15px;
+}
+
+/* Pit Stops Poster specific styles */
+.pitstops-poster {
+    padding-bottom: 50px;
+}
+
+.pitstops-rows-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 15px;
+    padding: 0 10px;
+}
+
+.pitstops-row {
+    display: flex;
+    align-items: center;
+    height: 28px;
+    box-sizing: border-box;
+}
+
+.pitstops-row-pos {
+    font-size: 12px;
+    font-weight: 900;
+    color: #8a8d9f;
+    width: 25px;
+    text-align: center;
+}
+
+.pitstops-row-flag {
+    font-size: 14px;
+    margin: 0 8px;
+}
+
+.pitstops-row-name {
+    font-size: 13px;
+    font-weight: 800;
+    color: #ffffff;
+    text-transform: uppercase;
+    width: 180px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pitstops-timeline-wrapper {
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    height: 18px;
+    border-radius: 4px;
+    overflow: visible; /* to allow labels to overflow */
+    position: relative;
+}
+
+.pitstops-timeline {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    position: relative;
+    overflow: visible;
+}
+
+.pitstops-segment {
+    height: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    border-right: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.pitstops-segment.tyre-soft {
+    background: linear-gradient(90deg, #ef1a2d 0%, #ff4d4d 100%);
+    box-shadow: inset 0 0 5px rgba(255,0,0,0.5);
+}
+
+.pitstops-segment.tyre-medium {
+    background: linear-gradient(90deg, #ffd700 0%, #ffe066 100%);
+    box-shadow: inset 0 0 5px rgba(255,215,0,0.5);
+}
+
+.pitstops-segment.tyre-hard {
+    background: linear-gradient(90deg, #ffffff 0%, #e0e0e0 100%);
+    box-shadow: inset 0 0 5px rgba(255,255,255,0.5);
+}
+
+.pitstops-segment.tyre-inter {
+    background: linear-gradient(90deg, #30bc30 0%, #5ce65c 100%);
+    box-shadow: inset 0 0 5px rgba(0,255,0,0.5);
+}
+
+.pitstops-segment.tyre-wet {
+    background: linear-gradient(90deg, #3030ef 0%, #6666ff 100%);
+    box-shadow: inset 0 0 5px rgba(0,0,255,0.5);
+}
+
+.pitstops-segment.tyre-unknown {
+    background: linear-gradient(90deg, #555555 0%, #777777 100%);
+}
+
+.pitstops-segment-spacer {
+    height: 100%;
+    background: transparent;
+}
+
+.pitstops-lap-label {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translate(50%, -50%);
+    background: #18191d;
+    color: #fff;
+    font-size: 8px;
+    font-weight: 900;
+    padding: 1px 3px;
+    border-radius: 2px;
+    z-index: 5;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+    border: 1px solid #33353e;
+}
+
+
 
 
