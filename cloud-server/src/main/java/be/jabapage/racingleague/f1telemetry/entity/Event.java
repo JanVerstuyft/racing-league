@@ -24,10 +24,17 @@ public class Event {
     private String trackId;
     private String eventName; // e.g., "British Grand Prix"
 
+    @Column(name = "finalized", nullable = false)
+    private Boolean finalized = false;
+
 
     @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     @ToString.Exclude
     private Set<SessionResult> sessionResults = new LinkedHashSet<>();
+
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
+    @ToString.Exclude
+    private Set<EventLineupEntry> lineupEntries = new LinkedHashSet<>();
 
     @Override
     public boolean equals(Object o) {

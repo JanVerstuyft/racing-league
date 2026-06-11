@@ -89,6 +89,8 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     private final Button updateRealLineupBtn = new Button("Update with Real Lineup");
 
     private final H2 eventHeader = new H2();
+    private final Span statusBadge = new Span();
+    private final Button toggleFinalizedBtn = new Button();
     private final RouterLink backToSeason = new RouterLink("Back to Season", SeasonDetailsView.class, 0L);
     
     private final VerticalLayout resultsContainer = new VerticalLayout();
@@ -186,9 +188,30 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         nav.setSpacing(true);
 
         logoContainer.setAlignItems(Alignment.CENTER);
-        HorizontalLayout titleLayout = new HorizontalLayout(logoContainer, eventHeader);
+        statusBadge.getStyle().set("margin-left", "var(--lumo-space-m)");
+        toggleFinalizedBtn.getStyle().set("margin-left", "var(--lumo-space-m)");
+        HorizontalLayout titleLayout = new HorizontalLayout(logoContainer, eventHeader, statusBadge, toggleFinalizedBtn);
         titleLayout.setAlignItems(Alignment.CENTER);
         titleLayout.setSpacing(true);
+
+        toggleFinalizedBtn.addClickListener(ev -> {
+            if (currentEvent == null) return;
+            boolean newStatus = !Boolean.TRUE.equals(currentEvent.getFinalized());
+            String statusWord = newStatus ? "final" : "provisional";
+            ConfirmDialog dialog = new ConfirmDialog();
+            dialog.setHeader("Mark Event as " + statusWord.substring(0, 1).toUpperCase() + statusWord.substring(1) + "?");
+            dialog.setText("Are you sure you want to mark this event as " + statusWord + "? Standings will be recalculated.");
+            dialog.setCancelable(true);
+            dialog.setConfirmText("Yes");
+            dialog.addConfirmListener(confirmEv -> {
+                currentEvent.setFinalized(newStatus);
+                eventRepository.save(currentEvent);
+                telemetryProcessingService.recalculateStandings(currentEvent.getTier().getId());
+                refreshEvent();
+                Notification.show("Event marked as " + statusWord + " and standings recalculated", 3000, Notification.Position.TOP_CENTER);
+            });
+            dialog.open();
+        });
 
         lineupContainer.setSizeFull();
         lineupContainer.setVisible(false);
@@ -372,6 +395,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 statsSessionTabs.setSelectedIndex(currentStatsIdx);
             }
             updateSessionContent();
+            updateStatusUI();
         });
     }
 
@@ -425,9 +449,39 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             setupSessionTabs();
             setupStatsSessionTabs();
             updateSessionContent();
+            updateStatusUI();
         }, () -> {
             event.forwardTo(SeasonListView.class);
         });
+    }
+
+    private void updateStatusUI() {
+        if (currentEvent == null) return;
+
+        statusBadge.getElement().getThemeList().clear();
+        if (Boolean.TRUE.equals(currentEvent.getFinalized())) {
+            statusBadge.setText("Final");
+            statusBadge.getElement().getThemeList().add("badge success");
+        } else {
+            statusBadge.setText("Provisional");
+            statusBadge.getElement().getThemeList().add("badge error");
+        }
+
+        boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
+        toggleFinalizedBtn.setVisible(loggedIn);
+        if (loggedIn) {
+            toggleFinalizedBtn.getElement().getThemeList().clear();
+            toggleFinalizedBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+            if (Boolean.TRUE.equals(currentEvent.getFinalized())) {
+                toggleFinalizedBtn.setText("Reopen");
+                toggleFinalizedBtn.setIcon(com.vaadin.flow.component.icon.VaadinIcon.UNLOCK.create());
+                toggleFinalizedBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+            } else {
+                toggleFinalizedBtn.setText("Mark Final");
+                toggleFinalizedBtn.setIcon(com.vaadin.flow.component.icon.VaadinIcon.LOCK.create());
+                toggleFinalizedBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
+            }
+        }
     }
 
     private void setupSessionTabs() {

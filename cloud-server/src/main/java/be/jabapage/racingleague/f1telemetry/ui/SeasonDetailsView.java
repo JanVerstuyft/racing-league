@@ -833,6 +833,18 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                     .collect(Collectors.joining(", "));
         }).setHeader("Sessions");
 
+        eventGrid.addComponentColumn(event -> {
+            Span statusBadge = new Span();
+            if (Boolean.TRUE.equals(event.getFinalized())) {
+                statusBadge.setText("Final");
+                statusBadge.getElement().getThemeList().add("badge success");
+            } else {
+                statusBadge.setText("Provisional");
+                statusBadge.getElement().getThemeList().add("badge error");
+            }
+            return statusBadge;
+        }).setHeader("Status").setAutoWidth(true);
+
         actionsColumn = eventGrid.addComponentColumn(event -> {
             HorizontalLayout actions = new HorizontalLayout();
             RouterLink resultsLink = new RouterLink("Results", EventResultsView.class, event.getId());
@@ -841,6 +853,37 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             if (securityService.getAuthenticatedUser().isPresent()) {
                 RouterLink penaltiesLink = new RouterLink("Penalties", EventPenaltiesView.class, event.getId());
                 actions.add(penaltiesLink);
+
+                Button toggleFinalizedBtn = new Button();
+                toggleFinalizedBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+                if (Boolean.TRUE.equals(event.getFinalized())) {
+                    toggleFinalizedBtn.setText("Reopen");
+                    toggleFinalizedBtn.setIcon(com.vaadin.flow.component.icon.VaadinIcon.UNLOCK.create());
+                    toggleFinalizedBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+                } else {
+                    toggleFinalizedBtn.setText("Mark Final");
+                    toggleFinalizedBtn.setIcon(com.vaadin.flow.component.icon.VaadinIcon.LOCK.create());
+                    toggleFinalizedBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
+                }
+
+                toggleFinalizedBtn.addClickListener(e -> {
+                    boolean newStatus = !Boolean.TRUE.equals(event.getFinalized());
+                    String statusWord = newStatus ? "final" : "provisional";
+                    ConfirmDialog dialog = new ConfirmDialog();
+                    dialog.setHeader("Mark Event as " + statusWord.substring(0, 1).toUpperCase() + statusWord.substring(1) + "?");
+                    dialog.setText("Are you sure you want to mark '" + event.getEventName() + "' as " + statusWord + "? Standings will be automatically recalculated.");
+                    dialog.setCancelable(true);
+                    dialog.setConfirmText("Yes");
+                    dialog.addConfirmListener(ev -> {
+                        event.setFinalized(newStatus);
+                        eventRepository.save(event);
+                        telemetryProcessingService.recalculateStandings(event.getTier().getId());
+                        updateData();
+                        Notification.show("Event marked as " + statusWord + " and standings recalculated", 3000, Notification.Position.TOP_CENTER);
+                    });
+                    dialog.open();
+                });
+                actions.add(toggleFinalizedBtn);
                 
                 Button deleteBtn = new Button("Delete", e -> {
                     ConfirmDialog dialog = new ConfirmDialog();

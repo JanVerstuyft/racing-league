@@ -21,5 +21,6 @@
     <include file="changelog/018_change_driver_mapping_tiers_to_single.xml" relativeToChangelogFile="true"/>
     <include file="changelog/019_add_accent_color_and_social_handles_to_league.xml" relativeToChangelogFile="true"/>
     <include file="changelog/020_add_car_type_to_league.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/021_add_finalized_to_event.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>
 

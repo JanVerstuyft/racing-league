@@ -238,15 +238,17 @@ public class TelemetryResultsService {
 
         applyExtraPoints(sessionResult, league, pointConfigs);
 
-        boolean hasPoints = sessionResult.getDriverResults().stream().anyMatch(dr -> dr.getPointsAwarded() != null && dr.getPointsAwarded() > 0);
-        if (isRace || hasPoints) {
-            if (wasOverwritten) {
-                recalculateStandings(tier.getId());
-            } else {
-                for (DriverResult driverResult : sessionResult.getDriverResults()) {
-                    String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId() + "|" + driverResult.getCountry();
-                    boolean isReserve = state.getReserveDrivers().contains(key);
-                    updateStandings(tier, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
+        if (Boolean.TRUE.equals(event.getFinalized())) {
+            boolean hasPoints = sessionResult.getDriverResults().stream().anyMatch(dr -> dr.getPointsAwarded() != null && dr.getPointsAwarded() > 0);
+            if (isRace || hasPoints) {
+                if (wasOverwritten) {
+                    recalculateStandings(tier.getId());
+                } else {
+                    for (DriverResult driverResult : sessionResult.getDriverResults()) {
+                        String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId() + "|" + driverResult.getCountry();
+                        boolean isReserve = state.getReserveDrivers().contains(key);
+                        updateStandings(tier, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
+                    }
                 }
             }
         }
@@ -399,12 +401,14 @@ public class TelemetryResultsService {
 
         applyExtraPoints(sessionResult, league, pointConfigs);
 
-        boolean hasPoints = sessionResult.getDriverResults().stream().anyMatch(dr -> dr.getPointsAwarded() != null && dr.getPointsAwarded() > 0);
-        if (isRace || hasPoints) {
-            for (DriverResult driverResult : sessionResult.getDriverResults()) {
-                String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId() + "|" + driverResult.getCountry();
-                boolean isReserve = state.getReserveDrivers().contains(key);
-                updateStandings(tier, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
+        if (Boolean.TRUE.equals(event.getFinalized())) {
+            boolean hasPoints = sessionResult.getDriverResults().stream().anyMatch(dr -> dr.getPointsAwarded() != null && dr.getPointsAwarded() > 0);
+            if (isRace || hasPoints) {
+                for (DriverResult driverResult : sessionResult.getDriverResults()) {
+                    String key = driverResult.getTelemetryName() + "|" + driverResult.getRaceNumber() + "|" + driverResult.getDriverId() + "|" + driverResult.getCountry();
+                    boolean isReserve = state.getReserveDrivers().contains(key);
+                    updateStandings(tier, driverResult, isReserve, driverResult.getRaceNumber(), isRace);
+                }
             }
         }
 
@@ -491,31 +495,45 @@ public class TelemetryResultsService {
                 applyManualPointDeductions(session, mappings);
             }
             
-            for (DriverResult result : session.getDriverResults()) {
-                String nameToUse = result.getDriverName();
-                if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
-                    String key = result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry();
-                    nameToUse = nameMap.getOrDefault(key, result.getTelemetryName());
-                }
-
-                if (!nameToUse.equals(result.getDriverName())) {
-                    result.setDriverName(nameToUse);
-                }
-
-                if (result.getPointsAwarded() != null && result.getPointsAwarded() > 0) {
-                    boolean isReserve = false;
-                    Integer raceNumber = result.getRaceNumber();
+            if (session.getEvent() != null && Boolean.TRUE.equals(session.getEvent().getFinalized())) {
+                for (DriverResult result : session.getDriverResults()) {
+                    String nameToUse = result.getDriverName();
                     if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
-                        isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry());
+                        String key = result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry();
+                        nameToUse = nameMap.getOrDefault(key, result.getTelemetryName());
                     }
-                    updateStandings(tier, result, isReserve, raceNumber, isRace);
-                } else if (isRace) {
-                    boolean isReserve = false;
-                    Integer raceNumber = result.getRaceNumber();
+
+                    if (!nameToUse.equals(result.getDriverName())) {
+                        result.setDriverName(nameToUse);
+                    }
+
+                    if (result.getPointsAwarded() != null && result.getPointsAwarded() > 0) {
+                        boolean isReserve = false;
+                        Integer raceNumber = result.getRaceNumber();
+                        if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
+                            isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry());
+                        }
+                        updateStandings(tier, result, isReserve, raceNumber, isRace);
+                    } else if (isRace) {
+                        boolean isReserve = false;
+                        Integer raceNumber = result.getRaceNumber();
+                        if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
+                            isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry());
+                        }
+                        updateStandings(tier, result, isReserve, raceNumber, true);
+                    }
+                }
+            } else {
+                for (DriverResult result : session.getDriverResults()) {
+                    String nameToUse = result.getDriverName();
                     if (result.getTelemetryName() != null && result.getRaceNumber() != null && result.getDriverId() != null) {
-                        isReserve = reserveSet.contains(result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry());
+                        String key = result.getTelemetryName() + "|" + result.getRaceNumber() + "|" + result.getDriverId() + "|" + result.getCountry();
+                        nameToUse = nameMap.getOrDefault(key, result.getTelemetryName());
                     }
-                    updateStandings(tier, result, isReserve, raceNumber, true);
+
+                    if (!nameToUse.equals(result.getDriverName())) {
+                        result.setDriverName(nameToUse);
+                    }
                 }
             }
         }

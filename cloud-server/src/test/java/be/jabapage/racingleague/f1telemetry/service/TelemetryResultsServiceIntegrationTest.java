@@ -77,9 +77,13 @@ public class TelemetryResultsServiceIntegrationTest {
     @Autowired
     private ManualPenaltyRepository manualPenaltyRepository;
 
+    @Autowired
+    private EventLineupEntryRepository eventLineupEntryRepository;
+
     @org.junit.jupiter.api.BeforeEach
     public void cleanDatabase() {
         manualPenaltyRepository.deleteAll();
+        eventLineupEntryRepository.deleteAll();
         driverStandingRepository.deleteAll();
         teamStandingRepository.deleteAll();
         lapResultRepository.deleteAll();
@@ -234,6 +238,7 @@ public class TelemetryResultsServiceIntegrationTest {
         event.setEventName("Grand Prix");
         event.setTrackId("17");
         event.setTier(tier);
+        event.setFinalized(true);
         event = eventRepository.saveAndFlush(event);
 
         // 4. Create SessionResult
@@ -316,6 +321,23 @@ public class TelemetryResultsServiceIntegrationTest {
         Event event = new Event();
         event.setEventName("GP to Delete");
         event.setTier(tier);
+        event.setFinalized(true);
+        event = eventRepository.saveAndFlush(event);
+
+        DriverMapping driver = new DriverMapping();
+        driver.setLeague(league);
+        driver.setTelemetryName("Del Driver");
+        driver.setCountry("Belgium");
+        driver = driverMappingRepository.saveAndFlush(driver);
+
+        EventLineupEntry entry = new EventLineupEntry();
+        entry.setEvent(event);
+        entry.setDriver(driver);
+        entry.setTeamId(1);
+        entry.setCarType("F1 25");
+        entry = eventLineupEntryRepository.saveAndFlush(entry);
+
+        event.getLineupEntries().add(entry);
         event = eventRepository.saveAndFlush(event);
 
         SessionResult session = new SessionResult();
@@ -361,6 +383,7 @@ public class TelemetryResultsServiceIntegrationTest {
         assertTrue(sessionResultRepository.findBySessionUID(88889999L).isEmpty());
         assertTrue(driverResultRepository.findAll().stream().filter(d -> d.getDriverName().equals("Driver Del")).findFirst().isEmpty());
         assertTrue(lapResultRepository.findBySessionUID(88889999L).isEmpty());
+        assertTrue(eventLineupEntryRepository.findById(entry.getId()).isEmpty());
     }
 
     @Test
@@ -401,6 +424,7 @@ public class TelemetryResultsServiceIntegrationTest {
         event.setEventName("Austrian GP");
         event.setTrackId("17");
         event.setTier(tier);
+        event.setFinalized(true);
         event = eventRepository.saveAndFlush(event);
 
         SessionResult session = new SessionResult();
@@ -674,6 +698,7 @@ public class TelemetryResultsServiceIntegrationTest {
         event.setEventName("Austrian GP Weekend");
         event.setTrackId("17");
         event.setTier(tier);
+        event.setFinalized(true);
         event = eventRepository.saveAndFlush(event);
 
         // 4. Create Main Race Session (Type 16) and Sprint Session (Type 15)
@@ -870,5 +895,81 @@ public class TelemetryResultsServiceIntegrationTest {
         // Driver 2: 25 (Main) + 5 (Sprint) = 30 points
         DriverStanding sd2 = driverStandingRepository.findByTierAndDriverNameAndRaceNumberAndCountry(tier, "Driver 2", m2.getRaceNumber(), m2.getCountry()).orElseThrow();
         assertEquals(30, sd2.getPoints());
+    }
+
+    @Test
+    public void testRecalculateStandingsWithProvisionalAndFinalizedEvents() {
+        // 1. Setup League & Tier
+        League league = new League();
+        league.setName("Provisional League");
+        league.setMinLapsPct(50);
+        league = leagueRepository.saveAndFlush(league);
+
+        Tier tier = new Tier();
+        tier.setName("Tier 1");
+        tier.setToken("tier1-prov");
+        tier.setLeague(league);
+        tier = tierRepository.saveAndFlush(tier);
+
+        // 2. Setup Point Config: position 1 gets 25
+        SessionPointConfig c1 = new SessionPointConfig();
+        c1.setLeague(league);
+        c1.setSessionType(15);
+        c1.setPosition(1);
+        c1.setPoints(25);
+        sessionPointConfigRepository.saveAndFlush(c1);
+
+        // 3. Create Event (Provisional by default)
+        Event event = new Event();
+        event.setEventName("Provisional GP");
+        event.setTrackId("17");
+        event.setTier(tier);
+        event.setFinalized(false);
+        event = eventRepository.saveAndFlush(event);
+
+        // 4. Create SessionResult
+        SessionResult session = new SessionResult();
+        session.setSessionType(15);
+        session.setSessionUID(99998888L);
+        session.setEvent(event);
+        session = sessionResultRepository.saveAndFlush(session);
+
+        // Driver 1: Finishes 1st (Position 1), raw race time 1000.0s
+        DriverResult d1 = new DriverResult();
+        d1.setDriverName("Driver 1");
+        d1.setPosition(1);
+        d1.setSessionResult(session);
+        d1.setResultStatus(3);
+        d1.setPointsAwarded(25);
+        d1.setPenalties(0);
+        d1.setWarnings(0);
+        d1 = driverResultRepository.saveAndFlush(d1);
+
+        session.getDriverResults().add(d1);
+        session = sessionResultRepository.saveAndFlush(session);
+        event.getSessionResults().add(session);
+        event = eventRepository.saveAndFlush(event);
+
+        // 5. Recalculate standings -> Since the event is provisional, standings should be empty!
+        telemetryResultsService.recalculateStandings(tier.getId());
+        List<DriverStanding> standings = driverStandingRepository.findByTier(tier);
+        assertTrue(standings.isEmpty(), "Standings should be empty for a provisional event");
+
+        // 6. Mark the event as finalized and recalculate -> Standings should now have 1 driver with 25 points!
+        event.setFinalized(true);
+        eventRepository.saveAndFlush(event);
+        telemetryResultsService.recalculateStandings(tier.getId());
+
+        standings = driverStandingRepository.findByTier(tier);
+        assertEquals(1, standings.size(), "Standings should have 1 entry when event is finalized");
+        assertEquals(25, standings.get(0).getPoints(), "Driver 1 should have 25 points");
+
+        // 7. Mark the event as provisional again and recalculate -> Standings should be empty again!
+        event.setFinalized(false);
+        eventRepository.saveAndFlush(event);
+        telemetryResultsService.recalculateStandings(tier.getId());
+
+        standings = driverStandingRepository.findByTier(tier);
+        assertTrue(standings.isEmpty(), "Standings should be empty again after event is marked provisional");
     }
 }
