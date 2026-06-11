@@ -96,9 +96,13 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     
     private final VerticalLayout resultsContainer = new VerticalLayout();
     private final VerticalLayout statsContainer = new VerticalLayout();
+    private final VerticalLayout infographicsContainer = new VerticalLayout();
     
     private final Tabs sessionTabs = new Tabs();
     private final VerticalLayout sessionContent = new VerticalLayout();
+    
+    private final Tabs infographicsSessionTabs = new Tabs();
+    private final VerticalLayout infographicsContent = new VerticalLayout();
     
     private final Tabs statsSessionTabs = new Tabs();
     private final Tabs statsTabs = new Tabs();
@@ -137,16 +141,19 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         Tab resultsTab = new Tab("Results");
         Tab statsTab = new Tab("Stats");
         Tab lineupTab = new Tab("Lineup");
-        Tabs mainTabs = new Tabs(resultsTab, statsTab, lineupTab);
+        Tab infographicsTab = new Tab("Infographics");
+        Tabs mainTabs = new Tabs(resultsTab, statsTab, lineupTab, infographicsTab);
         
         mainTabs.addSelectedChangeListener(event -> {
             boolean isResults = event.getSelectedTab().equals(resultsTab);
             boolean isStats = event.getSelectedTab().equals(statsTab);
             boolean isLineup = event.getSelectedTab().equals(lineupTab);
+            boolean isInfographics = event.getSelectedTab().equals(infographicsTab);
             
             resultsContainer.setVisible(isResults);
             statsContainer.setVisible(isStats);
             lineupContainer.setVisible(isLineup);
+            infographicsContainer.setVisible(isInfographics);
             
             if (isStats) {
                 setupStatsSessionTabs();
@@ -154,6 +161,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             } else if (isLineup) {
                 initLineupIfEmpty();
                 updateLineupContent();
+            } else if (isInfographics) {
+                setupInfographicsSessionTabs();
+                updateInfographicsContent();
             }
         });
 
@@ -214,9 +224,16 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             dialog.open();
         });
 
+        // Infographics Section
+        infographicsSessionTabs.setWidthFull();
+        infographicsSessionTabs.addSelectedChangeListener(event -> updateInfographicsContent());
+        infographicsContainer.add(infographicsSessionTabs, infographicsContent);
+        infographicsContainer.setSizeFull();
+        infographicsContainer.setVisible(false);
+
         lineupContainer.setSizeFull();
         lineupContainer.setVisible(false);
-        add(nav, titleLayout, mainTabs, resultsContainer, statsContainer, lineupContainer);
+        add(nav, titleLayout, mainTabs, resultsContainer, statsContainer, lineupContainer, infographicsContainer);
         
         configureManualEntry();
         configureLineupGrid();
@@ -404,7 +421,13 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             if (currentStatsIdx >= 0 && currentStatsIdx < statsSessionTabs.getComponentCount()) {
                 statsSessionTabs.setSelectedIndex(currentStatsIdx);
             }
+            int currentInfoIdx = infographicsSessionTabs.getSelectedIndex();
+            setupInfographicsSessionTabs();
+            if (currentInfoIdx >= 0 && currentInfoIdx < infographicsSessionTabs.getComponentCount()) {
+                infographicsSessionTabs.setSelectedIndex(currentInfoIdx);
+            }
             updateSessionContent();
+            updateInfographicsContent();
             updateStatusUI();
         });
     }
@@ -448,6 +471,231 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         }
     }
 
+    private void setupInfographicsSessionTabs() {
+        infographicsSessionTabs.removeAll();
+        List<SessionResult> sessions = getOrderedSessions();
+        if (sessions.size() <= 1) {
+            infographicsSessionTabs.setVisible(false);
+        } else {
+            infographicsSessionTabs.setVisible(true);
+        }
+        java.util.Set<Integer> types = currentEvent.getSessionResults().stream()
+                .map(SessionResult::getSessionType)
+                .collect(Collectors.toSet());
+        for (SessionResult session : sessions) {
+            String sessionName = getDynamicSessionName(session.getSessionType(), types);
+            infographicsSessionTabs.add(new Tab(sessionName));
+        }
+    }
+
+    private void updateInfographicsContent() {
+        infographicsContent.removeAll();
+        int selectedIndex = infographicsSessionTabs.getSelectedIndex();
+        if (selectedIndex < 0) return;
+
+        List<SessionResult> sessions = getOrderedSessions();
+        SessionResult session = sessions.get(selectedIndex);
+        boolean isRaceOrSprint = (session.getSessionType() >= 15 && session.getSessionType() <= 17) || session.getSessionType() == 19;
+        
+        List<DriverResult> driverResults = session.getDriverResults().stream()
+                .sorted(Comparator.comparingInt(dr -> dr.getPosition() != null ? dr.getPosition() : 99))
+                .collect(Collectors.toList());
+
+        if (driverResults.isEmpty()) {
+            infographicsContent.add(new Span("No results/data available for this session."));
+            return;
+        }
+
+        String eventNameSafe = currentEvent.getEventName().toLowerCase().replace(" ", "_");
+        String sessNameSafe = getDynamicSessionName(session.getSessionType(), sessions.stream().map(SessionResult::getSessionType).toList()).toLowerCase().replace(" ", "_");
+
+        // 1. Results Poster
+        H2 resultsHeader = new H2("Results Poster");
+        resultsHeader.getStyle().set("margin-top", "30px");
+        Button downloadResultsBtn = new Button("Download Results Image", com.vaadin.flow.component.icon.VaadinIcon.DOWNLOAD.create());
+        downloadResultsBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
+        downloadResultsBtn.getStyle().set("margin-bottom", "15px");
+        downloadResultsBtn.addClickListener(e -> {
+            getElement().executeJs(
+                "if (!window.html2canvas) {" +
+                "  const script = document.createElement('script');" +
+                "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
+                "  script.onload = () => { downloadResultsPoster(); };" +
+                "  document.head.appendChild(script);" +
+                "} else {" +
+                "  downloadResultsPoster();" +
+                "}" +
+                "function downloadResultsPoster() {" +
+                "  const el = document.querySelector('.results-poster');" +
+                "  if (el) {" +
+                "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
+                "      const link = document.createElement('a');" +
+                "      link.download = 'results_' + $0 + '.png';" +
+                "      link.href = canvas.toDataURL('image/png');" +
+                "      link.click();" +
+                "    });" +
+                "  }" +
+                "}",
+                eventNameSafe + "_" + sessNameSafe
+            );
+        });
+        Div resultsPoster = createResultsPoster(session, driverResults);
+        infographicsContent.add(resultsHeader, downloadResultsBtn, resultsPoster);
+
+        // For race/sprint sessions, add other posters
+        if (isRaceOrSprint) {
+            // 2. Pit Stops Poster
+            H2 pitstopsHeader = new H2("Pit Stops Poster");
+            pitstopsHeader.getStyle().set("margin-top", "40px");
+            Button downloadPitStopsBtn = new Button("Download Pit Stops Image", com.vaadin.flow.component.icon.VaadinIcon.DOWNLOAD.create());
+            downloadPitStopsBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
+            downloadPitStopsBtn.getStyle().set("margin-bottom", "15px");
+            downloadPitStopsBtn.addClickListener(e -> {
+                getElement().executeJs(
+                    "if (!window.html2canvas) {" +
+                    "  const script = document.createElement('script');" +
+                    "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
+                    "  script.onload = () => { downloadPitStopsPoster(); };" +
+                    "  document.head.appendChild(script);" +
+                    "} else {" +
+                    "  downloadPitStopsPoster();" +
+                    "}" +
+                    "function downloadPitStopsPoster() {" +
+                    "  const el = document.querySelector('.pitstops-poster');" +
+                    "  if (el) {" +
+                    "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
+                    "      const link = document.createElement('a');" +
+                    "      link.download = 'pitstops_' + $0 + '.png';" +
+                    "      link.href = canvas.toDataURL('image/png');" +
+                    "      link.click();" +
+                    "    });" +
+                    "  }" +
+                    "}",
+                    eventNameSafe + "_" + sessNameSafe
+                );
+            });
+            Div pitstopsPoster = createPitStopsPoster(session, driverResults);
+            infographicsContent.add(pitstopsHeader, downloadPitStopsBtn, pitstopsPoster);
+
+            // 3. Pure Pace Poster
+            List<RacePaceStats> rawPaceStats = telemetryProcessingService.calculatePureRacePace(session.getId());
+            List<RacePaceStats> paceStats = currentEvent.getTier().getLeague().isHideAi()
+                    ? rawPaceStats.stream().filter(s -> !s.isAi()).collect(Collectors.toList())
+                    : rawPaceStats;
+            if (!paceStats.isEmpty()) {
+                H2 paceHeader = new H2("Pure Pace Poster");
+                paceHeader.getStyle().set("margin-top", "40px");
+                Button downloadPaceBtn = new Button("Download Pace Image", com.vaadin.flow.component.icon.VaadinIcon.DOWNLOAD.create());
+                downloadPaceBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
+                downloadPaceBtn.getStyle().set("margin-bottom", "15px");
+                downloadPaceBtn.addClickListener(e -> {
+                    getElement().executeJs(
+                        "if (!window.html2canvas) {" +
+                        "  const script = document.createElement('script');" +
+                        "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
+                        "  script.onload = () => { downloadPacePoster(); };" +
+                        "  document.head.appendChild(script);" +
+                        "} else {" +
+                        "  downloadPacePoster();" +
+                        "}" +
+                        "function downloadPacePoster() {" +
+                        "  const el = document.querySelector('.pace-poster');" +
+                        "  if (el) {" +
+                        "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
+                        "      const link = document.createElement('a');" +
+                        "      link.download = 'pace_' + $0 + '.png';" +
+                        "      link.href = canvas.toDataURL('image/png');" +
+                        "      link.click();" +
+                        "    });" +
+                        "  }" +
+                        "}",
+                        eventNameSafe + "_" + sessNameSafe
+                    );
+                });
+                Div pacePoster = createPacePoster(session, paceStats);
+                infographicsContent.add(paceHeader, downloadPaceBtn, pacePoster);
+            }
+
+            // 4. Tyre Stints Poster (Longest Stints)
+            List<LongestStintStats> rawStintStats = telemetryProcessingService.calculateLongestStints(session.getId());
+            List<LongestStintStats> stintStats = currentEvent.getTier().getLeague().isHideAi()
+                    ? rawStintStats.stream().filter(s -> !s.isAi()).collect(Collectors.toList())
+                    : rawStintStats;
+            if (!stintStats.isEmpty()) {
+                H2 stintsHeader = new H2("Tyre Stints Poster");
+                stintsHeader.getStyle().set("margin-top", "40px");
+                Button downloadStintsBtn = new Button("Download Stints Image", com.vaadin.flow.component.icon.VaadinIcon.DOWNLOAD.create());
+                downloadStintsBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
+                downloadStintsBtn.getStyle().set("margin-bottom", "15px");
+                downloadStintsBtn.addClickListener(e -> {
+                    getElement().executeJs(
+                        "if (!window.html2canvas) {" +
+                        "  const script = document.createElement('script');" +
+                        "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
+                        "  script.onload = () => { downloadStintsPoster(); };" +
+                        "  document.head.appendChild(script);" +
+                        "} else {" +
+                        "  downloadStintsPoster();" +
+                        "}" +
+                        "function downloadStintsPoster() {" +
+                        "  const el = document.querySelector('.stints-poster');" +
+                        "  if (el) {" +
+                        "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
+                        "      const link = document.createElement('a');" +
+                        "      link.download = 'stints_' + $0 + '.png';" +
+                        "      link.href = canvas.toDataURL('image/png');" +
+                        "      link.click();" +
+                        "    });" +
+                        "  }" +
+                        "}",
+                        eventNameSafe + "_" + sessNameSafe
+                    );
+                });
+                Div stintsPoster = createStintsPoster(session, stintStats);
+                infographicsContent.add(stintsHeader, downloadStintsBtn, stintsPoster);
+            }
+
+            // 5. Consistency Poster
+            List<ConsistencyStats> rawConsistencyStats = telemetryProcessingService.calculateConsistency(session.getId());
+            List<ConsistencyStats> consistencyStats = currentEvent.getTier().getLeague().isHideAi()
+                    ? rawConsistencyStats.stream().filter(s -> !s.isAi()).collect(Collectors.toList())
+                    : rawConsistencyStats;
+            if (!consistencyStats.isEmpty()) {
+                H2 consistencyHeader = new H2("Consistency Poster");
+                consistencyHeader.getStyle().set("margin-top", "40px");
+                Button downloadConsistencyBtn = new Button("Download Consistency Image", com.vaadin.flow.component.icon.VaadinIcon.DOWNLOAD.create());
+                downloadConsistencyBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
+                downloadConsistencyBtn.getStyle().set("margin-bottom", "15px");
+                downloadConsistencyBtn.addClickListener(e -> {
+                    getElement().executeJs(
+                        "if (!window.html2canvas) {" +
+                        "  const script = document.createElement('script');" +
+                        "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
+                        "  script.onload = () => { downloadConsistencyPoster(); };" +
+                        "  document.head.appendChild(script);" +
+                        "} else {" +
+                        "  downloadConsistencyPoster();" +
+                        "}" +
+                        "function downloadConsistencyPoster() {" +
+                        "  const el = document.querySelector('.consistency-poster');" +
+                        "  if (el) {" +
+                        "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
+                        "      const link = document.createElement('a');" +
+                        "      link.download = 'consistency_' + $0 + '.png';" +
+                        "      link.href = canvas.toDataURL('image/png');" +
+                        "      link.click();" +
+                        "    });" +
+                        "  }" +
+                        "}",
+                        eventNameSafe + "_" + sessNameSafe
+                    );
+                });
+                Div consistencyPoster = createConsistencyPoster(session, consistencyStats);
+                infographicsContent.add(consistencyHeader, downloadConsistencyBtn, consistencyPoster);
+            }
+        }
+    }
+
     @Override
     public void setParameter(BeforeEvent event, Long parameter) {
         this.currentEventId = parameter;
@@ -458,6 +706,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             updateLogo();
             setupSessionTabs();
             setupStatsSessionTabs();
+            setupInfographicsSessionTabs();
             updateSessionContent();
             updateStatusUI();
         }, () -> {
@@ -773,6 +1022,44 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             });
 
             sessionContent.add(posterHeader, downloadResultsBtn, poster);
+
+            boolean isRaceOrSprint = (session.getSessionType() >= 15 && session.getSessionType() <= 17) || session.getSessionType() == 19;
+            if (isRaceOrSprint) {
+                H2 pitstopsHeader = new H2("Pit Stops Poster");
+                pitstopsHeader.getStyle().set("margin-top", "30px");
+
+                Div pitstopsPoster = createPitStopsPoster(session, driverResults);
+
+                Button downloadPitStopsBtn = new Button("Download Pit Stops Image");
+                downloadPitStopsBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
+                downloadPitStopsBtn.getStyle().set("margin-bottom", "15px");
+                downloadPitStopsBtn.addClickListener(e -> {
+                    getElement().executeJs(
+                        "if (!window.html2canvas) {" +
+                        "  const script = document.createElement('script');" +
+                        "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
+                        "  script.onload = () => { downloadPitStopsPoster(); };" +
+                        "  document.head.appendChild(script);" +
+                        "} else {" +
+                        "  downloadPitStopsPoster();" +
+                        "}" +
+                        "function downloadPitStopsPoster() {" +
+                        "  const el = document.querySelector('.pitstops-poster');" +
+                        "  if (el) {" +
+                        "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
+                        "      const link = document.createElement('a');" +
+                        "      link.download = 'pitstops_' + $0 + '.png';" +
+                        "      link.href = canvas.toDataURL('image/png');" +
+                        "      link.click();" +
+                        "    });" +
+                        "  }" +
+                        "}",
+                        currentEvent.getEventName().toLowerCase().replace(" ", "_") + "_" + sessName.toLowerCase().replace(" ", "_")
+                    );
+                });
+
+                sessionContent.add(pitstopsHeader, downloadPitStopsBtn, pitstopsPoster);
+            }
         }
     }
 
