@@ -238,4 +238,9 @@ public class TelemetryProcessingService {
     public void deleteEvent(Long eventId) {
         telemetryResultsService.deleteEvent(eventId);
     }
+
+    public java.util.Optional<be.jabapage.racingleague.f1telemetry.entity.Event> getEventWithAllResults(Long eventId) {
+        return telemetryResultsService.getEventWithAllResults(eventId);
+    }
 }
+

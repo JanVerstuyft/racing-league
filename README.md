@@ -96,11 +96,14 @@ erDiagram
     tier }o--o{ driver_mapping : "mapped in"
     
     event ||--o{ session_result : "records"
+    event ||--o{ event_lineup : "lineup"
+    driver_mapping ||--o{ event_lineup : "assigned in"
     session_result ||--o{ driver_result : "results"
     session_result ||--o{ manual_penalty : "contains"
     driver_mapping ||--o{ manual_penalty : "applies to"
     driver_result ||--o{ lap_result : "laps"
     driver_result ||--o{ tyre_stint : "stints"
+    league ||--o| league_logo : "logo"
 ```
 
 ## Development

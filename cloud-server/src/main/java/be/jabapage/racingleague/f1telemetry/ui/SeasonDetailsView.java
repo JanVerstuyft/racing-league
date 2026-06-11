@@ -45,6 +45,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.Objects;
 import java.util.Set;
@@ -162,6 +164,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final Button addManualWeekendBtn = new Button("Add Manual Weekend");
     private Grid.Column<Event> actionsColumn;
     private boolean isInitializing = false;
+    private List<Event> currentEvents = new java.util.ArrayList<>();
 
     public SeasonDetailsView(LeagueRepository leagueRepository,
                              TierRepository tierRepository,
@@ -854,7 +857,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 RouterLink penaltiesLink = new RouterLink("Penalties", EventPenaltiesView.class, event.getId());
                 actions.add(penaltiesLink);
 
-                List<Event> eventsList = eventRepository.findByTier(selectedTier);
+                List<Event> eventsList = this.currentEvents != null ? this.currentEvents : java.util.Collections.emptyList();
                 int index = eventsList.indexOf(event);
 
                 Button moveUpBtn = new Button();
@@ -1351,7 +1354,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         teamEditorCombo.setItems(getTeamsForLeague());
         teamEditorField.setItems(getTeamsForLeague());
 
-        eventGrid.setItems(eventRepository.findByTier(selectedTier));
+        this.currentEvents = eventRepository.findByTier(selectedTier);
+        eventGrid.setItems(this.currentEvents);
         
         List<DriverStanding> standings = driverStandingRepository.findByTier(selectedTier);
         if (league.isHideAi()) {
@@ -1798,6 +1802,27 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         Map<DriverMapping, List<ManualPenalty>> grouped = penalties.stream()
                 .collect(Collectors.groupingBy(ManualPenalty::getDriverMapping));
 
+        // Pre-fetch standings to avoid N+1 queries
+        Map<String, String> driverToTeamMap = new HashMap<>();
+        Map<String, List<DriverStanding>> groupedStandings = new HashMap<>();
+
+        if (tier != null) {
+            List<DriverStanding> standings = driverStandingRepository.findByTier(tier);
+            for (DriverStanding ds : standings) {
+                String key = ds.getDriverName() + "|" + ds.getRaceNumber() + "|" + ds.getCountry();
+                driverToTeamMap.put(key, ds.getTeamName());
+            }
+        } else if (league != null) {
+            List<DriverStanding> allStandings = new ArrayList<>();
+            for (Tier t : leagueTiers) {
+                allStandings.addAll(driverStandingRepository.findByTier(t));
+            }
+            groupedStandings = allStandings.stream()
+                    .collect(Collectors.groupingBy(
+                            ds -> ds.getDriverName() + "|" + ds.getRaceNumber() + "|" + ds.getCountry()
+                    ));
+        }
+
         List<PenaltyStandingRow> rows = new ArrayList<>();
         for (Map.Entry<DriverMapping, List<ManualPenalty>> entry : grouped.entrySet()) {
             DriverMapping mapping = entry.getKey();
@@ -1824,15 +1849,12 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                     .sum();
 
             String teamName = "Unknown";
+            String lookupKey = name + "|" + mapping.getRaceNumber() + "|" + mapping.getCountry();
+
             if (tier != null) {
-                Optional<DriverStanding> ds = driverStandingRepository.findByTierAndDriverNameAndRaceNumberAndCountry(
-                        tier, name, mapping.getRaceNumber(), mapping.getCountry());
-                if (ds.isPresent()) {
-                    teamName = ds.get().getTeamName();
-                }
+                teamName = driverToTeamMap.getOrDefault(lookupKey, "Unknown");
             } else {
-                List<DriverStanding> standings = driverStandingRepository.findByDriverNameAndRaceNumberAndCountry(
-                        name, mapping.getRaceNumber(), mapping.getCountry());
+                List<DriverStanding> standings = groupedStandings.getOrDefault(lookupKey, Collections.emptyList());
                 teamName = standings.stream()
                         .map(DriverStanding::getTeamName)
                         .filter(t -> t != null && !t.isEmpty())

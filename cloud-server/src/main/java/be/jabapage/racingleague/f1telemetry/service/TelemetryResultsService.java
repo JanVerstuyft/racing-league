@@ -943,5 +943,21 @@ public class TelemetryResultsService {
         }
         return bestMatch;
     }
+
+    @Transactional(readOnly = true)
+    public Optional<Event> getEventWithAllResults(Long eventId) {
+        Optional<Event> eventOpt = eventRepository.findByIdWithResults(eventId);
+        if (eventOpt.isPresent()) {
+            Event event = eventOpt.get();
+            event.getSessionResults().forEach(sr -> {
+                sr.getDriverResults().forEach(dr -> {
+                    dr.getLapResults().size();
+                    dr.getTyreStints().size();
+                });
+            });
+        }
+        return eventOpt;
+    }
 }
+
 

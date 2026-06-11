@@ -391,7 +391,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     }
 
     private void refreshEvent() {
-        eventRepository.findByIdWithResults(currentEventId).ifPresent(e -> {
+        telemetryProcessingService.getEventWithAllResults(currentEventId).ifPresent(e -> {
             this.currentEvent = e;
             int currentIdx = sessionTabs.getSelectedIndex();
             setupSessionTabs();
@@ -450,7 +450,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     @Override
     public void setParameter(BeforeEvent event, Long parameter) {
         this.currentEventId = parameter;
-        eventRepository.findByIdWithResults(parameter).ifPresentOrElse(e -> {
+        telemetryProcessingService.getEventWithAllResults(parameter).ifPresentOrElse(e -> {
             this.currentEvent = e;
             eventHeader.setText("Event: " + currentEvent.getEventName());
             backToSeason.setRoute(SeasonDetailsView.class, currentEvent.getTier().getLeague().getId());

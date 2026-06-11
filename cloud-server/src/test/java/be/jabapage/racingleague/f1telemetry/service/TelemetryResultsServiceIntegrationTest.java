@@ -98,6 +98,7 @@ public class TelemetryResultsServiceIntegrationTest {
     }
 
     @Test
+    @org.springframework.transaction.annotation.Transactional
     public void testHandleFinalClassificationSavesSuccessfullyWithoutTransientPropertyValueException() {
         // 1. Setup League & Tier in the real database
         League league = new League();
@@ -686,6 +687,7 @@ public class TelemetryResultsServiceIntegrationTest {
     }
 
     @Test
+    @org.springframework.transaction.annotation.Transactional
     public void testHandleFinalClassificationOverwritesQualifyingSessionAndPreservesLapResults() {
         // 1. Setup League & Tier
         League league = new League();
