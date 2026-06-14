@@ -43,6 +43,9 @@ public class DriverResult {
     @Column(name = "team_id")
     private Integer teamId;
 
+    @Column(name = "championship_team")
+    private String championshipTeam;
+
     public String getTeamName() {
         return be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService.getTeamNameStatic(teamId, sessionResult != null ? sessionResult.getCarType() : "F1 25");
     }

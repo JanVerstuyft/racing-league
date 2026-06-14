@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="023_add_championship_teams" author="antigravity">
+        <!-- 1. Add columns to league table -->
+        <addColumn tableName="league">
+            <column name="use_championship_teams" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="team_a_name" type="VARCHAR(255)"/>
+            <column name="team_b_name" type="VARCHAR(255)"/>
+        </addColumn>
+
+        <!-- 2. Add column to driver_mapping table -->
+        <addColumn tableName="driver_mapping">
+            <column name="championship_team" type="VARCHAR(10)"/>
+        </addColumn>
+
+        <!-- 3. Add column to event_lineup table -->
+        <addColumn tableName="event_lineup">
+            <column name="championship_team" type="VARCHAR(10)"/>
+        </addColumn>
+
+        <!-- 4. Add column to driver_result table -->
+        <addColumn tableName="driver_result">
+            <column name="championship_team" type="VARCHAR(10)"/>
+        </addColumn>
+
+        <!-- 5. Create championship_team_standing table -->
+        <createTable tableName="championship_team_standing">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="tier_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="championship_team" type="VARCHAR(10)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="points" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint baseColumnNames="tier_id" baseTableName="championship_team_standing"
+                                 constraintName="fk_cts_tier" referencedColumnNames="id" referencedTableName="tier"
+                                 onDelete="CASCADE"/>
+    </changeSet>
+</databaseChangeLog>

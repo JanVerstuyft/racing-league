@@ -20,6 +20,15 @@ public class League {
     @Column(name = "hide_ai")
     private Boolean hideAi = false;
 
+    @Column(name = "use_championship_teams", nullable = false)
+    private Boolean useChampionshipTeams = false;
+
+    @Column(name = "team_a_name")
+    private String teamAName;
+
+    @Column(name = "team_b_name")
+    private String teamBName;
+
     @Column(name = "show_tyre_wear")
     private Boolean showTyreWear = false;
 

@@ -186,6 +186,31 @@ vaadin-grid::part(highlighted-driver) {
     padding: 5px 0;
 }
 
+.lineup-column-header {
+    background: rgba(20, 21, 26, 0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 3px solid var(--lineup-accent-color, #eef30d);
+    padding: 10px 16px;
+    border-radius: 4px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 15px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    border-left: 1px solid rgba(255,255,255,0.04);
+    border-right: 1px solid rgba(255,255,255,0.04);
+}
+
+.lineup-column-header span {
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    color: white;
+    text-transform: uppercase;
+    text-shadow: 0 0 10px rgba(255,255,255,0.1);
+}
+
 .lineup-center-column {
     display: flex;
     flex-direction: column;
@@ -261,6 +286,45 @@ vaadin-grid::part(highlighted-driver) {
     color: white;
     letter-spacing: 0.5px;
     text-align: center;
+}
+
+.lineup-driver-slot-content {
+    transform: skewX(20deg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+}
+
+.lineup-driver-slot-content .lineup-driver-name {
+    transform: none;
+}
+
+.lineup-driver-team-badge {
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 2px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+    display: inline-block;
+    white-space: nowrap;
+    text-align: center;
+}
+
+.lineup-driver-team-badge.team-a {
+    background: rgba(0, 255, 216, 0.15);
+    border: 1px solid rgba(0, 255, 216, 0.5);
+    color: #00ffd8;
+}
+
+.lineup-driver-team-badge.team-b {
+    background: rgba(255, 60, 60, 0.15);
+    border: 1px solid rgba(255, 60, 60, 0.5);
+    color: #ff8b8b;
 }
 
 .lineup-driver-slot.vacant .lineup-driver-name {

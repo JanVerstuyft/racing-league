@@ -16,6 +16,8 @@ import be.jabapage.racingleague.f1telemetry.repository.TierRepository;
 import be.jabapage.racingleague.f1telemetry.repository.TeamStandingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.TeamMappingRepository;
 import be.jabapage.racingleague.f1telemetry.repository.LeagueLogoRepository;
+import be.jabapage.racingleague.f1telemetry.entity.ChampionshipTeamStanding;
+import be.jabapage.racingleague.f1telemetry.repository.ChampionshipTeamStandingRepository;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
 import be.jabapage.racingleague.f1telemetry.entity.DriverResult;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
@@ -93,6 +95,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final TeamMappingRepository teamMappingRepository;
     private final SecurityService securityService;
     private final TelemetryProcessingService telemetryProcessingService;
+    private final ChampionshipTeamStandingRepository championshipTeamStandingRepository;
     
     private League league;
     private List<Tier> leagueTiers = new ArrayList<>();
@@ -116,6 +119,19 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final TextField xField = new TextField("X (Twitter) Handle");
     private final TextField instagramField = new TextField("Instagram Handle");
     private final TextField twitchField = new TextField("Twitch Handle");
+
+    private final Checkbox useChampionshipTeamsCheckbox = new Checkbox("Enable Championship Teams");
+    private final TextField teamANameField = new TextField("Championship Team A Name");
+    private final TextField teamBNameField = new TextField("Championship Team B Name");
+    private final Grid<ChampionshipTeamStanding> champTeamGrid = new Grid<>(ChampionshipTeamStanding.class, false);
+    private final Grid<ChampionshipTeamStanding> leagueChampTeamGrid = new Grid<>(ChampionshipTeamStanding.class, false);
+    private final VerticalLayout champTeamStandingsContent = new VerticalLayout();
+    private final VerticalLayout leagueChampTeamStandingsContent = new VerticalLayout();
+    private final Tab champTeamsTab = new Tab("Championship Teams");
+    private final Tab leagueChampTeamsTab = new Tab("League Championship Teams");
+    private final Tabs standingsTabs = new Tabs();
+    private Grid.Column<DriverMapping> champTeamColumn;
+
     private final VerticalLayout generalSettingsContent = new VerticalLayout();
     private final VerticalLayout uiTweaksSettingsContent = new VerticalLayout();
     
@@ -146,6 +162,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final ComboBox<Tier> tierEditorField = new ComboBox<>();
     private final ComboBox<TeamMapping> teamEditorCombo = new ComboBox<>();
     private final ComboBox<TeamMapping> teamEditorField = new ComboBox<>();
+    private final ComboBox<String> champTeamEditorField = new ComboBox<>();
     
     // Points UI Components
     private final Tabs sessionTypeTabs = new Tabs();
@@ -178,7 +195,8 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                              LeagueLogoRepository leagueLogoRepository,
                              TeamMappingRepository teamMappingRepository,
                              TelemetryProcessingService telemetryProcessingService,
-                             SecurityService securityService) {
+                             SecurityService securityService,
+                             ChampionshipTeamStandingRepository championshipTeamStandingRepository) {
         this.leagueRepository = leagueRepository;
         this.tierRepository = tierRepository;
         this.eventRepository = eventRepository;
@@ -192,6 +210,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         this.teamMappingRepository = teamMappingRepository;
         this.telemetryProcessingService = telemetryProcessingService;
         this.securityService = securityService;
+        this.championshipTeamStandingRepository = championshipTeamStandingRepository;
 
         setSizeFull();
         configureGrids();
@@ -307,6 +326,33 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         deleteSessionBtn.addClickListener(e -> deleteCurrentSessionPoints());
 
         addSessionTypeBtn.addClickListener(e -> showAddSessionTypeDialog());
+
+        useChampionshipTeamsCheckbox.addValueChangeListener(e -> {
+            if (league != null && !isInitializing) {
+                league.setUseChampionshipTeams(e.getValue());
+                leagueRepository.save(league);
+                teamANameField.setEnabled(e.getValue());
+                teamBNameField.setEnabled(e.getValue());
+                updateData();
+                Notification.show("Championship Teams toggle updated", 3000, Notification.Position.TOP_CENTER);
+            }
+        });
+
+        teamANameField.addValueChangeListener(e -> {
+            if (league != null && !isInitializing) {
+                league.setTeamAName(e.getValue());
+                leagueRepository.save(league);
+                updateData();
+            }
+        });
+
+        teamBNameField.addValueChangeListener(e -> {
+            if (league != null && !isInitializing) {
+                league.setTeamBName(e.getValue());
+                leagueRepository.save(league);
+                updateData();
+            }
+        });
 
         hideAiCheckbox.addValueChangeListener(e -> {
             if (league != null && !isInitializing) {
@@ -527,7 +573,16 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         
         generalSettingsContent.setPadding(true);
         generalSettingsContent.setSpacing(true);
-        generalSettingsContent.add(hideAiCheckbox, minLapsPctField, carTypeCombo);
+        HorizontalLayout teamNamesLayout = new HorizontalLayout(teamANameField, teamBNameField);
+        teamNamesLayout.setSpacing(true);
+        generalSettingsContent.add(
+            hideAiCheckbox,
+            minLapsPctField,
+            carTypeCombo,
+            new H4("Championship Teams"),
+            useChampionshipTeamsCheckbox,
+            teamNamesLayout
+        );
         
         uiTweaksSettingsContent.setPadding(true);
         uiTweaksSettingsContent.setSpacing(true);
@@ -611,12 +666,14 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         // Inner tabs for Standings
         Tab penaltiesTab = new Tab("Penalties");
         Tab leaguePenaltiesTab = new Tab("League Penalties");
-        Tabs standingsTabs = new Tabs(new Tab("Drivers"), new Tab("Teams"), new Tab("League Teams"), penaltiesTab, leaguePenaltiesTab);
+        standingsTabs.add(new Tab("Drivers"), new Tab("Teams"), new Tab("League Teams"), champTeamsTab, leagueChampTeamsTab, penaltiesTab, leaguePenaltiesTab);
         standingsTabs.addSelectedChangeListener(e -> {
             String label = e.getSelectedTab().getLabel();
             driverStandingsContent.setVisible(label.equals("Drivers"));
             teamStandingsContent.setVisible(label.equals("Teams"));
             leagueTeamStandingsContent.setVisible(label.equals("League Teams"));
+            champTeamStandingsContent.setVisible(label.equals("Championship Teams"));
+            leagueChampTeamStandingsContent.setVisible(label.equals("League Championship Teams"));
             penaltiesContent.setVisible(label.equals("Penalties"));
             leaguePenaltiesContent.setVisible(label.equals("League Penalties"));
         });
@@ -635,6 +692,14 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         leagueTeamStandingsContent.setVisible(false);
         leagueTeamStandingsContent.setPadding(false);
 
+        champTeamStandingsContent.add(new H3("Championship Team Standings"), champTeamGrid);
+        champTeamStandingsContent.setVisible(false);
+        champTeamStandingsContent.setPadding(false);
+
+        leagueChampTeamStandingsContent.add(new H3("League Championship Team Standings (Over All Tiers)"), leagueChampTeamGrid);
+        leagueChampTeamStandingsContent.setVisible(false);
+        leagueChampTeamStandingsContent.setPadding(false);
+
         penaltiesContent.add(new H3("Incident & Penalties Standings (This Tier)"), penaltiesGrid);
         penaltiesContent.setVisible(false);
         penaltiesContent.setPadding(false);
@@ -643,7 +708,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         leaguePenaltiesContent.setVisible(false);
         leaguePenaltiesContent.setPadding(false);
 
-        standingsLayout.add(standingsTabs, driverStandingsContent, teamStandingsContent, leagueTeamStandingsContent, penaltiesContent, leaguePenaltiesContent);
+        standingsLayout.add(standingsTabs, driverStandingsContent, teamStandingsContent, leagueTeamStandingsContent, champTeamStandingsContent, leagueChampTeamStandingsContent, penaltiesContent, leaguePenaltiesContent);
         standingsLayout.setVisible(false);
 
         deleteSelectedMappingsBtn.addThemeVariants(ButtonVariant.LUMO_ERROR);
@@ -714,16 +779,36 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             teamCombo.setItemLabelGenerator(TeamMapping::getTeamName);
             teamCombo.setWidthFull();
 
+            ComboBox<String> champTeamCombo = new ComboBox<>("Championship Team");
+            champTeamCombo.setItems("A", "B", "None");
+            champTeamCombo.setItemLabelGenerator(val -> {
+                if ("A".equals(val)) {
+                    return league != null && league.getTeamAName() != null && !league.getTeamAName().isEmpty() ? league.getTeamAName() : "Team A";
+                } else if ("B".equals(val)) {
+                    return league != null && league.getTeamBName() != null && !league.getTeamBName().isEmpty() ? league.getTeamBName() : "Team B";
+                }
+                return "None";
+            });
+            champTeamCombo.setValue("None");
+            champTeamCombo.setWidthFull();
+            boolean teamsEnabled = Boolean.TRUE.equals(league.getUseChampionshipTeams()) 
+                && league.getTeamAName() != null && !league.getTeamAName().isEmpty() 
+                && league.getTeamBName() != null && !league.getTeamBName().isEmpty();
+            champTeamCombo.setVisible(teamsEnabled);
+
             reserveField.addValueChangeListener(ev -> {
                 if (ev.getValue()) {
                     teamCombo.setValue(null);
                     teamCombo.setEnabled(false);
+                    champTeamCombo.setValue("None");
+                    champTeamCombo.setEnabled(false);
                 } else {
                     teamCombo.setEnabled(true);
+                    champTeamCombo.setEnabled(true);
                 }
             });
 
-            VerticalLayout dialogLayout = new VerticalLayout(nameField, telemetryNameField, raceNumField, countryCombo, manualTierField, reserveField, teamCombo);
+            VerticalLayout dialogLayout = new VerticalLayout(nameField, telemetryNameField, raceNumField, countryCombo, manualTierField, reserveField, teamCombo, champTeamCombo);
             dialog.add(dialogLayout);
 
             Button saveBtn = new Button("Add", ev -> {
@@ -741,8 +826,17 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 mapping.setTier(manualTierField.getValue());
                 mapping.setReserve(reserveField.getValue());
                 mapping.setTeamId(teamCombo.getValue() != null ? teamCombo.getValue().getTeamId() : null);
+                if (teamsEnabled && !"None".equals(champTeamCombo.getValue()) && !mapping.isReserve()) {
+                    mapping.setChampionshipTeam(champTeamCombo.getValue());
+                } else {
+                    mapping.setChampionshipTeam(null);
+                }
 
                 checkTeamCapacityAndSave(mapping, () -> {
+                    if (!validateChampionshipTeamConstraints(mapping)) {
+                        updateData();
+                        return;
+                    }
                     driverMappingRepository.save(mapping);
                     telemetryProcessingService.refreshDriverMappings(league.getId());
                     // Recalculate standings for all tiers
@@ -1059,6 +1153,26 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             return actions;
         }).setHeader("Actions");
 
+        champTeamGrid.addColumn(cts -> {
+            if ("A".equals(cts.getChampionshipTeam())) {
+                return league != null && league.getTeamAName() != null && !league.getTeamAName().isEmpty() ? league.getTeamAName() : "Team A";
+            } else if ("B".equals(cts.getChampionshipTeam())) {
+                return league != null && league.getTeamBName() != null && !league.getTeamBName().isEmpty() ? league.getTeamBName() : "Team B";
+            }
+            return cts.getChampionshipTeam();
+        }).setHeader("Championship Team");
+        champTeamGrid.addColumn(ChampionshipTeamStanding::getPoints).setHeader("Points").setSortable(true);
+
+        leagueChampTeamGrid.addColumn(cts -> {
+            if ("A".equals(cts.getChampionshipTeam())) {
+                return league != null && league.getTeamAName() != null && !league.getTeamAName().isEmpty() ? league.getTeamAName() : "Team A";
+            } else if ("B".equals(cts.getChampionshipTeam())) {
+                return league != null && league.getTeamBName() != null && !league.getTeamBName().isEmpty() ? league.getTeamBName() : "Team B";
+            }
+            return cts.getChampionshipTeam();
+        }).setHeader("Championship Team");
+        leagueChampTeamGrid.addColumn(ChampionshipTeamStanding::getPoints).setHeader("Points").setSortable(true);
+
         configureMappingGrid();
     }
 
@@ -1090,6 +1204,15 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                     .orElse("Team " + m.getTeamId());
         }).setHeader("Team");
 
+        champTeamColumn = mappingGrid.addColumn(m -> {
+            if ("A".equals(m.getChampionshipTeam())) {
+                return league != null && league.getTeamAName() != null && !league.getTeamAName().isEmpty() ? league.getTeamAName() : "Team A";
+            } else if ("B".equals(m.getChampionshipTeam())) {
+                return league != null && league.getTeamBName() != null && !league.getTeamBName().isEmpty() ? league.getTeamBName() : "Team B";
+            }
+            return "None";
+        }).setHeader("Championship Team");
+
         Grid.Column<DriverMapping> overrideColumn = mappingGrid.addColumn(DriverMapping::getOverriddenName).setHeader("Display Name");
         Grid.Column<DriverMapping> countryColumn = mappingGrid.addColumn(DriverMapping::getCountry).setHeader("Country");
 
@@ -1102,6 +1225,33 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         Editor<DriverMapping> editor = mappingGrid.getEditor();
         editor.setBinder(binder);
         editor.setBuffered(true);
+
+        champTeamEditorField.setItems("A", "B", "None");
+        champTeamEditorField.setItemLabelGenerator(val -> {
+            if ("A".equals(val)) {
+                return league != null && league.getTeamAName() != null && !league.getTeamAName().isEmpty() ? league.getTeamAName() : "Team A";
+            } else if ("B".equals(val)) {
+                return league != null && league.getTeamBName() != null && !league.getTeamBName().isEmpty() ? league.getTeamBName() : "Team B";
+            }
+            return "None";
+        });
+        champTeamEditorField.setWidthFull();
+
+        binder.forField(champTeamEditorField)
+            .withConverter(new com.vaadin.flow.data.converter.Converter<String, String>() {
+                @Override
+                public com.vaadin.flow.data.binder.Result<String> convertToModel(String value, com.vaadin.flow.data.binder.ValueContext context) {
+                    if ("None".equals(value)) return com.vaadin.flow.data.binder.Result.ok(null);
+                    return com.vaadin.flow.data.binder.Result.ok(value);
+                }
+
+                @Override
+                public String convertToPresentation(String value, com.vaadin.flow.data.binder.ValueContext context) {
+                    return value == null ? "None" : value;
+                }
+            })
+            .bind(DriverMapping::getChampionshipTeam, DriverMapping::setChampionshipTeam);
+        champTeamColumn.setEditorComponent(champTeamEditorField);
 
         TextField overrideField = new TextField();
         overrideField.setWidthFull();
@@ -1150,8 +1300,11 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             if (ev.getValue()) {
                 teamEditorField.setValue(null);
                 teamEditorField.setEnabled(false);
+                champTeamEditorField.setValue("None");
+                champTeamEditorField.setEnabled(false);
             } else {
                 teamEditorField.setEnabled(true);
+                champTeamEditorField.setEnabled(true);
             }
         });
 
@@ -1160,8 +1313,11 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             if (item.isReserve()) {
                 teamEditorField.setValue(null);
                 teamEditorField.setEnabled(false);
+                champTeamEditorField.setValue("None");
+                champTeamEditorField.setEnabled(false);
             } else {
                 teamEditorField.setEnabled(true);
+                champTeamEditorField.setEnabled(true);
             }
         });
 
@@ -1175,7 +1331,16 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 DriverMapping item = editor.getItem();
                 editor.save();
                 
+                if (item.isReserve()) {
+                    item.setChampionshipTeam(null);
+                }
+                
                 checkTeamCapacityAndSave(item, () -> {
+                    if (!validateChampionshipTeamConstraints(item)) {
+                        editor.cancel();
+                        updateData();
+                        return;
+                    }
                     driverMappingRepository.save(item);
                     telemetryProcessingService.refreshDriverMappings(league.getId());
                     
@@ -1264,6 +1429,12 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             minLapsPctField.setValue(league.getMinLapsPct() != null ? league.getMinLapsPct() : 60);
             carTypeCombo.setValue(league.getCarType() != null ? league.getCarType() : "F1 25");
             
+            useChampionshipTeamsCheckbox.setValue(Boolean.TRUE.equals(league.getUseChampionshipTeams()));
+            teamANameField.setValue(league.getTeamAName() != null ? league.getTeamAName() : "");
+            teamBNameField.setValue(league.getTeamBName() != null ? league.getTeamBName() : "");
+            teamANameField.setEnabled(Boolean.TRUE.equals(league.getUseChampionshipTeams()));
+            teamBNameField.setEnabled(Boolean.TRUE.equals(league.getUseChampionshipTeams()));
+            
             if (league.getLogoBackgroundColor() != null) {
                 hexColorField.setValue(league.getLogoBackgroundColor());
                 colorPicker.setValue(league.getLogoBackgroundColor());
@@ -1316,6 +1487,9 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             showErsCheckbox.setVisible(loggedIn);
             minLapsPctField.setVisible(loggedIn);
             carTypeCombo.setVisible(loggedIn);
+            useChampionshipTeamsCheckbox.setVisible(loggedIn);
+            teamANameField.setVisible(loggedIn);
+            teamBNameField.setVisible(loggedIn);
             tiersLayout.setVisible(false);
             
             refreshTiersList();
@@ -1397,6 +1571,49 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
         updatePenaltiesData();
         updateLeaguePenaltiesData();
+
+        boolean teamsEnabled = league != null && Boolean.TRUE.equals(league.getUseChampionshipTeams()) 
+            && league.getTeamAName() != null && !league.getTeamAName().isEmpty() 
+            && league.getTeamBName() != null && !league.getTeamBName().isEmpty();
+        
+        if (champTeamColumn != null) {
+            champTeamColumn.setVisible(teamsEnabled);
+        }
+        champTeamsTab.setVisible(teamsEnabled);
+        leagueChampTeamsTab.setVisible(teamsEnabled);
+
+        if (!teamsEnabled) {
+            String selectedLabel = standingsTabs.getSelectedTab() != null ? standingsTabs.getSelectedTab().getLabel() : "";
+            if (selectedLabel.equals("Championship Teams") || selectedLabel.equals("League Championship Teams")) {
+                standingsTabs.setSelectedIndex(0); // Select Drivers
+            }
+        } else {
+            // Populate tier-level Championship Team standings
+            List<ChampionshipTeamStanding> ctsList = championshipTeamStandingRepository.findByTier(selectedTier);
+            ctsList.sort(Comparator.comparing((ChampionshipTeamStanding cts) -> cts.getPoints() != null ? cts.getPoints() : 0).reversed());
+            champTeamGrid.setItems(ctsList);
+
+            // Populate league-wide Championship Team standings (aggregate over all tiers)
+            List<ChampionshipTeamStanding> allTiersCts = new ArrayList<>();
+            for (Tier tier : leagueTiers) {
+                allTiersCts.addAll(championshipTeamStandingRepository.findByTier(tier));
+            }
+            Map<String, Integer> leagueCtsPoints = allTiersCts.stream()
+                .collect(Collectors.groupingBy(
+                    ChampionshipTeamStanding::getChampionshipTeam,
+                    Collectors.summingInt(cts -> cts.getPoints() != null ? cts.getPoints() : 0)
+                ));
+            List<ChampionshipTeamStanding> leagueCtsStandings = leagueCtsPoints.entrySet().stream()
+                .map(entry -> {
+                    ChampionshipTeamStanding cts = new ChampionshipTeamStanding();
+                    cts.setChampionshipTeam(entry.getKey());
+                    cts.setPoints(entry.getValue());
+                    return cts;
+                })
+                .sorted(Comparator.comparing((ChampionshipTeamStanding cts) -> cts.getPoints() != null ? cts.getPoints() : 0).reversed())
+                .collect(Collectors.toList());
+            leagueChampTeamGrid.setItems(leagueCtsStandings);
+        }
 
         refreshPointsTabs();
     }
@@ -1952,6 +2169,86 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 .toList();
     }
 
+    private boolean validateChampionshipTeamConstraints(DriverMapping mapping) {
+        if (league == null || mapping == null || mapping.getTier() == null) return true;
+        
+        boolean teamsEnabled = Boolean.TRUE.equals(league.getUseChampionshipTeams()) 
+            && league.getTeamAName() != null && !league.getTeamAName().isEmpty() 
+            && league.getTeamBName() != null && !league.getTeamBName().isEmpty();
+            
+        if (!teamsEnabled) return true;
+        
+        if (mapping.isReserve()) {
+            return true;
+        }
+        
+        // Simulate mappings in the tier
+        List<DriverMapping> simulated = new ArrayList<>();
+        boolean found = false;
+        for (DriverMapping m : driverMappingRepository.findByTier(mapping.getTier())) {
+            if (mapping.getId() != null && Objects.equals(m.getId(), mapping.getId())) {
+                simulated.add(mapping);
+                found = true;
+            } else {
+                simulated.add(m);
+            }
+        }
+        if (!found) {
+            simulated.add(mapping);
+        }
+        
+        // Enforce reserve cleanups on all mappings in simulation (just to be safe)
+        for (DriverMapping m : simulated) {
+            if (m.isReserve()) {
+                m.setChampionshipTeam(null);
+            }
+        }
+        
+        // 1. Max 11 regular players per team
+        long countA = simulated.stream()
+            .filter(m -> !m.isReserve() && "A".equals(m.getChampionshipTeam()))
+            .count();
+            
+        long countB = simulated.stream()
+            .filter(m -> !m.isReserve() && "B".equals(m.getChampionshipTeam()))
+            .count();
+            
+        String teamAName = league.getTeamAName() != null && !league.getTeamAName().isEmpty() ? league.getTeamAName() : "Team A";
+        String teamBName = league.getTeamBName() != null && !league.getTeamBName().isEmpty() ? league.getTeamBName() : "Team B";
+        
+        if (countA > 11) {
+            Notification notification = Notification.show(teamAName + " cannot have more than 11 regular players.", 5000, Notification.Position.TOP_CENTER);
+            notification.addThemeVariants(com.vaadin.flow.component.notification.NotificationVariant.LUMO_ERROR);
+            return false;
+        }
+        if (countB > 11) {
+            Notification notification = Notification.show(teamBName + " cannot have more than 11 regular players.", 5000, Notification.Position.TOP_CENTER);
+            notification.addThemeVariants(com.vaadin.flow.component.notification.NotificationVariant.LUMO_ERROR);
+            return false;
+        }
+        
+        // 2. Only 1 split constructor
+        Map<Integer, Set<String>> constructorTeams = new HashMap<>();
+        for (DriverMapping m : simulated) {
+            if (!m.isReserve() && m.getTeamId() != null && m.getChampionshipTeam() != null) {
+                constructorTeams.computeIfAbsent(m.getTeamId(), k -> new java.util.HashSet<>())
+                                .add(m.getChampionshipTeam());
+            }
+        }
+        
+        long splitCount = constructorTeams.values().stream()
+            .filter(teams -> teams.contains("A") && teams.contains("B"))
+            .count();
+            
+        if (splitCount > 1) {
+            Notification notification = Notification.show("Only 1 constructor can have drivers split between both teams.", 5000, Notification.Position.TOP_CENTER);
+            notification.addThemeVariants(com.vaadin.flow.component.notification.NotificationVariant.LUMO_ERROR);
+            return false;
+        }
+        
+        return true;
+    }
+
     private void checkTeamCapacityAndSave(DriverMapping mapping, Runnable saveAction) {
         if (mapping.isReserve() || mapping.getTeamId() == null || mapping.getTier() == null) {
             saveAction.run();
@@ -1986,6 +2283,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                     
                     td.setTeamId(null);
                     td.setReserve(true);
+                    td.setChampionshipTeam(null);
                     driverMappingRepository.save(td);
                     
                     saveAction.run();
@@ -2022,22 +2320,50 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         targetTierField.setWidthFull();
 
         Checkbox reserveField = new Checkbox("Reserve");
+        reserveField.setValue(source.isReserve());
         
         ComboBox<TeamMapping> teamCombo = new ComboBox<>("Team");
         teamCombo.setItems(getTeamsForLeague());
         teamCombo.setItemLabelGenerator(TeamMapping::getTeamName);
         teamCombo.setWidthFull();
 
+        ComboBox<String> champTeamCombo = new ComboBox<>("Championship Team");
+        champTeamCombo.setItems("A", "B", "None");
+        champTeamCombo.setItemLabelGenerator(val -> {
+            if ("A".equals(val)) {
+                return league != null && league.getTeamAName() != null && !league.getTeamAName().isEmpty() ? league.getTeamAName() : "Team A";
+            } else if ("B".equals(val)) {
+                return league != null && league.getTeamBName() != null && !league.getTeamBName().isEmpty() ? league.getTeamBName() : "Team B";
+            }
+            return "None";
+        });
+        champTeamCombo.setValue(source.getChampionshipTeam() != null ? source.getChampionshipTeam() : "None");
+        champTeamCombo.setWidthFull();
+        boolean teamsEnabled = Boolean.TRUE.equals(league.getUseChampionshipTeams()) 
+            && league.getTeamAName() != null && !league.getTeamAName().isEmpty() 
+            && league.getTeamBName() != null && !league.getTeamBName().isEmpty();
+        champTeamCombo.setVisible(teamsEnabled);
+
+        if (source.isReserve()) {
+            teamCombo.setValue(null);
+            teamCombo.setEnabled(false);
+            champTeamCombo.setValue("None");
+            champTeamCombo.setEnabled(false);
+        }
+
         reserveField.addValueChangeListener(ev -> {
             if (ev.getValue()) {
                 teamCombo.setValue(null);
                 teamCombo.setEnabled(false);
+                champTeamCombo.setValue("None");
+                champTeamCombo.setEnabled(false);
             } else {
                 teamCombo.setEnabled(true);
+                champTeamCombo.setEnabled(true);
             }
         });
 
-        VerticalLayout layout = new VerticalLayout(targetTierField, reserveField, teamCombo);
+        VerticalLayout layout = new VerticalLayout(targetTierField, reserveField, teamCombo, champTeamCombo);
         dialog.add(layout);
 
         Button saveBtn = new Button("Copy", ev -> {
@@ -2069,8 +2395,17 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             copy.setTier(targetTierField.getValue());
             copy.setReserve(reserveField.getValue());
             copy.setTeamId(teamCombo.getValue() != null ? teamCombo.getValue().getTeamId() : null);
+            if (teamsEnabled && !"None".equals(champTeamCombo.getValue()) && !copy.isReserve()) {
+                copy.setChampionshipTeam(champTeamCombo.getValue());
+            } else {
+                copy.setChampionshipTeam(null);
+            }
 
             checkTeamCapacityAndSave(copy, () -> {
+                if (!validateChampionshipTeamConstraints(copy)) {
+                    updateData();
+                    return;
+                }
                 driverMappingRepository.save(copy);
                 telemetryProcessingService.refreshDriverMappings(league.getId());
                 

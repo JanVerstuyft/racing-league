@@ -15,6 +15,7 @@
 - [7. Incident & Penalty System](#7-incident--penalty-system)
 - [8. Event Lineups](#8-event-lineups)
 - [9. Provisional vs Finalized Race Weekends](#9-provisional-vs-finalized-race-weekends)
+- [10. Championship Teams (A vs B)](#10-championship-teams-a-vs-b)
 
 ## 1. Collector Setup
 ### 1a. Local Collector Setup
@@ -205,3 +206,41 @@ To ensure data integrity and give league stewards time to review incidents and a
 * **Managing Status (Stewards only):**
     * Logged-in stewards can finalize a provisional event by clicking the **Mark Final** button on the Season Details or Event Results pages. This locks penalties and recalculates/updates all standings.
     * If a finalized event needs to be adjusted, stewards can click **Reopen** to make it provisional again. This unlocks the penalty system and removes the event's results from the standings until it is finalized again.
+
+## 10. Championship Teams (A vs B)
+The Championship Teams feature introduces a team-vs-team competition (typically "Team A" vs "Team B") layered on top of the traditional Driver and Constructor Championships.
+
+### Enabling Championship Teams
+To activate this feature, go to the **Settings** tab in the Season Details view:
+* Check the **Enable Championship Teams** checkbox.
+* Fill in both the **Championship Team A Name** and **Championship Team B Name** fields.
+* The feature is only active in the UI (standings tabs, driver mappings, weekend lineups, manual results dropdowns, etc.) when both names are configured and the feature is enabled.
+
+### Driver Mappings & Assignments
+Once enabled, a new **Championship Team** column appears in the Driver Mapping grid under the **Drivers** tab:
+* For regular (full-time) drivers, assign them to either Team A or Team B.
+* For reserve drivers, leave them unassigned ("None"). Reserve driver team assignments are handled dynamically on each specific race weekend.
+* **Validation Rules & Constraints:**
+  - **Player Limit:** A maximum of 11 regular players can be assigned to a single Championship Team (Team A or B) per tier. If an edit, manual addition, or tier copy violates this limit, a validation error is shown and the change is rejected.
+  - **Split Constructors:** Only 1 constructor (team mapping) per tier can be split between both Championship Teams (i.e. having one driver in Team A and another in Team B). All other constructors must have their drivers assigned to the same team, or left unassigned.
+  - **Reserve Cleanup:** Since reserve drivers' team assignments are weekend-specific, they cannot have a permanent team mapping. Saving a driver mapping with the "Reserve" checkbox enabled will automatically clear and disable their Championship Team assignment.
+
+### Weekend Lineups & Reserves
+Since reserve drivers can fill in for different teams on different race weekends, their Championship Team assignment is set on a per-event basis:
+* In the **Event Lineup** manager, when adding a reserve driver, select the Championship Team they are representing for that specific event.
+* If manually entering results, you can specify or override the Championship Team for that result.
+* Points earned by a reserve driver will count towards:
+  1. The driver's own Driver Championship.
+  2. The constructor they drove for in that race.
+  3. The Championship Team they were assigned to for that specific race weekend.
+
+### Standings Aggregation
+* **Tier-Level Standings:** The **Championship Teams** tab in the Standings section shows points aggregated for Team A and Team B within the selected tier.
+* **League-Wide Standings:** The **League Championship Teams** tab aggregates points across all tiers in the league.
+
+### Lineup Poster Layout
+When Championship Teams are enabled, the **Lineup Poster** layout dynamically adjusts:
+* Constructors assigned to **Team A** are rendered in the left column.
+* Constructors assigned to **Team B** are rendered in the right column.
+* **Split Constructors** (any constructor that has drivers from both Team A and Team B, such as Cadillac) are centered below the league logo/trophy.
+* In a split constructor card, the driver representing **Team A** is placed on the left slot (Slot 1) and the driver representing **Team B** is placed on the right slot (Slot 2).

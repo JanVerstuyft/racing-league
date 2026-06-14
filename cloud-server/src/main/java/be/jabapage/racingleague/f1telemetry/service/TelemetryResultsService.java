@@ -51,6 +51,8 @@ public class TelemetryResultsService {
     @Autowired
     private ManualPenaltyRepository manualPenaltyRepository;
     @Autowired
+    private ChampionshipTeamStandingRepository championshipTeamStandingRepository;
+    @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
@@ -130,6 +132,7 @@ public class TelemetryResultsService {
         // Pre-fetch point configurations and lap results outside the loop to avoid Hibernate auto-flushes on unsaved transient DriverResult entities
         List<SessionPointConfig> pointConfigs = sessionPointConfigRepository.findByLeague(league);
         List<LapResult> allLaps = lapResultRepository.findBySessionUID(classification.getHeader().getSessionUID());
+        List<DriverMapping> mappings = driverMappingRepository.findByLeague(league);
 
         sessionResult.setTier(tier);
         sessionResult.setEvent(event);
@@ -173,6 +176,7 @@ public class TelemetryResultsService {
             driverResult.setAi(isAi(state, participant, i));
             driverResult.setCountry(CountryProvider.getCountryInfo(participant.getNationality()).getName());
             driverResult.setTeamId(participant.getTeamId());
+            driverResult.setChampionshipTeam(resolveChampionshipTeam(driverResult, event, mappings, tier));
             driverResult.setPosition(data.getPosition());
             driverResult.setRawPosition(data.getPosition());
             driverResult.setNumLaps(data.getNumLaps());
@@ -287,6 +291,7 @@ public class TelemetryResultsService {
         // Pre-fetch point configurations and lap results outside the loop to avoid Hibernate auto-flushes on unsaved transient DriverResult entities
         List<SessionPointConfig> pointConfigs = sessionPointConfigRepository.findByLeague(league);
         List<LapResult> allLaps = lapResultRepository.findBySessionUID(sessionUID);
+        List<DriverMapping> mappings = driverMappingRepository.findByLeague(league);
 
         SessionResult sessionResult = new SessionResult();
         sessionResult.setTier(tier);
@@ -319,6 +324,7 @@ public class TelemetryResultsService {
             driverResult.setAi(isAi(state, participant, i));
             driverResult.setCountry(CountryProvider.getCountryInfo(participant.getNationality()).getName());
             driverResult.setTeamId(participant.getTeamId());
+            driverResult.setChampionshipTeam(resolveChampionshipTeam(driverResult, event, mappings, tier));
             driverResult.setPosition(ld.getCarPosition());
             driverResult.setRawPosition(ld.getCarPosition());
             int completedLaps = ld.getCurrentLapNum() - 1;
@@ -473,6 +479,7 @@ public class TelemetryResultsService {
 
         driverStandingRepository.deleteAll(driverStandingRepository.findByTier(tier));
         teamStandingRepository.deleteAll(teamStandingRepository.findByTier(tier));
+        championshipTeamStandingRepository.deleteAll(championshipTeamStandingRepository.findByTier(tier));
 
         List<SessionPointConfig> pointConfigs = sessionPointConfigRepository.findByLeague(league);
 
@@ -494,6 +501,12 @@ public class TelemetryResultsService {
             if (isRace) {
                 applyManualPointDeductions(session, mappings);
             }
+
+            for (DriverResult result : session.getDriverResults()) {
+                String resolvedChampTeam = resolveChampionshipTeam(result, session.getEvent(), mappings, tier);
+                result.setChampionshipTeam(resolvedChampTeam);
+            }
+            driverResultRepository.saveAll(session.getDriverResults());
             
             if (session.getEvent() != null && Boolean.TRUE.equals(session.getEvent().getFinalized())) {
                 for (DriverResult result : session.getDriverResults()) {
@@ -588,6 +601,19 @@ public class TelemetryResultsService {
                     });
             ts.setPoints((ts.getPoints() != null ? ts.getPoints() : 0) + result.getPointsAwarded());
             teamStandingRepository.save(ts);
+        }
+
+        if (result.getChampionshipTeam() != null && !result.getChampionshipTeam().isEmpty()) {
+            ChampionshipTeamStanding cts = championshipTeamStandingRepository.findByTierAndChampionshipTeam(tier, result.getChampionshipTeam())
+                    .orElseGet(() -> {
+                        ChampionshipTeamStanding newCts = new ChampionshipTeamStanding();
+                        newCts.setTier(tier);
+                        newCts.setChampionshipTeam(result.getChampionshipTeam());
+                        newCts.setPoints(0);
+                        return newCts;
+                    });
+            cts.setPoints((cts.getPoints() != null ? cts.getPoints() : 0) + (result.getPointsAwarded() != null ? result.getPointsAwarded() : 0));
+            championshipTeamStandingRepository.save(cts);
         }
     }
 
@@ -942,6 +968,22 @@ public class TelemetryResultsService {
             }
         }
         return bestMatch;
+    }
+
+    private String resolveChampionshipTeam(DriverResult result, Event event, List<DriverMapping> mappings, Tier tier) {
+        DriverMapping mapping = findMappingForDriverResult(result, mappings, tier);
+        if (mapping == null) return null;
+
+        if (event != null) {
+            EventLineupEntry lineupEntry = event.getLineupEntries().stream()
+                    .filter(ele -> Objects.equals(ele.getDriver().getId(), mapping.getId()))
+                    .findFirst()
+                    .orElse(null);
+            if (lineupEntry != null && lineupEntry.getChampionshipTeam() != null) {
+                return lineupEntry.getChampionshipTeam();
+            }
+        }
+        return mapping.getChampionshipTeam();
     }
 
     @Transactional(readOnly = true)

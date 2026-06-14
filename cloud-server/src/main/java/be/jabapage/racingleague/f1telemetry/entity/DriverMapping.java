@@ -33,6 +33,9 @@ public class DriverMapping {
     @Column(name = "is_reserve")
     private Boolean reserve = false;
 
+    @Column(name = "championship_team")
+    private String championshipTeam;
+
     @Column(name = "team_id")
     private Integer teamId;
 

@@ -29,6 +29,9 @@ public class EventLineupEntry {
     @Column(name = "car_type", nullable = false)
     private String carType;
 
+    @Column(name = "championship_team")
+    private String championshipTeam;
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
