@@ -192,15 +192,13 @@ public class TelemetryResultsService {
                 driverResult.setWarnings(state.getCurrentLapData().getLapData().get(i).getTotalWarnings());
             }
 
-            if (driverResult.getId() == null) {
-                final int carIndex = i;
-                List<LapResult> laps = allLaps.stream()
-                        .filter(lap -> lap.getCarIndex() != null && lap.getCarIndex() == carIndex)
-                        .collect(Collectors.toList());
-                for (LapResult lap : laps) {
-                    lap.setDriverResult(driverResult);
-                    driverResult.getLapResults().add(lap);
-                }
+            final int carIndex = i;
+            List<LapResult> laps = allLaps.stream()
+                    .filter(lap -> lap.getCarIndex() != null && lap.getCarIndex() == carIndex && lap.getDriverResult() == null)
+                    .collect(Collectors.toList());
+            for (LapResult lap : laps) {
+                lap.setDriverResult(driverResult);
+                driverResult.getLapResults().add(lap);
             }
 
             driverResult.getTyreStints().clear();

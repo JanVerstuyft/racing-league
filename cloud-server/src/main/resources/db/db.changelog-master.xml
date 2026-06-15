@@ -24,5 +24,6 @@
     <include file="changelog/021_add_finalized_to_event.xml" relativeToChangelogFile="true"/>
     <include file="changelog/022_add_display_order_to_event.xml" relativeToChangelogFile="true"/>
     <include file="changelog/023_add_championship_teams.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/024_add_lap_telemetry.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>
 

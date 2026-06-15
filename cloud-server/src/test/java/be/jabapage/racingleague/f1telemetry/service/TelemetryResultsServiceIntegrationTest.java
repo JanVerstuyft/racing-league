@@ -4,6 +4,7 @@ import be.jabapage.racingleague.f1telemetry.entity.*;
 import be.jabapage.racingleague.f1telemetry.model.*;
 import be.jabapage.racingleague.f1telemetry.repository.*;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -54,6 +55,9 @@ public class TelemetryResultsServiceIntegrationTest {
     private LapResultRepository lapResultRepository;
 
     @Autowired
+    private LapTelemetryRepository lapTelemetryRepository;
+
+    @Autowired
     private EventRepository eventRepository;
 
     @Autowired
@@ -86,6 +90,7 @@ public class TelemetryResultsServiceIntegrationTest {
         eventLineupEntryRepository.deleteAll();
         driverStandingRepository.deleteAll();
         teamStandingRepository.deleteAll();
+        lapTelemetryRepository.deleteAll();
         lapResultRepository.deleteAll();
         driverResultRepository.deleteAll();
         sessionResultRepository.deleteAll();
@@ -1119,5 +1124,150 @@ public class TelemetryResultsServiceIntegrationTest {
 
         standings = driverStandingRepository.findByTier(tier);
         assertTrue(standings.isEmpty(), "Standings should be empty again after event is marked provisional");
+    }
+
+    @Test
+    public void testDeleteEventCascadesAndDeletesLapTelemetry() {
+        // 1. Setup League & Tier
+        League league = new League();
+        league.setName("League Del Telemetry");
+        league = leagueRepository.saveAndFlush(league);
+
+        Tier tier = new Tier();
+        tier.setName("Tier Del Telemetry");
+        tier.setToken("tier-del-telemetry-token");
+        tier.setLeague(league);
+        tier = tierRepository.saveAndFlush(tier);
+
+        // 2. Setup Event & Session
+        Event event = new Event();
+        event.setEventName("GP Del Telemetry");
+        event.setTier(tier);
+        event.setFinalized(true);
+        event = eventRepository.saveAndFlush(event);
+
+        SessionResult session = new SessionResult();
+        session.setSessionUID(12345678L);
+        session.setSessionType(15);
+        session.setEvent(event);
+        session = sessionResultRepository.saveAndFlush(session);
+
+        DriverResult dr = new DriverResult();
+        dr.setDriverName("Driver Del Telemetry");
+        dr.setPosition(1);
+        dr.setSessionResult(session);
+        dr.setResultStatus(3);
+        dr.setPenalties(0);
+        dr.setWarnings(0);
+        dr = driverResultRepository.saveAndFlush(dr);
+
+        LapResult lap = new LapResult();
+        lap.setSessionUID(12345678L);
+        lap.setCarIndex(0);
+        lap.setLapNumber(1);
+        lap.setDriverResult(dr);
+        lap = lapResultRepository.saveAndFlush(lap);
+
+        dr.getLapResults().add(lap);
+        dr = driverResultRepository.saveAndFlush(dr);
+
+        session.getDriverResults().add(dr);
+        session = sessionResultRepository.saveAndFlush(session);
+
+        event.getSessionResults().add(session);
+        event = eventRepository.saveAndFlush(event);
+
+        // 3. Save LapTelemetry
+        LapTelemetry telemetry = new LapTelemetry();
+        telemetry.setLapResult(lap);
+        telemetry.setTelemetryData("dummy telemetry data");
+        telemetry = lapTelemetryRepository.saveAndFlush(telemetry);
+
+        // Verify it was saved
+        assertTrue(lapTelemetryRepository.findByLapResultId(lap.getId()).isPresent());
+
+        // 4. Delete Event
+        telemetryResultsService.deleteEvent(event.getId());
+
+        // 5. Assert all are deleted including LapTelemetry
+        assertFalse(eventRepository.findById(event.getId()).isPresent());
+        assertTrue(lapTelemetryRepository.findByLapResultId(lap.getId()).isEmpty());
+    }
+
+    @Test
+    @Transactional
+    public void testDeleteSessionCascadesAndDeletesLapTelemetry() {
+        // 1. Setup League & Tier
+        League league = new League();
+        league.setName("League Del Session Telemetry");
+        league = leagueRepository.saveAndFlush(league);
+
+        Tier tier = new Tier();
+        tier.setName("Tier Del Session Telemetry");
+        tier.setToken("tier-del-session-telemetry-token");
+        tier.setLeague(league);
+        tier = tierRepository.saveAndFlush(tier);
+
+        // 2. Setup Event & Session
+        Event event = new Event();
+        event.setEventName("GP Del Session Telemetry");
+        event.setTier(tier);
+        event.setFinalized(true);
+        event = eventRepository.saveAndFlush(event);
+
+        SessionResult session = new SessionResult();
+        session.setSessionUID(87654321L);
+        session.setSessionType(15);
+        session.setEvent(event);
+        session = sessionResultRepository.saveAndFlush(session);
+
+        DriverResult dr = new DriverResult();
+        dr.setDriverName("Driver Del Session Telemetry");
+        dr.setPosition(1);
+        dr.setSessionResult(session);
+        dr.setResultStatus(3);
+        dr.setPenalties(0);
+        dr.setWarnings(0);
+        dr = driverResultRepository.saveAndFlush(dr);
+
+        LapResult lap = new LapResult();
+        lap.setSessionUID(87654321L);
+        lap.setCarIndex(0);
+        lap.setLapNumber(1);
+        lap.setDriverResult(dr);
+        lap = lapResultRepository.saveAndFlush(lap);
+
+        dr.getLapResults().add(lap);
+        dr = driverResultRepository.saveAndFlush(dr);
+
+        session.getDriverResults().add(dr);
+        session = sessionResultRepository.saveAndFlush(session);
+
+        event.getSessionResults().add(session);
+        event = eventRepository.saveAndFlush(event);
+
+        // 3. Save LapTelemetry
+        LapTelemetry telemetry = new LapTelemetry();
+        telemetry.setLapResult(lap);
+        telemetry.setTelemetryData("dummy telemetry data");
+        telemetry = lapTelemetryRepository.saveAndFlush(telemetry);
+
+        // Verify it was saved
+        assertTrue(lapTelemetryRepository.findByLapResultId(lap.getId()).isPresent());
+
+        // 4. Delete Session
+        session = sessionResultRepository.findById(session.getId()).orElseThrow();
+        if (session.getEvent() != null) {
+            session.getEvent().getSessionResults().remove(session);
+        }
+        session.setEvent(null);
+        sessionResultRepository.delete(session);
+        sessionResultRepository.flush();
+
+        // 5. Assert all are deleted
+        assertFalse(sessionResultRepository.findById(session.getId()).isPresent());
+        assertTrue(driverResultRepository.findById(dr.getId()).isEmpty());
+        assertTrue(lapResultRepository.findById(lap.getId()).isEmpty());
+        assertTrue(lapTelemetryRepository.findByLapResultId(lap.getId()).isEmpty());
     }
 }

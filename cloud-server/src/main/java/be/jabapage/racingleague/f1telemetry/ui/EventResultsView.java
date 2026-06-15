@@ -36,6 +36,7 @@ import be.jabapage.racingleague.f1telemetry.entity.SessionPointConfig;
 import be.jabapage.racingleague.f1telemetry.repository.SessionPointConfigRepository;
 import be.jabapage.racingleague.f1telemetry.repository.SessionResultRepository;
 import be.jabapage.racingleague.f1telemetry.repository.TeamMappingRepository;
+import be.jabapage.racingleague.f1telemetry.repository.LapTelemetryRepository;
 import be.jabapage.racingleague.f1telemetry.security.SecurityService;
 import be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService;
 import be.jabapage.racingleague.f1telemetry.service.TelemetryResultsService;
@@ -86,6 +87,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     private final DriverStandingRepository driverStandingRepository;
     private final TelemetryResultsService telemetryResultsService;
     private final SessionPointConfigRepository sessionPointConfigRepository;
+    private final LapTelemetryRepository lapTelemetryRepository;
 
     private final HorizontalLayout logoContainer = new HorizontalLayout();
     private final VerticalLayout lineupContainer = new VerticalLayout();
@@ -132,7 +134,8 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                             EventLineupEntryRepository eventLineupEntryRepository,
                             DriverStandingRepository driverStandingRepository,
                             TelemetryResultsService telemetryResultsService,
-                            SessionPointConfigRepository sessionPointConfigRepository) {
+                            SessionPointConfigRepository sessionPointConfigRepository,
+                            LapTelemetryRepository lapTelemetryRepository) {
         this.eventRepository = eventRepository;
         this.sessionResultRepository = sessionResultRepository;
         this.driverResultRepository = driverResultRepository;
@@ -145,6 +148,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         this.driverStandingRepository = driverStandingRepository;
         this.telemetryResultsService = telemetryResultsService;
         this.sessionPointConfigRepository = sessionPointConfigRepository;
+        this.lapTelemetryRepository = lapTelemetryRepository;
         setSizeFull();
 
         // Main Tabs
@@ -1073,6 +1077,16 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
 
         grid.setItems(driverResults);
         grid.setAllRowsVisible(true);
+        
+        boolean telemetryAvailable = session.getDriverResults().stream()
+                .anyMatch(dr -> dr.getLapResults().stream().anyMatch(lr -> lapTelemetryRepository.findByLapResultId(lr.getId()).isPresent()));
+        if (telemetryAvailable) {
+            Button compareBtn = new Button("Compare Lap Telemetry", com.vaadin.flow.component.icon.VaadinIcon.CHART.create());
+            compareBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
+            compareBtn.getStyle().set("margin-bottom", "10px");
+            compareBtn.addClickListener(e -> compareBtn.getUI().ifPresent(ui -> ui.navigate(LapComparisonView.class, session.getId())));
+            sessionContent.add(compareBtn);
+        }
         
         sessionContent.add(grid);
 

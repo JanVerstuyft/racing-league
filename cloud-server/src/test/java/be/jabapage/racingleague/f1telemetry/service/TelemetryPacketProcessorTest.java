@@ -38,6 +38,7 @@ public class TelemetryPacketProcessorTest {
     @Mock private TelemetryResultsService telemetryResultsService;
     @Mock private LiveDashboardService liveDashboardService;
     @Mock private Broadcaster broadcaster;
+    @Mock private TelemetryLiveRecordingService telemetryLiveRecordingService;
 
     @InjectMocks
     private TelemetryPacketProcessor telemetryPacketProcessor;
@@ -64,6 +65,7 @@ public class TelemetryPacketProcessorTest {
 
         header = new PacketHeader();
         header.setSessionUID(12345L);
+        header.setPacketId((byte) -1);
 
         buffer = ByteBuffer.allocate(10);
 

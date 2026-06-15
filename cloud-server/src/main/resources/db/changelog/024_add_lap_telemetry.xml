@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <changeSet id="add-lap-telemetry-table" author="antigravity">
+        <createTable tableName="lap_telemetry">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="lap_result_id" type="BIGINT">
+                <constraints nullable="false" unique="true" foreignKeyName="fk_lap_telemetry_lap_result" referencedTableName="lap_result" referencedColumnNames="id" deleteCascade="true"/>
+            </column>
+            <column name="telemetry_data" type="CLOB">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

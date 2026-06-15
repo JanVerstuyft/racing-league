@@ -39,6 +39,8 @@ public class TelemetryPacketProcessor {
     private LiveDashboardService liveDashboardService;
     @Autowired
     private Broadcaster broadcaster;
+    @Autowired
+    private TelemetryLiveRecordingService telemetryLiveRecordingService;
 
     public synchronized void processPacket(String token, PacketHeader header, ByteBuffer buffer) {
         LeagueSessionState state = telemetryStateService.getOrCreateState(token);
@@ -63,6 +65,10 @@ public class TelemetryPacketProcessor {
                 state.getLeagueId(),
                 packetSessionUID, state.getCurrentSessionUID(), (now - state.getLastPacketTime()));
             
+            if (state.getCurrentSessionUID() != -1) {
+                telemetryLiveRecordingService.clearSessionBuffers(state.getCurrentSessionUID());
+            }
+
             state.reset();
             telemetryStateService.clearState(state.getTierId());
             state.setCurrentSessionUID(packetSessionUID);
@@ -79,6 +85,10 @@ public class TelemetryPacketProcessor {
         }
 
         switch (header.getPacketId()) {
+            case 0:
+                PacketMotionData motionData = PacketMotionData.fromByteBuffer(buffer, header);
+                telemetryLiveRecordingService.recordMotion(state, motionData);
+                break;
             case 1:
                 state.setCurrentSession(PacketSessionData.fromByteBuffer(buffer, header));
                 liveDashboardService.broadcastSessionInfo(state);
@@ -89,6 +99,10 @@ public class TelemetryPacketProcessor {
                 state.setCurrentLapData(newLapData);
                 liveDashboardService.broadcastLeaderboard(state);
                 liveDashboardService.broadcastSessionInfo(state);
+                break;
+            case 6:
+                PacketCarTelemetryData telemetryData = PacketCarTelemetryData.fromByteBuffer(buffer, header);
+                telemetryLiveRecordingService.recordTelemetry(state, telemetryData);
                 break;
             case 3:
                 PacketEventData eventData = PacketEventData.fromByteBuffer(buffer, header);
@@ -190,9 +204,10 @@ public class TelemetryPacketProcessor {
                 result.setPitStopCount(ld.getNumPitStops());
 
                 lapResultRepository.save(result);
+                telemetryLiveRecordingService.processLapCompleted(state, carIndex, result.getLapNumber(), result.getLapTimeInMS(), result.getIsValid());
                 state.getLapInvalid()[carIndex] = false;
 
-                if (raceFinished) {
+                if (raceFinished || ld.getResultStatus() == 3) {
                     state.getLastLapNum()[carIndex] = ld.getCurrentLapNum() + 1;
                 }
             }
