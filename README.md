@@ -13,6 +13,7 @@ A multi-tenant racing league management system designed for F1 25. This project 
 - **League-Wide Standings**: Aggregate team standings tracking across all tiers of a season, alongside individual tier-based driver and team standings.
 - **Custom Point Configurations**: Flexible point setups for any session type (Races, Sprints, etc.), with dynamic extra point rules (e.g., most places gained, fastest lap, closest gap, or cleanest driver) configurable via custom SpEL expressions.
 - **Live Spectator Dashboard**: Public real-time dashboard displaying tyre wear, ERS usage (with active overtake highlighting), and lap times.
+- **Lap Telemetry Comparison (Beta)**: Compare qualifying lap telemetry side-by-side (speed, throttle, brake, gears, delta time) with interactive 2D canvas driving line maps and virtual cockpit dials. Normalizes timestamps and distances for direct synchronization. Note: This feature is in beta and may occasionally display false or misaligned data due to game packet anomalies.
 
 ## Driver & Lineup Management
 

@@ -64,6 +64,18 @@ public class LapComparisonView extends VerticalLayout implements HasUrlParameter
         HorizontalLayout header = new HorizontalLayout(backLink, title);
         header.setAlignItems(Alignment.CENTER);
         header.setSpacing(true);
+
+        Div betaWarning = new Div();
+        betaWarning.setText("⚠️ Note: This feature is in beta. Lap alignment and synchronization are experimental and may occasionally display false or offset telemetry.");
+        betaWarning.getStyle().set("background-color", "#291b00");
+        betaWarning.getStyle().set("color", "#ffb700");
+        betaWarning.getStyle().set("border", "1px solid #664d00");
+        betaWarning.getStyle().set("border-radius", "4px");
+        betaWarning.getStyle().set("padding", "8px 12px");
+        betaWarning.getStyle().set("font-size", "0.9em");
+        betaWarning.getStyle().set("margin-bottom", "10px");
+        betaWarning.getStyle().set("width", "100%");
+        betaWarning.getStyle().set("box-sizing", "border-box");
         
         HorizontalLayout selectorRow = new HorizontalLayout(driverACombo, driverBCombo);
         selectorRow.setSpacing(true);
@@ -75,7 +87,7 @@ public class LapComparisonView extends VerticalLayout implements HasUrlParameter
         driverACombo.addValueChangeListener(e -> updateComparison());
         driverBCombo.addValueChangeListener(e -> updateComparison());
 
-        add(header, sessionSub, selectorRow, telemetryReplayContainer);
+        add(header, sessionSub, betaWarning, selectorRow, telemetryReplayContainer);
         expand(telemetryReplayContainer);
 
         // Inject custom CSS styling for telemetry dashboard

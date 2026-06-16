@@ -16,6 +16,8 @@
 - [8. Event Lineups](#8-event-lineups)
 - [9. Provisional vs Finalized Race Weekends](#9-provisional-vs-finalized-race-weekends)
 - [10. Championship Teams (A vs B)](#10-championship-teams-a-vs-b)
+- [11. Lap Telemetry Comparison (Beta)](#11-lap-telemetry-comparison-beta)
+
 
 ## 1. Collector Setup
 ### 1a. Local Collector Setup
@@ -244,3 +246,10 @@ When Championship Teams are enabled, the **Lineup Poster** layout dynamically ad
 * Constructors assigned to **Team B** are rendered in the right column.
 * **Split Constructors** (any constructor that has drivers from both Team A and Team B, such as Cadillac) are centered below the league logo/trophy.
 * In a split constructor card, the driver representing **Team A** is placed on the left slot (Slot 1) and the driver representing **Team B** is placed on the right slot (Slot 2).
+
+## 11. Lap Telemetry Comparison (Beta)
+The Lap Telemetry Comparison tool allows coordinators and drivers to compare qualifying laps side-by-side.
+
+* **Dashboard Visualizations**: Includes throttle percentage, brake percentage, gear selection, speed, and delta time comparison graphs, along with virtual cockpit dial gauges.
+
+> ⚠️ **Beta Warning:** This feature is currently in beta. Synchronization, lap alignment, and 2D canvas lines are experimental and may occasionally display false or offset telemetry due to game packet dropouts or network streaming jitter.
