@@ -133,8 +133,14 @@ public class TelemetryLiveRecordingService {
             }
 
             Long lastRecordedTime = lastRecordedLapTimes.get(key);
-            if (lastRecordedTime != null && (lapTimeInMS - lastRecordedTime < 50)) {
-                continue; // Throttle recording to 20Hz (every 50ms of game time)
+            if (lastRecordedTime != null) {
+                if (lapTimeInMS < lastRecordedTime) {
+                    activeBuffers.remove(key);
+                    lastRecordedLapTimes.remove(key);
+                    lastRecordedTime = null;
+                } else if (lapTimeInMS - lastRecordedTime < 50) {
+                    continue; // Throttle recording to 20Hz (every 50ms of game time)
+                }
             }
 
             // Get latest coordinates

@@ -247,5 +247,46 @@ public class TelemetryLiveRecordingServiceTest {
         assertEquals(190L, columnar.getT().get(2));
         assertEquals(88000L, columnar.getT().get(3));
     }
+
+    @Test
+    public void testLapTimeResetClearsBuffer() throws Exception {
+        PacketHeader header = new PacketHeader();
+        header.setSessionUID(12345L);
+        header.setPacketFormat(2025);
+
+        PacketCarTelemetryData telemetryData = new PacketCarTelemetryData();
+        telemetryData.setHeader(header);
+        CarTelemetryData carTelem = new CarTelemetryData();
+        carTelem.setSpeed(180);
+        carTelem.setThrottle(0.8f);
+        carTelem.setBrake(0.0f);
+        carTelem.setGear(4);
+        carTelem.setDrs(0);
+        telemetryData.getCarTelemetryData().add(carTelem);
+
+        PacketLapData lapData = new PacketLapData();
+        LapData ld = new LapData();
+        ld.setLapDistance(50.0f);
+        ld.setCurrentLapTimeInMS(97573);
+        ld.setCurrentLapNum((byte) 2);
+        ld.setDriverStatus(1); // Flying lap
+        lapData.getLapData().add(ld);
+        state.setCurrentLapData(lapData);
+
+        telemetryLiveRecordingService.recordTelemetry(state, telemetryData);
+
+        String key = "12345_0_2";
+        assertEquals(1, telemetryLiveRecordingService.activeBuffers.get(key).size());
+        assertEquals(97573L, telemetryLiveRecordingService.activeBuffers.get(key).get(0).getTimeOffsetInMS());
+
+        ld.setCurrentLapTimeInMS(50);
+        ld.setLapDistance(100.0f);
+
+        telemetryLiveRecordingService.recordTelemetry(state, telemetryData);
+
+        assertEquals(1, telemetryLiveRecordingService.activeBuffers.get(key).size());
+        assertEquals(50L, telemetryLiveRecordingService.activeBuffers.get(key).get(0).getTimeOffsetInMS());
+        assertEquals(100.0f, telemetryLiveRecordingService.activeBuffers.get(key).get(0).getLapDistance());
+    }
 }
 
