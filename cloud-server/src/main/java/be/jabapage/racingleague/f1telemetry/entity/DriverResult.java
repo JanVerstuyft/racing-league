@@ -88,9 +88,11 @@ public class DriverResult {
     @Column(name = "point_deductions", nullable = false, columnDefinition = "int default 0")
     private Integer pointDeductions = 0;
 
+    @org.hibernate.annotations.BatchSize(size = 50)
     @OneToMany(mappedBy = "driverResult", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.Set<TyreStint> tyreStints = new java.util.LinkedHashSet<>();
 
+    @org.hibernate.annotations.BatchSize(size = 50)
     @OneToMany(mappedBy = "driverResult", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.Set<LapResult> lapResults = new java.util.LinkedHashSet<>();
 
