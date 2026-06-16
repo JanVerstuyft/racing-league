@@ -160,10 +160,6 @@ public class TelemetryPacketProcessor {
                 state.getLastS2()[carIndex] = ld.getSector2TimeInMS();
             }
 
-            if (ld.getCurrentLapInvalid() == 1) {
-                state.getLapInvalid()[carIndex] = true;
-            }
-
             boolean lapFinished = state.getLastLapNum()[carIndex] > 0 && ld.getCurrentLapNum() > state.getLastLapNum()[carIndex];
             boolean raceFinished = state.getLastLapNum()[carIndex] > 0 && ld.getResultStatus() == 3 && ld.getCurrentLapNum() == state.getLastLapNum()[carIndex];
 
@@ -212,6 +208,10 @@ public class TelemetryPacketProcessor {
                 }
             }
 
+            if (ld.getCurrentLapInvalid() == 1) {
+                state.getLapInvalid()[carIndex] = true;
+            }
+
             if (ld.getResultStatus() != 3) {
                 state.getLastLapNum()[carIndex] = ld.getCurrentLapNum();
             }
@@ -221,6 +221,11 @@ public class TelemetryPacketProcessor {
                     visualTyre = state.getCurrentCarStatus().getCarStatusData().get(carIndex).getActualTyreCompound();
                 }
                 state.getLastTyre()[carIndex] = visualTyre;
+            }
+
+            if (ld.getDriverStatus() != 1) {
+                telemetryLiveRecordingService.clearSessionBuffersForCar(packet.getHeader().getSessionUID(), carIndex, ld.getCurrentLapNum());
+                state.getLapInvalid()[carIndex] = false;
             }
         }
     }
@@ -285,12 +290,14 @@ public class TelemetryPacketProcessor {
         int numLaps = history.getNumLaps();
         
         // 1. Process Best Lap
-        int bestLapIdx = history.getBestLapTimeLapNum() - 1;
+        int bestLapTimeLapNum = history.getBestLapTimeLapNum();
+        int bestLapIdx = bestLapTimeLapNum - 1;
         if (bestLapIdx >= 0 && bestLapIdx < numLaps && bestLapIdx < history.getLapHistoryData().size()) {
             LapHistoryData lap = history.getLapHistoryData().get(bestLapIdx);
             if ((lap.getLapValidBitFlags() & 0x01) != 0 && lap.getLapTimeInMS() > 0) {
                 long time = lap.getLapTimeInMS();
                 state.getDriverBestLap()[carIdx] = time;
+                state.getDriverBestLapNum()[carIdx] = bestLapTimeLapNum;
                 if (state.getSessionBestLap() == 0 || time < state.getSessionBestLap()) {
                     state.setSessionBestLap(time);
                 }

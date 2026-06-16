@@ -41,6 +41,8 @@ public class TelemetryResultsService {
     @Autowired
     private LapResultRepository lapResultRepository;
     @Autowired
+    private LapTelemetryRepository lapTelemetryRepository;
+    @Autowired
     private DriverMappingRepository driverMappingRepository;
     @Autowired
     private LiveStateRepository liveStateRepository;
@@ -236,6 +238,8 @@ public class TelemetryResultsService {
 
         sessionResultRepository.saveAndFlush(sessionResult);
 
+        pruneLapTelemetryToBestLap(state, sessionResult);
+
         calculateGaps(sessionResult);
 
         applyExtraPoints(sessionResult, league, pointConfigs);
@@ -401,6 +405,8 @@ public class TelemetryResultsService {
 
         sessionResultRepository.saveAndFlush(sessionResult);
 
+        pruneLapTelemetryToBestLap(state, sessionResult);
+
         calculateGaps(sessionResult);
 
         applyExtraPoints(sessionResult, league, pointConfigs);
@@ -418,6 +424,55 @@ public class TelemetryResultsService {
 
         log.info("Saved Fallback {} results (from live state) for session UID: {} in event: {}", 
                 isRace ? "Race" : "Qualifying", sessionUID, event.getEventName());
+    }
+
+    private void pruneLapTelemetryToBestLap(LeagueSessionState state, SessionResult sessionResult) {
+        if (sessionResult.getSessionType() == null || sessionResult.getSessionType() < 5 || sessionResult.getSessionType() > 14) {
+            return;
+        }
+
+        log.info("Pruning qualifying telemetry for session UID: {} to official best laps only.", sessionResult.getSessionUID());
+
+        for (DriverResult dr : sessionResult.getDriverResults()) {
+            if (dr.getLapResults() == null || dr.getLapResults().isEmpty()) {
+                continue;
+            }
+
+            int carIndex = -1;
+            for (LapResult lr : dr.getLapResults()) {
+                if (lr.getCarIndex() != null) {
+                    carIndex = lr.getCarIndex();
+                    break;
+                }
+            }
+
+            int bestLapNum = 0;
+            if (carIndex != -1 && carIndex < state.getDriverBestLapNum().length) {
+                bestLapNum = state.getDriverBestLapNum()[carIndex];
+            }
+
+            if (bestLapNum == 0) {
+                LapResult minLap = dr.getLapResults().stream()
+                        .filter(lr -> lr.getLapTimeInMS() != null && lr.getLapTimeInMS() > 0)
+                        .min(Comparator.comparingLong(LapResult::getLapTimeInMS))
+                        .orElse(null);
+                if (minLap != null) {
+                    bestLapNum = minLap.getLapNumber();
+                }
+            }
+
+            final int targetBestLapNum = bestLapNum;
+            log.info("Driver {} (car index {}): Best lap number is {}.", dr.getDriverName(), carIndex, targetBestLapNum);
+
+            for (LapResult lr : dr.getLapResults()) {
+                if (lr.getLapNumber() != null && lr.getLapNumber() != targetBestLapNum) {
+                    lapTelemetryRepository.findByLapResultId(lr.getId()).ifPresent(telem -> {
+                        lapTelemetryRepository.delete(telem);
+                        log.info("Pruned old/non-best telemetry for driver {}, lap result ID: {}, lap number: {}", dr.getDriverName(), lr.getId(), lr.getLapNumber());
+                    });
+                }
+            }
+        }
     }
 
     @Transactional

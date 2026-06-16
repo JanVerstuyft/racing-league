@@ -155,6 +155,7 @@ public class TelemetryPacketProcessorTest {
         ld.setSector2TimeMinutesPart(0);
         ld.setSector2TimeMSPart(40000);
         ld.setNumPitStops((byte) 0);
+        ld.setDriverStatus(1); // On track (flying lap)
         lapData.getLapData().add(ld);
         lapData.setHeader(header);
 
@@ -306,5 +307,25 @@ public class TelemetryPacketProcessorTest {
         assertEquals(20000L, state.getSessionBestS3());
 
         verify(liveDashboardService).broadcastLeaderboard(state);
+    }
+
+    @Test
+    public void testProcessPacketLapDataClearsBufferOnNonFlyingStatus() {
+        when(telemetryStateService.getOrCreateState("test-token")).thenReturn(state);
+        header.setPacketId((byte) 2);
+
+        PacketLapData lapData = new PacketLapData();
+        LapData ld = new LapData();
+        ld.setCarPosition((byte) 1);
+        ld.setCurrentLapNum((byte) 2);
+        ld.setDriverStatus(0); // In garage (not flying)
+        lapData.getLapData().add(ld);
+        lapData.setHeader(header);
+
+        mockedLapData.when(() -> PacketLapData.fromByteBuffer(buffer, header)).thenReturn(lapData);
+
+        telemetryPacketProcessor.processPacket("test-token", header, buffer);
+
+        verify(telemetryLiveRecordingService).clearSessionBuffersForCar(header.getSessionUID(), 0, 2);
     }
 }

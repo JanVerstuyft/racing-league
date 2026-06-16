@@ -813,7 +813,6 @@ window.setupTelemetryLoop = function(dataA, dataB) {
     private LapResult getFastestLapWithTelemetry(DriverResult dr) {
         if (dr == null) return null;
         return lapResultRepository.findByDriverResult(dr).stream()
-                .filter(lr -> lr.getIsValid() != null && lr.getIsValid())
                 .filter(lr -> lapTelemetryRepository.findByLapResultId(lr.getId()).isPresent())
                 .min(Comparator.comparingLong(LapResult::getLapTimeInMS))
                 .orElse(null);

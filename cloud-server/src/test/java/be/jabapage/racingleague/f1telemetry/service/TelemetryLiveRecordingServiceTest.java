@@ -83,6 +83,8 @@ public class TelemetryLiveRecordingServiceTest {
         LapData ld = new LapData();
         ld.setLapDistance(50.0f);
         ld.setCurrentLapTimeInMS(25000);
+        ld.setCurrentLapNum((byte) 1);
+        ld.setDriverStatus(1); // Flying lap
         lapData.getLapData().add(ld);
         state.setCurrentLapData(lapData);
 
@@ -122,10 +124,10 @@ public class TelemetryLiveRecordingServiceTest {
         TelemetryLiveRecordingService.ColumnarTelemetry columnar =
                 objectMapper.readValue(savedTelemetry.getTelemetryData(), TelemetryLiveRecordingService.ColumnarTelemetry.class);
 
-        // Should have exactly 1 sample (the second one was throttled)
+        // Should have exactly 1 sample (the second one was throttled) and normalized to start at 0
         assertEquals(1, columnar.getT().size());
-        assertEquals(25000L, columnar.getT().get(0));
-        assertEquals(50.0f, columnar.getD().get(0));
+        assertEquals(0L, columnar.getT().get(0));
+        assertEquals(0.0f, columnar.getD().get(0));
         assertEquals(100.0f, columnar.getX().get(0));
         assertEquals(200.0f, columnar.getZ().get(0));
         assertEquals(180, columnar.getSpd().get(0));
@@ -138,6 +140,14 @@ public class TelemetryLiveRecordingServiceTest {
     public void testLapCompletionReplacesPreviousSlowLapTelemetry() throws Exception {
         // Mock current best lap time in state
         state.getDriverBestLap()[0] = 88000L; // Driver best lap is 88.0s
+
+        // Setup mock lap data in state
+        PacketLapData lapData = new PacketLapData();
+        LapData ld = new LapData();
+        ld.setCurrentLapNum((byte) 2);
+        ld.setDriverStatus(1); // Flying lap
+        lapData.getLapData().add(ld);
+        state.setCurrentLapData(lapData);
 
         // Record a mock sample
         PacketHeader header = new PacketHeader();
@@ -169,12 +179,6 @@ public class TelemetryLiveRecordingServiceTest {
         allLaps.add(newFastestLapResult);
 
         when(lapResultRepository.findBySessionUIDAndCarIndex(12345L, 0)).thenReturn(allLaps);
-        
-        LapTelemetry oldTelemetry = new LapTelemetry();
-        oldTelemetry.setId(500L);
-        oldTelemetry.setLapResult(oldLapResult);
-        when(lapTelemetryRepository.findByLapResultId(99L)).thenReturn(Optional.of(oldTelemetry));
-        when(lapTelemetryRepository.findByLapResultId(102L)).thenReturn(Optional.empty());
 
         // Complete the lap
         telemetryLiveRecordingService.processLapCompleted(state, 0, 2, 87000L, true);
@@ -182,14 +186,14 @@ public class TelemetryLiveRecordingServiceTest {
         // Verify new telemetry is saved
         verify(lapTelemetryRepository).save(any(LapTelemetry.class));
 
-        // Verify old telemetry is deleted
-        verify(lapTelemetryRepository).delete(oldTelemetry);
+        // Verify old telemetry is not deleted during live recording
+        verify(lapTelemetryRepository, never()).delete(any(LapTelemetry.class));
     }
 
     @Test
     public void testLapTelemetryBoundaryCleanup() throws Exception {
         // Setup mock data for activeBuffers containing previous-lap and next-lap leftovers
-        String key = "12345_0";
+        String key = "12345_0_3";
         List<TelemetryLiveRecordingService.TelemetrySample> buffer = new ArrayList<>();
         // Leftovers from previous lap (high distance)
         buffer.add(new TelemetryLiveRecordingService.TelemetrySample(80000L, 4300.0f, 10.0f, 20.0f, 150, 0.5f, 0.0f, 5, 0, 0));
@@ -231,13 +235,17 @@ public class TelemetryLiveRecordingServiceTest {
                 objectMapper.readValue(savedTelemetry.getTelemetryData(), TelemetryLiveRecordingService.ColumnarTelemetry.class);
 
         // Verify that prefix leftovers (size 2) and suffix leftovers (size 2) are removed
-        // Expected kept: actual current lap (3 samples: 5.0f, 10.0f, 20.0f) + the final 4310.0f (which did not drop yet)
-        // Let's count them: 4 samples total
+        // and distances/times are normalized starting at 0
         assertEquals(4, columnar.getD().size());
-        assertEquals(5.0f, columnar.getD().get(0));
-        assertEquals(10.0f, columnar.getD().get(1));
-        assertEquals(20.0f, columnar.getD().get(2));
-        assertEquals(4310.0f, columnar.getD().get(3));
+        assertEquals(0.0f, columnar.getD().get(0));
+        assertEquals(5.0f, columnar.getD().get(1));
+        assertEquals(15.0f, columnar.getD().get(2));
+        assertEquals(4305.0f, columnar.getD().get(3));
+
+        assertEquals(0L, columnar.getT().get(0));
+        assertEquals(90L, columnar.getT().get(1));
+        assertEquals(190L, columnar.getT().get(2));
+        assertEquals(88000L, columnar.getT().get(3));
     }
 }
 

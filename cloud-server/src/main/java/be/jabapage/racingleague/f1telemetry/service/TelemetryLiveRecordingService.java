@@ -30,14 +30,14 @@ public class TelemetryLiveRecordingService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // Map: "sessionUID_carIndex" -> List of samples for the current active lap
+    // Map: "sessionUID_carIndex_lapNumber" -> List of samples for the current active lap
     final Map<String, List<TelemetrySample>> activeBuffers = new ConcurrentHashMap<>();
 
-    // Map: "sessionUID_carIndex" -> latest position from PacketMotionData
+    // Map: "sessionUID_carIndex_lapNumber" -> latest position from PacketMotionData
     private final Map<String, float[]> latestPositions = new ConcurrentHashMap<>();
 
-    // Map: "sessionUID_carIndex" -> timestamp (ms) of the last sample recorded
-    private final Map<String, Long> lastSampleTimes = new ConcurrentHashMap<>();
+    // Map: "sessionUID_carIndex_lapNumber" -> last recorded game lap time (ms)
+    private final Map<String, Long> lastRecordedLapTimes = new ConcurrentHashMap<>();
 
     @Data
     @AllArgsConstructor
@@ -83,7 +83,17 @@ public class TelemetryLiveRecordingService {
                 continue; // Only record human drivers
             }
             CarMotionData carMotion = motionData.getCarMotionData().get(i);
-            String key = sessionUID + "_" + i;
+            int driverStatus = 0;
+            int lapNumber = 1;
+            if (state.getCurrentLapData() != null && i < state.getCurrentLapData().getLapData().size()) {
+                LapData ld = state.getCurrentLapData().getLapData().get(i);
+                driverStatus = ld.getDriverStatus();
+                lapNumber = ld.getCurrentLapNum();
+            }
+            String key = sessionUID + "_" + i + "_" + lapNumber;
+            if (driverStatus != 1) {
+                continue; // Only record motion during flying laps
+            }
             latestPositions.put(key, new float[]{carMotion.getWorldPositionX(), carMotion.getWorldPositionZ()});
         }
     }
@@ -98,26 +108,33 @@ public class TelemetryLiveRecordingService {
         }
         long sessionUID = telemetryData.getHeader().getSessionUID();
         int maxCars = telemetryData.getCarTelemetryData().size();
-        long now = System.currentTimeMillis();
 
         for (int i = 0; i < maxCars; i++) {
             if (i >= state.getIsHuman().length || !state.getIsHuman()[i]) {
                 continue; // Only record human drivers
             }
 
-            String key = sessionUID + "_" + i;
-            Long lastSampleTime = lastSampleTimes.get(key);
-            if (lastSampleTime != null && (now - lastSampleTime < 50)) {
-                continue; // Throttle recording to 20Hz (every 50ms)
-            }
-
-            // Get current lap distance and lap time from state
+            // Get current lap distance, lap time, lap number and driver status from state
             float lapDistance = 0.0f;
             long lapTimeInMS = 0;
+            int lapNumber = 1;
+            int driverStatus = 0;
             if (state.getCurrentLapData() != null && i < state.getCurrentLapData().getLapData().size()) {
                 LapData ld = state.getCurrentLapData().getLapData().get(i);
                 lapDistance = ld.getLapDistance();
                 lapTimeInMS = ld.getCurrentLapTimeInMS();
+                lapNumber = ld.getCurrentLapNum();
+                driverStatus = ld.getDriverStatus();
+            }
+
+            String key = sessionUID + "_" + i + "_" + lapNumber;
+            if (driverStatus != 1) {
+                continue; // Only record telemetry during flying laps
+            }
+
+            Long lastRecordedTime = lastRecordedLapTimes.get(key);
+            if (lastRecordedTime != null && (lapTimeInMS - lastRecordedTime < 50)) {
+                continue; // Throttle recording to 20Hz (every 50ms of game time)
             }
 
             // Get latest coordinates
@@ -147,16 +164,16 @@ public class TelemetryLiveRecordingService {
             );
 
             activeBuffers.computeIfAbsent(key, k -> new ArrayList<>()).add(sample);
-            lastSampleTimes.put(key, now);
+            lastRecordedLapTimes.put(key, lapTimeInMS);
         }
     }
 
     @Transactional
     public void processLapCompleted(LeagueSessionState state, int carIndex, int lapNumber, long lapTimeInMS, boolean isValid) {
         long sessionUID = state.getCurrentSessionUID();
-        String key = sessionUID + "_" + carIndex;
+        String key = sessionUID + "_" + carIndex + "_" + lapNumber;
         List<TelemetrySample> completedLapSamples = activeBuffers.remove(key); // Retrieve and clear active buffer
-        lastSampleTimes.remove(key);
+        lastRecordedLapTimes.remove(key);
 
         if (state.getCurrentSession() == null) {
             return;
@@ -166,100 +183,116 @@ public class TelemetryLiveRecordingService {
             return; // Only qualifying sessions
         }
 
-        if (completedLapSamples == null || completedLapSamples.isEmpty() || !isValid || lapTimeInMS <= 0) {
+        if (completedLapSamples == null || completedLapSamples.isEmpty() || lapTimeInMS <= 0) {
             log.debug("Discarded telemetry for invalid/empty lap {} (Driver: {}, Time: {}ms)", lapNumber, carIndex, lapTimeInMS);
             return;
         }
 
-        // Check if this is the new fastest lap for this driver in this session
-        long currentBest = state.getDriverBestLap()[carIndex];
-        boolean isNewBest = currentBest == 0 || lapTimeInMS <= currentBest;
+        log.info("Saving telemetry for completed lap {} of driver index {} (Time: {}ms)...", lapNumber, carIndex, lapTimeInMS);
+        try {
+            // 1. Find the newly saved LapResult in the DB
+            List<LapResult> lapResults = lapResultRepository.findBySessionUIDAndCarIndex(sessionUID, carIndex);
+            LapResult targetLapResult = lapResults.stream()
+                    .filter(lr -> lr.getLapNumber() != null && lr.getLapNumber() == lapNumber)
+                    .findFirst()
+                    .orElse(null);
 
-        if (isNewBest) {
-            log.info("New fastest lap detected for driver index {} (Lap: {}, Time: {}ms). Saving telemetry...", carIndex, lapNumber, lapTimeInMS);
-            try {
-                // 1. Find the newly saved LapResult in the DB
-                List<LapResult> lapResults = lapResultRepository.findBySessionUIDAndCarIndex(sessionUID, carIndex);
-                LapResult targetLapResult = lapResults.stream()
-                        .filter(lr -> lr.getLapNumber() != null && lr.getLapNumber() == lapNumber)
-                        .findFirst()
-                        .orElse(null);
-
-                if (targetLapResult == null) {
-                    log.warn("Could not find LapResult in DB for sessionUID: {}, carIndex: {}, lapNumber: {}", sessionUID, carIndex, lapNumber);
-                    return;
-                }
-
-                // 2. Clean up boundary leftovers (prefix/suffix within the first/last 50 samples)
-                List<TelemetrySample> cleanedSamples = new ArrayList<>(completedLapSamples);
-                
-                // Check for drop near the beginning (prefix)
-                int prefixLimit = Math.min(50, cleanedSamples.size());
-                for (int i = 0; i < prefixLimit - 1; i++) {
-                    float diff = cleanedSamples.get(i).getLapDistance() - cleanedSamples.get(i + 1).getLapDistance();
-                    if (diff > 500.0f) {
-                        // Discard prefix samples from the previous lap
-                        cleanedSamples = new ArrayList<>(cleanedSamples.subList(i + 1, cleanedSamples.size()));
-                        break;
-                    }
-                }
-                
-                // Check for drop near the end (suffix)
-                int n = cleanedSamples.size();
-                int suffixStart = Math.max(0, n - 50);
-                for (int i = n - 2; i >= suffixStart; i--) {
-                    float diff = cleanedSamples.get(i).getLapDistance() - cleanedSamples.get(i + 1).getLapDistance();
-                    if (diff > 500.0f) {
-                        // Discard suffix samples from the next lap
-                        cleanedSamples = new ArrayList<>(cleanedSamples.subList(0, i + 1));
-                        break;
-                    }
-                }
-
-                // 3. Serialize samples to columnar JSON
-                ColumnarTelemetry columnar = new ColumnarTelemetry();
-                for (TelemetrySample sample : cleanedSamples) {
-                    columnar.getT().add(sample.getTimeOffsetInMS());
-                    columnar.getD().add(sample.getLapDistance());
-                    columnar.getX().add(sample.getX());
-                    columnar.getZ().add(sample.getZ());
-                    columnar.getSpd().add(sample.getSpeed());
-                    columnar.getThr().add(sample.getThrottle());
-                    columnar.getBrk().add(sample.getBrake());
-                    columnar.getGear().add(sample.getGear());
-                    columnar.getErs().add(sample.getErs());
-                    columnar.getDrs().add(sample.getDrs());
-                }
-                String jsonData = objectMapper.writeValueAsString(columnar);
-
-                // 3. Save new LapTelemetry (or update existing to prevent unique constraint violations)
-                LapTelemetry telemetry = lapTelemetryRepository.findByLapResultId(targetLapResult.getId())
-                        .orElseGet(LapTelemetry::new);
-                telemetry.setLapResult(targetLapResult);
-                telemetry.setTelemetryData(jsonData);
-                lapTelemetryRepository.save(telemetry);
-
-                // 4. Delete telemetry for previous best laps (keep only the single best lap)
-                for (LapResult lr : lapResults) {
-                    if (lr.getId() != null && !lr.getId().equals(targetLapResult.getId())) {
-                        lapTelemetryRepository.findByLapResultId(lr.getId()).ifPresent(oldTelem -> {
-                            lapTelemetryRepository.delete(oldTelem);
-                            log.info("Deleted old telemetry for lap result ID: {}", lr.getId());
-                        });
-                    }
-                }
-            } catch (Exception e) {
-                log.error("Failed to save lap telemetry", e);
+            if (targetLapResult == null) {
+                log.warn("Could not find LapResult in DB for sessionUID: {}, carIndex: {}, lapNumber: {}", sessionUID, carIndex, lapNumber);
+                return;
             }
-        } else {
-            log.debug("Lap {} is not the best lap (Best: {}ms). Discarding telemetry.", lapNumber, currentBest);
+
+            // 2. Clean up boundary leftovers (prefix/suffix within the first/last 50 samples)
+            List<TelemetrySample> cleanedSamples = new ArrayList<>(completedLapSamples);
+            
+            // Check for drop near the beginning (prefix)
+            int prefixLimit = Math.min(50, cleanedSamples.size());
+            for (int i = 0; i < prefixLimit - 1; i++) {
+                float diff = cleanedSamples.get(i).getLapDistance() - cleanedSamples.get(i + 1).getLapDistance();
+                if (diff > 500.0f) {
+                    // Discard prefix samples from the previous lap
+                    cleanedSamples = new ArrayList<>(cleanedSamples.subList(i + 1, cleanedSamples.size()));
+                    break;
+                }
+            }
+            
+            // Check for drop near the end (suffix)
+            int n = cleanedSamples.size();
+            int suffixStart = Math.max(0, n - 50);
+            for (int i = n - 2; i >= suffixStart; i--) {
+                float diff = cleanedSamples.get(i).getLapDistance() - cleanedSamples.get(i + 1).getLapDistance();
+                if (diff > 500.0f) {
+                    // Discard suffix samples from the next lap
+                    cleanedSamples = new ArrayList<>(cleanedSamples.subList(0, i + 1));
+                    break;
+                }
+            }
+
+            // Normalize timestamps and distances
+            if (cleanedSamples.size() > 1) {
+                long tStart = cleanedSamples.get(0).getTimeOffsetInMS();
+                long tEnd = cleanedSamples.get(cleanedSamples.size() - 1).getTimeOffsetInMS();
+                long tRange = tEnd - tStart;
+                float dStart = cleanedSamples.get(0).getLapDistance();
+
+                if (tRange > 0) {
+                    for (TelemetrySample sample : cleanedSamples) {
+                        long rawT = sample.getTimeOffsetInMS();
+                        long normalizedT = Math.round((double) (rawT - tStart) * lapTimeInMS / tRange);
+                        sample.setTimeOffsetInMS(normalizedT);
+                        sample.setLapDistance(sample.getLapDistance() - dStart);
+                    }
+                } else {
+                    for (TelemetrySample sample : cleanedSamples) {
+                        sample.setTimeOffsetInMS(0);
+                        sample.setLapDistance(sample.getLapDistance() - dStart);
+                    }
+                }
+            } else if (!cleanedSamples.isEmpty()) {
+                TelemetrySample single = cleanedSamples.get(0);
+                single.setTimeOffsetInMS(0);
+                single.setLapDistance(0.0f);
+            }
+
+            // 3. Serialize samples to columnar JSON
+            ColumnarTelemetry columnar = new ColumnarTelemetry();
+            for (TelemetrySample sample : cleanedSamples) {
+                columnar.getT().add(sample.getTimeOffsetInMS());
+                columnar.getD().add(sample.getLapDistance());
+                columnar.getX().add(sample.getX());
+                columnar.getZ().add(sample.getZ());
+                columnar.getSpd().add(sample.getSpeed());
+                columnar.getThr().add(sample.getThrottle());
+                columnar.getBrk().add(sample.getBrake());
+                columnar.getGear().add(sample.getGear());
+                columnar.getErs().add(sample.getErs());
+                columnar.getDrs().add(sample.getDrs());
+            }
+            String jsonData = objectMapper.writeValueAsString(columnar);
+
+            // 3. Save new LapTelemetry (or update existing to prevent unique constraint violations)
+            LapTelemetry telemetry = lapTelemetryRepository.findByLapResultId(targetLapResult.getId())
+                    .orElseGet(LapTelemetry::new);
+            telemetry.setLapResult(targetLapResult);
+            telemetry.setTelemetryData(jsonData);
+            lapTelemetryRepository.save(telemetry);
+        } catch (Exception e) {
+            log.error("Failed to save lap telemetry", e);
         }
     }
 
     public void clearSessionBuffers(long sessionUID) {
         activeBuffers.keySet().removeIf(key -> key.startsWith(sessionUID + "_"));
         latestPositions.keySet().removeIf(key -> key.startsWith(sessionUID + "_"));
-        lastSampleTimes.keySet().removeIf(key -> key.startsWith(sessionUID + "_"));
+        lastRecordedLapTimes.keySet().removeIf(key -> key.startsWith(sessionUID + "_"));
         log.info("Cleared live telemetry buffers for session UID: {}", sessionUID);
+    }
+
+    public void clearSessionBuffersForCar(long sessionUID, int carIndex, int lapNumber) {
+        String key = sessionUID + "_" + carIndex + "_" + lapNumber;
+        activeBuffers.remove(key);
+        latestPositions.remove(key);
+        lastRecordedLapTimes.remove(key);
+        log.info("Cleared live telemetry buffer for driver index {} (Lap: {})", carIndex, lapNumber);
     }
 }

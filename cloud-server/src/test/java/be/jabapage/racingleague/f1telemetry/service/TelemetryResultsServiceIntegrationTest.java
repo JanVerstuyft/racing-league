@@ -1270,4 +1270,99 @@ public class TelemetryResultsServiceIntegrationTest {
         assertTrue(lapResultRepository.findById(lap.getId()).isEmpty());
         assertTrue(lapTelemetryRepository.findByLapResultId(lap.getId()).isEmpty());
     }
+
+    @Test
+    @Transactional
+    public void testPruneQualifyingTelemetryToBestLap() {
+        // 1. Setup League & Tier
+        League league = new League();
+        league.setName("League Pruning");
+        league = leagueRepository.saveAndFlush(league);
+
+        Tier tier = new Tier();
+        tier.setName("Tier Pruning");
+        tier.setToken("tier-pruning-token");
+        tier.setLeague(league);
+        tier = tierRepository.saveAndFlush(tier);
+
+        long sessionUID = 999111222L;
+
+        // 2. Setup Participant & LapData state
+        LeagueSessionState state = new LeagueSessionState();
+        state.setTierId(tier.getId());
+        state.setLeagueId(league.getId());
+        state.setCurrentSessionUID(sessionUID);
+
+        PacketSessionData sessionData = new PacketSessionData();
+        sessionData.setTrackId((byte) 17); // Austria
+        sessionData.setSessionType((byte) 5); // Q1
+        sessionData.setHeader(new PacketHeader());
+        sessionData.getHeader().setSessionUID(sessionUID);
+        state.setCurrentSession(sessionData);
+
+        PacketParticipantsData participantsData = new PacketParticipantsData();
+        ParticipantData participant = new ParticipantData();
+        participant.setName("Quali Driver");
+        participant.setRaceNumber((short) 10);
+        participant.setDriverId((byte) 1);
+        participant.setNationality((byte) 1); 
+        participant.setTeamId((byte) 0); 
+        participant.setAiControlled((byte) 0);
+        participantsData.getParticipants().add(participant);
+        state.setCurrentParticipants(participantsData);
+
+        PacketLapData lapData = new PacketLapData();
+        LapData ld = new LapData();
+        ld.setCarPosition((byte) 1);
+        ld.setCurrentLapNum((byte) 3);
+        ld.setResultStatus((byte) 2); // Active
+        ld.setGridPosition((byte) 1);
+        ld.setPenalties((byte) 0);
+        ld.setTotalWarnings((byte) 0);
+        lapData.getLapData().add(ld);
+        state.setCurrentLapData(lapData);
+
+        // Official best lap number is 2
+        state.getDriverBestLapNum()[0] = 2;
+        state.getDriverBestLap()[0] = 74000L; 
+
+        // 3. Setup LapResult in database (saved during the live session)
+        LapResult lap1 = new LapResult();
+        lap1.setSessionUID(sessionUID);
+        lap1.setCarIndex(0);
+        lap1.setLapNumber(1);
+        lap1.setLapTimeInMS(75000L);
+        lap1.setIsValid(true);
+        lap1 = lapResultRepository.saveAndFlush(lap1);
+
+        LapResult lap2 = new LapResult();
+        lap2.setSessionUID(sessionUID);
+        lap2.setCarIndex(0);
+        lap2.setLapNumber(2);
+        lap2.setLapTimeInMS(74000L);
+        lap2.setIsValid(true);
+        lap2 = lapResultRepository.saveAndFlush(lap2);
+
+        // 4. Save LapTelemetry for both laps
+        LapTelemetry telem1 = new LapTelemetry();
+        telem1.setLapResult(lap1);
+        telem1.setTelemetryData("lap 1 telemetry data");
+        lapTelemetryRepository.saveAndFlush(telem1);
+
+        LapTelemetry telem2 = new LapTelemetry();
+        telem2.setLapResult(lap2);
+        telem2.setTelemetryData("lap 2 telemetry data");
+        lapTelemetryRepository.saveAndFlush(telem2);
+
+        // Assert both telemetries are present initially
+        assertTrue(lapTelemetryRepository.findByLapResultId(lap1.getId()).isPresent());
+        assertTrue(lapTelemetryRepository.findByLapResultId(lap2.getId()).isPresent());
+
+        // 5. Save session results from live state (Q1) - this should trigger pruning
+        telemetryResultsService.saveResultsFromLiveState(state, sessionUID);
+
+        // 6. Assert that Lap 1's telemetry has been pruned, but Lap 2's telemetry is kept!
+        assertTrue(lapTelemetryRepository.findByLapResultId(lap1.getId()).isEmpty());
+        assertTrue(lapTelemetryRepository.findByLapResultId(lap2.getId()).isPresent());
+    }
 }
