@@ -31,6 +31,12 @@ public class ManualPenalty {
     @Column(name = "comment", length = 1000)
     private String comment;
 
+    @Column(name = "override_position")
+    private Integer overridePosition;
+
+    @Column(name = "override_time")
+    private Double overrideTime;
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

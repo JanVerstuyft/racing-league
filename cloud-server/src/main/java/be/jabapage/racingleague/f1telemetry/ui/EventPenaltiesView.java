@@ -3,6 +3,7 @@ package be.jabapage.racingleague.f1telemetry.ui;
 import be.jabapage.racingleague.f1telemetry.entity.DriverMapping;
 import be.jabapage.racingleague.f1telemetry.entity.League;
 import com.vaadin.flow.component.html.Image;
+import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.server.StreamResource;
 import be.jabapage.racingleague.f1telemetry.entity.LeagueLogo;
 import be.jabapage.racingleague.f1telemetry.repository.LeagueLogoRepository;
@@ -63,10 +64,12 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
     // Form fields
     private final ComboBox<SessionResult> sessionCombo = new ComboBox<>("Session/Race");
     private final ComboBox<DriverMapping> driverCombo = new ComboBox<>("Driver");
+    private final IntegerField overridePositionField = new IntegerField("Override Position");
+    private final com.vaadin.flow.component.textfield.TextField overrideTimeField = new com.vaadin.flow.component.textfield.TextField("Override Total Time (e.g. 45:12.300)");
     private final IntegerField secondsField = new IntegerField("Time Penalty (seconds)");
     private final IntegerField pointsField = new IntegerField("Points Deduction (PD)");
     private final TextArea commentField = new TextArea("Comment (Reason)");
-    private final Button addPenaltyBtn = new Button("Add Penalty");
+    private final Button addPenaltyBtn = new Button("Add Penalty / Override");
 
     private Long currentEventId;
     private Event currentEvent;
@@ -108,9 +111,24 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
 
         // Configure Form
         if (loggedIn) {
-            H3 formTitle = new H3("Add New Penalty");
+            H3 formTitle = new H3("Add New Penalty / Override");
+            
+            com.vaadin.flow.component.html.Div tipLayout = new com.vaadin.flow.component.html.Div();
+            tipLayout.add(new Span("💡 Tip: Use Override Total Time if you want the driver to sort dynamically when they or others receive time penalties. "));
+            Anchor docLink = new Anchor("docs#7-incident-and-penalty-system", "Learn more");
+            docLink.getStyle().set("text-decoration", "underline");
+            docLink.getStyle().set("color", "var(--lumo-primary-color)");
+            tipLayout.add(docLink);
+            tipLayout.getStyle().set("font-size", "var(--lumo-font-size-xs)");
+            tipLayout.getStyle().set("color", "var(--lumo-secondary-text-color)");
+            tipLayout.getStyle().set("background-color", "var(--lumo-contrast-5pct)");
+            tipLayout.getStyle().set("padding", "var(--lumo-space-s)");
+            tipLayout.getStyle().set("border-radius", "var(--lumo-border-radius-m)");
+            tipLayout.getStyle().set("line-height", "1.4");
+            tipLayout.getStyle().set("margin-bottom", "var(--lumo-space-s)");
+
             FormLayout formLayout = new FormLayout();
-            formLayout.add(sessionCombo, driverCombo, secondsField, pointsField, commentField);
+            formLayout.add(sessionCombo, driverCombo, overridePositionField, overrideTimeField, secondsField, pointsField, commentField);
             formLayout.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1));
             
             driverCombo.setItemLabelGenerator(m -> m.getOverriddenName() != null && !m.getOverriddenName().isEmpty() 
@@ -118,6 +136,8 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
                     : m.getTelemetryName());
             driverCombo.setRequired(true);
             
+            overridePositionField.setHelperText("Locks the driver to this exact position. Ignores time penalties.");
+            overrideTimeField.setHelperText("Overrides base total race time. Re-ranks dynamically with other drivers and time penalties.");
             secondsField.setHelperText("Can be positive or negative (to reduce/remove existing penalties)");
             pointsField.setHelperText("Subtracted from the final race points");
 
@@ -125,7 +145,7 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
             addPenaltyBtn.addClickListener(e -> addPenalty());
 
             formContainer.removeAll();
-            formContainer.add(formTitle, formLayout, addPenaltyBtn);
+            formContainer.add(formTitle, tipLayout, formLayout, addPenaltyBtn);
             formContainer.setPadding(false);
             formContainer.setSpacing(true);
             formContainer.setWidth("450px");
@@ -168,6 +188,12 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
                     .collect(Collectors.toSet());
             return EventResultsView.getDynamicSessionName(p.getSessionResult().getSessionType(), sessionTypes);
         }).setHeader("Session").setAutoWidth(true);
+
+        penaltyGrid.addColumn(p -> p.getOverridePosition() != null ? p.getOverridePosition().toString() : "-")
+                .setHeader("Override Pos").setAutoWidth(true);
+
+        penaltyGrid.addColumn(p -> p.getOverrideTime() != null ? EventResultsView.formatLapTime(p.getOverrideTime().floatValue()) : "-")
+                .setHeader("Override Time").setAutoWidth(true);
 
         penaltyGrid.addColumn(p -> p.getSeconds() != null ? p.getSeconds() + "s" : "-")
                 .setHeader("Seconds").setAutoWidth(true);
@@ -213,8 +239,13 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
             return;
         }
 
-        if (secondsField.getValue() == null && pointsField.getValue() == null) {
-            Notification.show("Please enter seconds or a points deduction", 3000, Notification.Position.TOP_CENTER);
+        boolean hasOverridePos = overridePositionField.getValue() != null;
+        boolean hasOverrideTime = overrideTimeField.getValue() != null && !overrideTimeField.getValue().isEmpty();
+        boolean hasSeconds = secondsField.getValue() != null;
+        boolean hasPoints = pointsField.getValue() != null;
+
+        if (!hasOverridePos && !hasOverrideTime && !hasSeconds && !hasPoints) {
+            Notification.show("Please enter an override, seconds, or a points deduction", 3000, Notification.Position.TOP_CENTER);
             return;
         }
 
@@ -223,6 +254,16 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
         penalty.setDriverMapping(driverCombo.getValue());
         penalty.setSeconds(secondsField.getValue());
         penalty.setPointDeduction(pointsField.getValue());
+        penalty.setOverridePosition(overridePositionField.getValue());
+        
+        if (hasOverrideTime) {
+            try {
+                penalty.setOverrideTime((double) EventResultsView.parseLapTime(overrideTimeField.getValue()));
+            } catch (Exception ex) {
+                Notification.show("Invalid override total time format. Use m:ss.SSS or s.SSS", 5000, Notification.Position.TOP_CENTER);
+                return;
+            }
+        }
         penalty.setComment(commentField.getValue());
 
         manualPenaltyRepository.save(penalty);
@@ -233,12 +274,14 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
         // Reset form
         sessionCombo.clear();
         driverCombo.clear();
+        overridePositionField.clear();
+        overrideTimeField.clear();
         secondsField.clear();
         pointsField.clear();
         commentField.clear();
 
         refreshPenalties();
-        Notification.show("Penalty added and standings recalculated", 3000, Notification.Position.TOP_CENTER);
+        Notification.show("Penalty / Override added and standings recalculated", 3000, Notification.Position.TOP_CENTER);
     }
 
     @Override

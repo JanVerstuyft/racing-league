@@ -39,7 +39,8 @@ public class MainLayout extends AppLayout {
 
     private void createDrawer() {
         addToDrawer(new VerticalLayout(
-                new RouterLink("Seasons", SeasonListView.class),
+                new RouterLink("League Hub", LeagueHubView.class),
+                new RouterLink("My Seasons", SeasonListView.class),
                 new RouterLink("Documentation", DocumentationView.class),
                 new RouterLink("Privacy Policy", PrivacyView.class)
         ));

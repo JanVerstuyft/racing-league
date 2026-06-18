@@ -29,7 +29,7 @@ import java.io.ByteArrayInputStream;
 
 @PermitAll
 @PageTitle("Seasons | F1 Telemetry")
-@Route(value = "", layout = MainLayout.class)
+@Route(value = "seasons", layout = MainLayout.class)
 public class SeasonListView extends VerticalLayout {
 
     private final LeagueRepository leagueRepository;
@@ -79,7 +79,11 @@ public class SeasonListView extends VerticalLayout {
             return new Span("-");
         }).setHeader("Logo").setWidth("80px").setFlexGrow(0);
 
-        grid.addColumn(League::getName).setHeader("Season Name").setAutoWidth(true);
+        grid.addComponentColumn(league -> new RouterLink(league.getName(), SeasonDetailsView.class, league.getId()))
+                .setHeader("Season Name")
+                .setAutoWidth(true)
+                .setSortable(true)
+                .setComparator(java.util.Comparator.comparing(League::getName));
         
         grid.addComponentColumn(league -> {
             RouterLink detailsLink = new RouterLink("Details", SeasonDetailsView.class, league.getId());

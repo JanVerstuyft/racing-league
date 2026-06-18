@@ -25,5 +25,6 @@
     <include file="changelog/022_add_display_order_to_event.xml" relativeToChangelogFile="true"/>
     <include file="changelog/023_add_championship_teams.xml" relativeToChangelogFile="true"/>
     <include file="changelog/024_add_lap_telemetry.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/025_add_override_position_and_override_time_to_manual_penalty.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>
 

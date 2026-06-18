@@ -181,7 +181,11 @@ public class TelemetryResultsService {
             driverResult.setChampionshipTeam(resolveChampionshipTeam(driverResult, event, mappings, tier));
             driverResult.setPosition(data.getPosition());
             driverResult.setRawPosition(data.getPosition());
-            driverResult.setNumLaps(data.getNumLaps());
+            int numLaps = data.getNumLaps();
+            if (data.getResultStatus() != 3 && numLaps > 0) {
+                numLaps--;
+            }
+            driverResult.setNumLaps(numLaps);
             driverResult.setPointsAwarded(getPointsForPosition(pointConfigs, sessionResult, data.getPosition()));
             driverResult.setGridPosition(data.getGridPosition());
             driverResult.setBestLapTime(data.getBestLapTimeInMS() / 1000.0f);
@@ -195,12 +199,26 @@ public class TelemetryResultsService {
             }
 
             final int carIndex = i;
+            final int targetNumLaps = numLaps;
+
+            driverResult.getLapResults().removeIf(lap -> {
+                if (lap.getLapNumber() != null && lap.getLapNumber() > targetNumLaps) {
+                    lapResultRepository.delete(lap);
+                    return true;
+                }
+                return false;
+            });
+
             List<LapResult> laps = allLaps.stream()
                     .filter(lap -> lap.getCarIndex() != null && lap.getCarIndex() == carIndex && lap.getDriverResult() == null)
                     .collect(Collectors.toList());
             for (LapResult lap : laps) {
-                lap.setDriverResult(driverResult);
-                driverResult.getLapResults().add(lap);
+                if (lap.getLapNumber() != null && lap.getLapNumber() > targetNumLaps) {
+                    lapResultRepository.delete(lap);
+                } else {
+                    lap.setDriverResult(driverResult);
+                    driverResult.getLapResults().add(lap);
+                }
             }
 
             driverResult.getTyreStints().clear();
@@ -343,14 +361,19 @@ public class TelemetryResultsService {
             driverResult.setPointsAwarded(getPointsForPosition(pointConfigs, sessionResult, ld.getCarPosition()));
 
             final int carIndex = i;
+            final int targetCompletedLaps = completedLaps;
             List<LapResult> laps = allLaps.stream()
                     .filter(lap -> lap.getCarIndex() != null && lap.getCarIndex() == carIndex)
                     .collect(Collectors.toList());
             long totalTimeMs = 0;
             for (LapResult lap : laps) {
-                lap.setDriverResult(driverResult);
-                driverResult.getLapResults().add(lap);
-                if (lap.getLapTimeInMS() != null) totalTimeMs += lap.getLapTimeInMS();
+                if (lap.getLapNumber() != null && lap.getLapNumber() > targetCompletedLaps) {
+                    lapResultRepository.delete(lap);
+                } else {
+                    lap.setDriverResult(driverResult);
+                    driverResult.getLapResults().add(lap);
+                    if (lap.getLapTimeInMS() != null) totalTimeMs += lap.getLapTimeInMS();
+                }
             }
             if (totalTimeMs > 0) {
                 driverResult.setTotalTime(totalTimeMs / 1000.0 + ld.getPenalties());
@@ -687,10 +710,22 @@ public class TelemetryResultsService {
                 Integer winnerLaps = l.getNumLaps();
                 double winnerTime = l.getTotalTime() != null ? l.getTotalTime() : 0;
 
+                List<ManualPenalty> penalties = manualPenaltyRepository.findBySessionResult(session);
+                Tier tier = session.getTier() != null ? session.getTier() : (session.getEvent() != null ? session.getEvent().getTier() : null);
+                League league = tier != null ? tier.getLeague() : null;
+                List<DriverMapping> mappings = league != null ? driverMappingRepository.findByLeague(league) : Collections.emptyList();
+                java.util.Set<Long> overrideTimeDriverMappingIds = penalties.stream()
+                        .filter(p -> p.getOverrideTime() != null)
+                        .map(p -> p.getDriverMapping().getId())
+                        .collect(Collectors.toSet());
+
                 for (DriverResult dr : session.getDriverResults()) {
                     if (dr.getPosition() != null && dr.getPosition() == 1) continue;
 
-                    if (winnerLaps != null && dr.getNumLaps() != null && dr.getNumLaps() < winnerLaps) {
+                    DriverMapping mapping = findMappingForDriverResult(dr, mappings, tier);
+                    boolean hasTimeOverride = mapping != null && overrideTimeDriverMappingIds.contains(mapping.getId());
+
+                    if (winnerLaps != null && dr.getNumLaps() != null && dr.getNumLaps() < winnerLaps && !hasTimeOverride) {
                         int lapGap = winnerLaps - dr.getNumLaps();
                         dr.setGapToLeader("+" + lapGap + (lapGap == 1 ? " Lap" : " Laps"));
                     } 
@@ -919,9 +954,19 @@ public class TelemetryResultsService {
         }
 
         Map<Long, Integer> secondsMap = new HashMap<>();
+        Map<Long, Integer> overridePosMap = new HashMap<>();
+        Map<Long, Double> overrideTimeMap = new HashMap<>();
+
         for (ManualPenalty p : penalties) {
+            Long mappingId = p.getDriverMapping().getId();
             if (p.getSeconds() != null) {
-                secondsMap.put(p.getDriverMapping().getId(), secondsMap.getOrDefault(p.getDriverMapping().getId(), 0) + p.getSeconds());
+                secondsMap.put(mappingId, secondsMap.getOrDefault(mappingId, 0) + p.getSeconds());
+            }
+            if (p.getOverridePosition() != null) {
+                overridePosMap.put(mappingId, p.getOverridePosition());
+            }
+            if (p.getOverrideTime() != null) {
+                overrideTimeMap.put(mappingId, p.getOverrideTime());
             }
         }
 
@@ -935,34 +980,68 @@ public class TelemetryResultsService {
 
             DriverMapping mapping = findMappingForDriverResult(dr, mappings, session.getTier());
             int stewardSeconds = 0;
-            if (mapping != null && secondsMap.containsKey(mapping.getId())) {
-                stewardSeconds = secondsMap.get(mapping.getId());
+            Double overTime = null;
+            if (mapping != null) {
+                stewardSeconds = secondsMap.getOrDefault(mapping.getId(), 0);
+                overTime = overrideTimeMap.get(mapping.getId());
             }
             dr.setStewardsPenalties(stewardSeconds);
 
-            double adjustedTime = dr.getRawTotalTime() != null ? dr.getRawTotalTime() : (dr.getTotalTime() != null ? dr.getTotalTime() : 0.0);
-            adjustedTime += stewardSeconds;
-            dr.setTotalTime(adjustedTime);
+            double baseTime;
+            if (overTime != null) {
+                baseTime = overTime;
+            } else {
+                baseTime = dr.getRawTotalTime() != null ? dr.getRawTotalTime() : (dr.getTotalTime() != null ? dr.getTotalTime() : 0.0);
+            }
+            dr.setTotalTime(baseTime + stewardSeconds);
         }
 
         List<DriverResult> results = new ArrayList<>(session.getDriverResults());
-        
-        List<DriverResult> finished = results.stream()
+
+        // Determine occupied positions and fixed positions
+        Set<Integer> occupiedPositions = new java.util.HashSet<>();
+        Map<DriverResult, Integer> fixedPositions = new java.util.HashMap<>();
+
+        for (DriverResult dr : results) {
+            DriverMapping mapping = findMappingForDriverResult(dr, mappings, session.getTier());
+            if (mapping != null && overridePosMap.containsKey(mapping.getId())) {
+                int overPos = overridePosMap.get(mapping.getId());
+                fixedPositions.put(dr, overPos);
+                occupiedPositions.add(overPos);
+            }
+        }
+
+        // Sort finished and non-finished drivers who are not overridden
+        List<DriverResult> finishedToPlace = results.stream()
+                .filter(dr -> !fixedPositions.containsKey(dr))
                 .filter(dr -> dr.getResultStatus() != null && dr.getResultStatus() == 3)
                 .sorted(Comparator.comparingDouble(dr -> dr.getTotalTime() != null ? dr.getTotalTime() : Double.MAX_VALUE))
                 .collect(Collectors.toList());
 
-        List<DriverResult> nonFinished = results.stream()
+        List<DriverResult> nonFinishedToPlace = results.stream()
+                .filter(dr -> !fixedPositions.containsKey(dr))
                 .filter(dr -> dr.getResultStatus() == null || dr.getResultStatus() != 3)
                 .sorted(Comparator.comparingInt(dr -> dr.getRawPosition() != null ? dr.getRawPosition() : 99))
                 .collect(Collectors.toList());
 
-        int pos = 1;
-        for (DriverResult dr : finished) {
-            dr.setPosition(pos++);
+        // Apply overridden positions
+        for (Map.Entry<DriverResult, Integer> entry : fixedPositions.entrySet()) {
+            entry.getKey().setPosition(entry.getValue());
         }
-        for (DriverResult dr : nonFinished) {
-            dr.setPosition(pos++);
+
+        // Place other drivers around the overrides
+        int nextPos = 1;
+        for (DriverResult dr : finishedToPlace) {
+            while (occupiedPositions.contains(nextPos)) {
+                nextPos++;
+            }
+            dr.setPosition(nextPos++);
+        }
+        for (DriverResult dr : nonFinishedToPlace) {
+            while (occupiedPositions.contains(nextPos)) {
+                nextPos++;
+            }
+            dr.setPosition(nextPos++);
         }
 
         driverResultRepository.saveAll(results);
@@ -1000,7 +1079,7 @@ public class TelemetryResultsService {
         driverResultRepository.saveAll(session.getDriverResults());
     }
 
-    private DriverMapping findMappingForDriverResult(DriverResult result, List<DriverMapping> mappings, Tier tier) {
+    public DriverMapping findMappingForDriverResult(DriverResult result, List<DriverMapping> mappings, Tier tier) {
         if (result.getTelemetryName() == null || result.getRaceNumber() == null || result.getDriverId() == null) {
             return null;
         }

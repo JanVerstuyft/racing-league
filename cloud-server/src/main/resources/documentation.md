@@ -6,13 +6,13 @@
     - [1b. Android Collector Setup](#1b-android-collector-setup)
 - [2. Managing Drivers & Names](#2-managing-drivers--names)
 - [3. Public Pages](#3-public-pages)
-- [4. Race Statistics & Analytics](#4-race-statistics--analytics)
+- [4. Race Statistics & Analytics](#4-race-statistics-and-analytics)
     - [Pure Race Pace](#pure-race-pace)
     - [Longest Stints](#longest-stints)
     - [Consistency Rating](#consistency-rating)
 - [5. Season Settings](#5-season-settings)
 - [6. Points configuration overrides](#6-points-configuration-overrides)
-- [7. Incident & Penalty System](#7-incident--penalty-system)
+- [7. Incident & Penalty System](#7-incident-and-penalty-system)
 - [8. Event Lineups](#8-event-lineups)
 - [9. Provisional vs Finalized Race Weekends](#9-provisional-vs-finalized-race-weekends)
 - [10. Championship Teams (A vs B)](#10-championship-teams-a-vs-b)
@@ -86,7 +86,7 @@ You can share the following pages with your league members. They do not require 
 * **Event Results:** Detailed results for each race weekend, including lap times, tyre stints, and analytics.
 * **Live Leaderboard:** A dedicated live dashboard for spectators. Use the token from the Tiers tab in the Season Details page: `/leaderboard/{token}`.
 
-## 4. Race Statistics & Analytics
+## 4. Race Statistics And Analytics
 Detailed analytics are available in the **Event Results** view to help compare driver performance beyond just the finishing position.
 
 ### Pure Race Pace
@@ -180,7 +180,7 @@ League administrators can customize the points awarded for any session type via 
 
 * **Standings Integration:** Any points awarded via custom overrides or extra rules are automatically added to the driver and team standings.
 
-## 7. Incident & Penalty System
+## 7. Incident And Penalty System
 League stewards can issue manual penalties and points deductions for race incidents via the **Penalties** dashboard.
 
 * **Accessing the Dashboard:** Navigate to the **Race Weekends** tab on the Season Details page, and click **Penalties** next to the specific event.
@@ -188,6 +188,9 @@ League stewards can issue manual penalties and points deductions for race incide
     * **Time Penalties (seconds):** Positive or negative seconds added directly to the driver's total race time. Drivers who finished the race are automatically re-classified (re-ranked) based on their adjusted total times.
     * **Points Deductions:** Point values subtracted from the driver's final points awarded for the session.
     * **Reason / Comment:** Stewards must specify a comment describing the incident or reason for the penalty.
+    * **Override Position:** Set an exact finishing position for the driver. This locks the driver to that position, and they will not move even if they receive time penalties.
+    * **Override Total Time:** Set an exact total race time (input formatted as `MM:SS.SSS` or `H:MM:SS.SSS`). The system calculates the driver's position dynamically using this override time as their base total time plus any steward's time penalties. Other drivers will automatically slide around them in the classification order.
+    * **Steward Tip:** If you want a driver's final position to sort dynamically when they or others receive time penalties, use **Override Total Time** instead of **Override Position**.
 * **Standings & Visibility:**
     * Incident stats are aggregated across all sessions and displayed in the **Standings > Penalties** (tier-specific) and **League Penalties** (league-wide) dashboards.
     * Existing penalties can be deleted by administrators to automatically trigger recalculation of positions and standings.

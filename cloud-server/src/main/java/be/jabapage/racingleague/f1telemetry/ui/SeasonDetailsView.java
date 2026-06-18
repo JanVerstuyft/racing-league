@@ -132,6 +132,19 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final Tabs standingsTabs = new Tabs();
     private Grid.Column<DriverMapping> champTeamColumn;
 
+    private final Tab raceWeekendsTab = new Tab("Race Weekends");
+    private final Tab standingsTab = new Tab("Standings");
+    private final Tab driversTab = new Tab("Drivers");
+    private final Tab pointsTab = new Tab("Points");
+    private final Tab tiersTab = new Tab("Tiers");
+    private final Tab settingsTab = new Tab("Settings");
+    private final Tabs mainTabs = new Tabs(raceWeekendsTab, standingsTab, driversTab, pointsTab, tiersTab, settingsTab);
+
+    private final HorizontalLayout tiersToolbar = new HorizontalLayout();
+    private final H3 tiersTitle = new H3("Manage Tiers");
+    private Grid.Column<Tier> tokenColumn;
+    private Grid.Column<Tier> tierActionsColumn;
+
     private final VerticalLayout generalSettingsContent = new VerticalLayout();
     private final VerticalLayout uiTweaksSettingsContent = new VerticalLayout();
     
@@ -216,8 +229,9 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         configureGrids();
 
         HorizontalLayout nav = new HorizontalLayout();
+        nav.add(new RouterLink("League Hub", LeagueHubView.class));
         if (securityService.getAuthenticatedUser().isPresent()) {
-            nav.add(new RouterLink("All Seasons", SeasonListView.class));
+            nav.add(new RouterLink("My Seasons", SeasonListView.class));
         } else {
             nav.add(new RouterLink("Login", LoginView.class));
         }
@@ -239,15 +253,14 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         header.setSpacing(true);
 
         // Top level tabs
-        Tabs mainTabs = new Tabs(new Tab("Race Weekends"), new Tab("Standings"), new Tab("Drivers"), new Tab("Points"), new Tab("Tiers"), new Tab("Settings"));
         mainTabs.addSelectedChangeListener(e -> {
-            String label = e.getSelectedTab().getLabel();
-            eventsLayout.setVisible(label.equals("Race Weekends"));
-            standingsLayout.setVisible(label.equals("Standings"));
-            driversLayout.setVisible(label.equals("Drivers"));
-            pointsLayout.setVisible(label.equals("Points"));
-            tiersLayout.setVisible(label.equals("Tiers"));
-            settingsLayout.setVisible(label.equals("Settings"));
+            Tab selectedTab = e.getSelectedTab();
+            eventsLayout.setVisible(raceWeekendsTab.equals(selectedTab));
+            standingsLayout.setVisible(standingsTab.equals(selectedTab));
+            driversLayout.setVisible(driversTab.equals(selectedTab));
+            pointsLayout.setVisible(pointsTab.equals(selectedTab));
+            tiersLayout.setVisible(tiersTab.equals(selectedTab));
+            settingsLayout.setVisible(settingsTab.equals(selectedTab));
         });
 
         eventsLayout.add(new HorizontalLayout(new H3("Race Weekends"), addManualWeekendBtn), eventGrid);
@@ -269,10 +282,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             Notification.show("Tier added", 3000, Notification.Position.TOP_CENTER);
         });
 
-        HorizontalLayout tiersToolbar = new HorizontalLayout(addTierNameField, addTierBtn);
+        tiersToolbar.add(addTierNameField, addTierBtn);
         tiersToolbar.setDefaultVerticalComponentAlignment(Alignment.BASELINE);
 
-        tiersLayout.add(new H3("Manage Tiers"), tiersToolbar, tierGrid);
+        tiersLayout.add(tiersTitle, tiersToolbar, tierGrid);
         tiersLayout.setVisible(false);
 
         // Points Layout
@@ -910,7 +923,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         }).setHeader("Action").setWidth("100px").setFlexGrow(0);
         extraPointRulesGrid.setSelectionMode(Grid.SelectionMode.NONE);
 
-        eventGrid.addColumn(Event::getEventName).setHeader("Event");
+        eventGrid.addComponentColumn(event -> new RouterLink(event.getEventName(), EventResultsView.class, event.getId()))
+                .setHeader("Event")
+                .setSortable(true)
+                .setComparator(Comparator.comparing(Event::getEventName));
         eventGrid.addColumn(event -> {
             java.util.Set<Integer> types = event.getSessionResults().stream()
                     .map(SessionResult::getSessionType)
@@ -1077,7 +1093,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
         // Configure TierGrid
         tierGrid.addColumn(Tier::getName).setHeader("Tier Name").setAutoWidth(true);
-        tierGrid.addComponentColumn(t -> {
+        tokenColumn = tierGrid.addComponentColumn(t -> {
             Span tokenSpan = new Span(t.getToken());
             tokenSpan.getStyle().set("font-family", "monospace");
             tokenSpan.getStyle().set("font-size", "0.8em");
@@ -1097,7 +1113,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             return liveLink;
         }).setHeader("Live");
 
-        tierGrid.addComponentColumn(t -> {
+        tierActionsColumn = tierGrid.addComponentColumn(t -> {
             HorizontalLayout actions = new HorizontalLayout();
             
             TextField renameField = new TextField();
@@ -1421,7 +1437,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     public void setParameter(BeforeEvent event, Long parameter) {
         isInitializing = true;
         try {
-            league = leagueRepository.findById(parameter).orElseThrow();
+            league = leagueRepository.findByIdWithUser(parameter).orElseThrow();
             seasonName.setText("Season: " + league.getName());
             hideAiCheckbox.setValue(league.isHideAi());
             showTyreWearCheckbox.setValue(league.isShowTyreWear());
@@ -1490,6 +1506,21 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             useChampionshipTeamsCheckbox.setVisible(loggedIn);
             teamANameField.setVisible(loggedIn);
             teamBNameField.setVisible(loggedIn);
+            
+            settingsTab.setVisible(loggedIn);
+            tiersToolbar.setVisible(loggedIn);
+            if (tokenColumn != null) {
+                tokenColumn.setVisible(loggedIn);
+            }
+            if (tierActionsColumn != null) {
+                tierActionsColumn.setVisible(loggedIn);
+            }
+            tiersTitle.setText(loggedIn ? "Manage Tiers" : "Tiers");
+            
+            if (!loggedIn && mainTabs.getSelectedTab() == settingsTab) {
+                mainTabs.setSelectedTab(raceWeekendsTab);
+            }
+            
             tiersLayout.setVisible(false);
             
             refreshTiersList();

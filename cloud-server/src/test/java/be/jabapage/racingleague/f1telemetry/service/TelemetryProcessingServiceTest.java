@@ -33,6 +33,12 @@ public class TelemetryProcessingServiceTest {
     @Mock
     private LapResultRepository lapResultRepository;
 
+    @Mock
+    private be.jabapage.racingleague.f1telemetry.repository.ManualPenaltyRepository manualPenaltyRepository;
+
+    @Mock
+    private be.jabapage.racingleague.f1telemetry.repository.DriverMappingRepository driverMappingRepository;
+
     @InjectMocks
     private RaceAnalyticsService raceAnalyticsService;
 

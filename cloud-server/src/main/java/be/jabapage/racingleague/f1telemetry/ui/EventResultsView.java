@@ -9,6 +9,9 @@ import be.jabapage.racingleague.f1telemetry.entity.EventLineupEntry;
 import be.jabapage.racingleague.f1telemetry.entity.DriverStanding;
 import be.jabapage.racingleague.f1telemetry.entity.Tier;
 import be.jabapage.racingleague.f1telemetry.entity.TyreStint;
+import be.jabapage.racingleague.f1telemetry.entity.ManualPenalty;
+import be.jabapage.racingleague.f1telemetry.repository.ManualPenaltyRepository;
+import com.vaadin.flow.component.textfield.TextArea;
 import be.jabapage.racingleague.f1telemetry.repository.EventLineupEntryRepository;
 import be.jabapage.racingleague.f1telemetry.repository.DriverStandingRepository;
 import java.util.HashMap;
@@ -88,6 +91,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     private final TelemetryResultsService telemetryResultsService;
     private final SessionPointConfigRepository sessionPointConfigRepository;
     private final LapTelemetryRepository lapTelemetryRepository;
+    private final ManualPenaltyRepository manualPenaltyRepository;
 
     private final HorizontalLayout logoContainer = new HorizontalLayout();
     private final VerticalLayout lineupContainer = new VerticalLayout();
@@ -135,7 +139,8 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                             DriverStandingRepository driverStandingRepository,
                             TelemetryResultsService telemetryResultsService,
                             SessionPointConfigRepository sessionPointConfigRepository,
-                            LapTelemetryRepository lapTelemetryRepository) {
+                            LapTelemetryRepository lapTelemetryRepository,
+                            ManualPenaltyRepository manualPenaltyRepository) {
         this.eventRepository = eventRepository;
         this.sessionResultRepository = sessionResultRepository;
         this.driverResultRepository = driverResultRepository;
@@ -149,6 +154,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         this.telemetryResultsService = telemetryResultsService;
         this.sessionPointConfigRepository = sessionPointConfigRepository;
         this.lapTelemetryRepository = lapTelemetryRepository;
+        this.manualPenaltyRepository = manualPenaltyRepository;
         setSizeFull();
 
         // Main Tabs
@@ -516,7 +522,213 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         });
     }
 
-    private float parseLapTime(String text) {
+    private void showEditResultDialog(DriverResult dr, SessionResult session) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Edit Result: " + dr.getDriverName());
+
+        TextField driverField = new TextField("Driver");
+        driverField.setValue(dr.getDriverName());
+        driverField.setReadOnly(true);
+        driverField.setWidthFull();
+
+        League league = currentEvent.getTier().getLeague();
+        boolean teamsEnabled = league != null && Boolean.TRUE.equals(league.getUseChampionshipTeams()) 
+            && league.getTeamAName() != null && !league.getTeamAName().isEmpty() 
+            && league.getTeamBName() != null && !league.getTeamBName().isEmpty();
+
+        ComboBox<TeamMapping> teamCombo = new ComboBox<>("Team");
+        String carType = getCarTypeForEvent();
+        List<TeamMapping> allTeams = getTeamsForCarType(carType);
+        teamCombo.setItems(allTeams);
+        teamCombo.setItemLabelGenerator(TeamMapping::getTeamName);
+        teamCombo.setWidthFull();
+        if (dr.getTeamId() != null) {
+            Optional<TeamMapping> tmOpt = teamMappingRepository.findByTeamIdAndCarType(dr.getTeamId(), carType);
+            tmOpt.ifPresent(teamCombo::setValue);
+        }
+
+        ComboBox<String> champTeamCombo = new ComboBox<>("Championship Team");
+        champTeamCombo.setItems("A", "B", "None");
+        champTeamCombo.setItemLabelGenerator(val -> {
+            if ("A".equals(val)) {
+                return league.getTeamAName() != null ? league.getTeamAName() : "Team A";
+            } else if ("B".equals(val)) {
+                return league.getTeamBName() != null ? league.getTeamBName() : "Team B";
+            }
+            return "None";
+        });
+        champTeamCombo.setValue(dr.getChampionshipTeam() != null ? dr.getChampionshipTeam() : "None");
+        champTeamCombo.setWidthFull();
+        champTeamCombo.setVisible(teamsEnabled);
+
+        ComboBox<Integer> statusCombo = new ComboBox<>("Result Status");
+        statusCombo.setItems(3, 4, 5, 6, 7);
+        statusCombo.setItemLabelGenerator(status -> {
+            if (status == 3) return "Finished (3)";
+            if (status == 4) return "DNF (4)";
+            if (status == 5) return "DSQ (5)";
+            if (status == 6) return "NC (6)";
+            if (status == 7) return "RET (7)";
+            return "Unknown (" + status + ")";
+        });
+        statusCombo.setValue(dr.getResultStatus() != null ? dr.getResultStatus() : 3);
+        statusCombo.setWidthFull();
+
+        NumberField overridePosField = new NumberField("Override Position");
+        overridePosField.setStepButtonsVisible(true);
+        overridePosField.setMin(1);
+        overridePosField.setMax(22);
+        overridePosField.setHelperText("Leave blank to calculate automatically");
+
+        TextField overrideTimeField = new TextField("Override Total Time (e.g. 45:12.300)");
+        overrideTimeField.setHelperText("Leave blank to use raw race time");
+
+        NumberField penaltiesField = new NumberField("Time Penalty (seconds)");
+        penaltiesField.setStepButtonsVisible(true);
+
+        com.vaadin.flow.component.textfield.IntegerField warningsField = new com.vaadin.flow.component.textfield.IntegerField("Warnings");
+        warningsField.setStepButtonsVisible(true);
+        warningsField.setMin(0);
+        warningsField.setValue(dr.getWarnings() != null ? dr.getWarnings() : 0);
+
+        com.vaadin.flow.component.textfield.IntegerField lapsField = new com.vaadin.flow.component.textfield.IntegerField("Laps Completed");
+        lapsField.setStepButtonsVisible(true);
+        lapsField.setMin(0);
+        lapsField.setValue(dr.getNumLaps() != null ? dr.getNumLaps() : 0);
+
+        TextField timeField = new TextField("Best Lap Time (e.g. 1:24.500)");
+        if (dr.getBestLapTime() != null && dr.getBestLapTime() > 0) {
+            timeField.setValue(formatLapTime(dr.getBestLapTime()));
+        }
+
+        com.vaadin.flow.component.textfield.IntegerField pointDeductionField = new com.vaadin.flow.component.textfield.IntegerField("Points Deduction (PD)");
+        pointDeductionField.setStepButtonsVisible(true);
+        pointDeductionField.setMin(0);
+
+        TextArea commentField = new TextArea("Comment / Reason");
+        commentField.setWidthFull();
+
+        // Load existing ManualPenalty values
+        List<DriverMapping> mappings = driverMappingRepository.findByLeague(currentEvent.getTier().getLeague());
+        DriverMapping mapping = telemetryResultsService.findMappingForDriverResult(dr, mappings, currentEvent.getTier());
+        final DriverMapping finalMapping = mapping;
+
+        ManualPenalty existingPenaltyLocal = null;
+        if (mapping != null) {
+            existingPenaltyLocal = manualPenaltyRepository.findBySessionResult(session).stream()
+                    .filter(p -> p.getDriverMapping().getId().equals(finalMapping.getId()))
+                    .findFirst()
+                    .orElse(null);
+        }
+        final ManualPenalty existingPenalty = existingPenaltyLocal;
+
+        if (existingPenalty != null) {
+            if (existingPenalty.getSeconds() != null) {
+                penaltiesField.setValue(existingPenalty.getSeconds().doubleValue());
+            }
+            if (existingPenalty.getPointDeduction() != null) {
+                pointDeductionField.setValue(existingPenalty.getPointDeduction());
+            }
+            if (existingPenalty.getComment() != null) {
+                commentField.setValue(existingPenalty.getComment());
+            }
+            if (existingPenalty.getOverridePosition() != null) {
+                overridePosField.setValue(existingPenalty.getOverridePosition().doubleValue());
+            }
+            if (existingPenalty.getOverrideTime() != null) {
+                overrideTimeField.setValue(formatLapTime(existingPenalty.getOverrideTime().floatValue()));
+            }
+        }
+
+        // Layout
+        HorizontalLayout overridesRow = new HorizontalLayout(overridePosField, overrideTimeField);
+        overridesRow.setWidthFull();
+        HorizontalLayout penaltiesRow = new HorizontalLayout(penaltiesField, pointDeductionField);
+        penaltiesRow.setWidthFull();
+        HorizontalLayout statsRow = new HorizontalLayout(warningsField, lapsField, timeField);
+        statsRow.setWidthFull();
+
+        VerticalLayout layout = new VerticalLayout(driverField, teamCombo, champTeamCombo, statusCombo, overridesRow, penaltiesRow, statsRow, commentField);
+        dialog.add(layout);
+
+        Button saveBtn = new Button("Save", ev -> {
+            if (teamCombo.getValue() == null) {
+                Notification.show("Please select a Team", 3000, Notification.Position.TOP_CENTER);
+                return;
+            }
+
+            dr.setTeamId(teamCombo.getValue().getTeamId());
+            if (teamsEnabled && !"None".equals(champTeamCombo.getValue())) {
+                dr.setChampionshipTeam(champTeamCombo.getValue());
+            } else {
+                dr.setChampionshipTeam(null);
+            }
+            dr.setResultStatus(statusCombo.getValue());
+            dr.setWarnings(warningsField.getValue() != null ? warningsField.getValue() : 0);
+            dr.setNumLaps(lapsField.getValue() != null ? lapsField.getValue() : 0);
+
+            if (timeField.getValue() != null && !timeField.getValue().isEmpty()) {
+                try {
+                    dr.setBestLapTime(parseLapTime(timeField.getValue()));
+                } catch (Exception ex) {
+                    Notification.show("Invalid best lap time format. Use m:ss.SSS or s.SSS", 5000, Notification.Position.TOP_CENTER);
+                    return;
+                }
+            } else {
+                dr.setBestLapTime(0.0f);
+            }
+
+            // Save DriverResult changes
+            driverResultRepository.save(dr);
+
+            // Handle ManualPenalty save/update/delete
+            boolean hasOverridePos = overridePosField.getValue() != null;
+            boolean hasOverrideTime = overrideTimeField.getValue() != null && !overrideTimeField.getValue().isEmpty();
+            boolean hasSeconds = penaltiesField.getValue() != null && penaltiesField.getValue() != 0.0;
+            boolean hasDeduction = pointDeductionField.getValue() != null && pointDeductionField.getValue() != 0;
+            boolean hasComment = commentField.getValue() != null && !commentField.getValue().trim().isEmpty();
+
+            if (finalMapping != null) {
+                if (hasOverridePos || hasOverrideTime || hasSeconds || hasDeduction || hasComment) {
+                    ManualPenalty p = existingPenalty != null ? existingPenalty : new ManualPenalty();
+                    p.setSessionResult(session);
+                    p.setDriverMapping(finalMapping);
+                    p.setOverridePosition(hasOverridePos ? overridePosField.getValue().intValue() : null);
+
+                    if (hasOverrideTime) {
+                        try {
+                            p.setOverrideTime((double) parseLapTime(overrideTimeField.getValue()));
+                        } catch (Exception ex) {
+                            Notification.show("Invalid override total time format. Use m:ss.SSS or s.SSS", 5000, Notification.Position.TOP_CENTER);
+                            return;
+                        }
+                    } else {
+                        p.setOverrideTime(null);
+                    }
+
+                    p.setSeconds(hasSeconds ? penaltiesField.getValue().intValue() : null);
+                    p.setPointDeduction(hasDeduction ? pointDeductionField.getValue() : null);
+                    p.setComment(hasComment ? commentField.getValue() : null);
+
+                    manualPenaltyRepository.save(p);
+                } else if (existingPenalty != null) {
+                    manualPenaltyRepository.delete(existingPenalty);
+                }
+            }
+
+            // Recalculate standings & gaps
+            telemetryProcessingService.recalculateStandings(currentEvent.getTier().getId());
+            refreshEvent();
+            dialog.close();
+            Notification.show("Result updated and standings recalculated", 3000, Notification.Position.TOP_CENTER);
+        });
+
+        saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        dialog.getFooter().add(new Button("Cancel", ev -> dialog.close()), saveBtn);
+        dialog.open();
+    }
+
+    public static float parseLapTime(String text) {
         if (text == null || text.isEmpty()) return 0;
         if (text.contains(":")) {
             String[] parts = text.split(":");
@@ -1046,6 +1258,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         
         if (loggedIn) {
             grid.addComponentColumn(dr -> {
+                Button editBtn = new Button("Edit", e -> showEditResultDialog(dr, session));
+                editBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+
                 Button deleteBtn = new Button("Delete", e -> {
                     ConfirmDialog dialog = new ConfirmDialog();
                     dialog.setHeader("Delete Result?");
@@ -1054,25 +1269,28 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                     dialog.setConfirmText("Delete");
                     dialog.setConfirmButtonTheme("error primary");
                     dialog.addConfirmListener(ev -> {
-                    Notification deletingNote = new Notification("Deleting...");
-                    deletingNote.setPosition(Notification.Position.TOP_CENTER);
-                    deletingNote.setDuration(0);
-                    deletingNote.open();
-                    try {
-                        driverResultRepository.delete(dr);
-                        refreshEvent();
-                        deletingNote.close();
-                        Notification.show("Result deleted", 3000, Notification.Position.TOP_CENTER);
-                    } catch (Exception ex) {
-                        deletingNote.close();
-                        Notification.show("Error: " + ex.getMessage(), 5000, Notification.Position.TOP_CENTER);
-                    }
-                });
+                        Notification deletingNote = new Notification("Deleting...");
+                        deletingNote.setPosition(Notification.Position.TOP_CENTER);
+                        deletingNote.setDuration(0);
+                        deletingNote.open();
+                        try {
+                            driverResultRepository.delete(dr);
+                            refreshEvent();
+                            deletingNote.close();
+                            Notification.show("Result deleted", 3000, Notification.Position.TOP_CENTER);
+                        } catch (Exception ex) {
+                            deletingNote.close();
+                            Notification.show("Error: " + ex.getMessage(), 5000, Notification.Position.TOP_CENTER);
+                        }
+                    });
                     dialog.open();
                 });
                 deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
-                return deleteBtn;
-            }).setHeader("Actions");
+
+                HorizontalLayout actions = new HorizontalLayout(editBtn, deleteBtn);
+                actions.setSpacing(true);
+                return actions;
+            }).setHeader("Actions").setAutoWidth(true);
         }
 
         grid.setItems(driverResults);
@@ -1551,7 +1769,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         return TelemetryProcessingService.SESSION_TYPE_NAMES.getOrDefault(sessionType, "Session " + sessionType);
     }
 
-    private String formatLapTime(float seconds) {
+    public static String formatLapTime(float seconds) {
         if (seconds <= 0) return "-";
         int minutes = (int) (seconds / 60);
         float remainingSeconds = seconds % 60;
@@ -2388,17 +2606,17 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         item.addClassName("lineup-social-item");
 
         String svgStr = switch (platform) {
-            case "youtube" -> "<svg viewBox=\"0 0 24 24\" fill=\"currentColor\" style=\"width:16px; height:16px; display:inline-block; vertical-align:middle;\">" +
+            case "youtube" -> "<svg viewBox=\"0 0 24 24\" fill=\"currentColor\" style=\"width:12px; height:12px; display:inline-block; vertical-align:middle;\">" +
                     "<path d=\"M23.498 6.163a3.003 3.003 0 0 0-2.11-2.108C19.53 3.5 12 3.5 12 3.5s-7.53 0-9.388.555A3.003 3.003 0 0 0 .502 6.163C0 8.07 0 12 0 12s0 3.93.502 5.837a3.003 3.003 0 0 0 2.11 2.108C4.47 20.5 12 20.5 12 20.5s7.53 0 9.388-.555a3.003 3.003 0 0 0 2.11-2.108C24 15.93 24 12 24 12s0-3.93-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z\"/></svg>";
-            case "tiktok" -> "<svg viewBox=\"0 0 24 24\" fill=\"currentColor\" style=\"width:16px; height:16px; display:inline-block; vertical-align:middle;\">" +
+            case "tiktok" -> "<svg viewBox=\"0 0 24 24\" fill=\"currentColor\" style=\"width:12px; height:12px; display:inline-block; vertical-align:middle;\">" +
                     "<path d=\"M12.53.086c.3-.01.597.026.887.106.198.055.39.155.556.294.137.116.24.27.3.44.027.08.04.16.046.244.032 1.637.7 3.12 1.83 4.2 1.05.998 2.45 1.59 3.98 1.66.27.014.54.004.805-.03v3.25c-1.12.016-2.22-.276-3.19-.844-.82-.48-1.5-1.16-1.98-1.98v6.78c.005.89-.164 1.77-.5 2.6-.58 1.41-1.63 2.59-2.98 3.32a8.88 8.88 0 0 1-5.18.91c-1.5-.12-2.93-.72-4.1-1.7a9.14 9.14 0 0 1-2.8-5.38 8.89 8.89 0 0 1 .91-5.18c.73-1.35 1.91-2.4 3.32-2.98 1.13-.47 2.35-.61 3.56-.41v3.29c-.6-.07-1.22.01-1.78.24-.7.29-1.28.82-1.64 1.5-.56.98-.56 2.2 0 3.18.36.68.94 1.21 1.64 1.5.82.34 1.74.34 2.56 0 .7-.29 1.28-.82 1.64-1.5.23-.56.31-1.18.24-1.78V0l3.29.086z\"/></svg>";
-            case "x" -> "<svg viewBox=\"0 0 24 24\" fill=\"currentColor\" style=\"width:16px; height:16px; display:inline-block; vertical-align:middle;\">" +
+            case "x" -> "<svg viewBox=\"0 0 24 24\" fill=\"currentColor\" style=\"width:12px; height:12px; display:inline-block; vertical-align:middle;\">" +
                     "<path d=\"M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z\"/></svg>";
-            case "instagram" -> "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"width:16px; height:16px; display:inline-block; vertical-align:middle;\">" +
+            case "instagram" -> "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"width:12px; height:12px; display:inline-block; vertical-align:middle;\">" +
                     "<rect x=\"2\" y=\"2\" width=\"20\" height=\"20\" rx=\"5\" ry=\"5\"></rect>" +
                     "<path d=\"M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z\"></path>" +
                     "<line x1=\"17.5\" y1=\"6.5\" x2=\"17.51\" y2=\"6.5\"></line></svg>";
-            case "twitch" -> "<svg viewBox=\"0 0 24 24\" fill=\"currentColor\" style=\"width:16px; height:16px; display:inline-block; vertical-align:middle;\">" +
+            case "twitch" -> "<svg viewBox=\"0 0 24 24\" fill=\"currentColor\" style=\"width:12px; height:12px; display:inline-block; vertical-align:middle;\">" +
                     "<path d=\"M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z\"/></svg>";
             default -> "";
         };

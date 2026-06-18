@@ -28,10 +28,10 @@ public class PrivacyView extends VerticalLayout {
         getElement().getStyle().set("margin", "0 auto");
 
         if (securityService.getAuthenticatedUser().isPresent()) {
-            add(new RouterLink("← Back to Seasons", SeasonListView.class));
+            add(new RouterLink("← Back to My Seasons", SeasonListView.class));
         } else {
             HorizontalLayout nav = new HorizontalLayout(
-                new RouterLink("← Back to Login", LoginView.class),
+                new RouterLink("← Back to League Hub", LeagueHubView.class),
                 new RouterLink("Login", LoginView.class)
             );
             add(nav);
