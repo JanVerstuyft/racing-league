@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -29,6 +30,9 @@ public class Event {
 
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder = 0;
+
+    @Column(name = "planned_date")
+    private LocalDate plannedDate;
 
 
     @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, fetch = FetchType.EAGER)

@@ -27,9 +27,12 @@ import com.vaadin.flow.component.ComponentUtil;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
+import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.grid.Grid;
+import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
+import java.time.LocalDate;
 import com.vaadin.flow.component.html.H4;
 import com.vaadin.flow.component.html.Input;
 import com.vaadin.flow.component.html.Span;
@@ -133,12 +136,13 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private Grid.Column<DriverMapping> champTeamColumn;
 
     private final Tab raceWeekendsTab = new Tab("Race Weekends");
+    private final Tab calendarTab = new Tab("Calendar");
     private final Tab standingsTab = new Tab("Standings");
     private final Tab driversTab = new Tab("Drivers");
     private final Tab pointsTab = new Tab("Points");
     private final Tab tiersTab = new Tab("Tiers");
     private final Tab settingsTab = new Tab("Settings");
-    private final Tabs mainTabs = new Tabs(raceWeekendsTab, standingsTab, driversTab, pointsTab, tiersTab, settingsTab);
+    private final Tabs mainTabs = new Tabs(raceWeekendsTab, calendarTab, standingsTab, driversTab, pointsTab, tiersTab, settingsTab);
 
     private final HorizontalLayout tiersToolbar = new HorizontalLayout();
     private final H3 tiersTitle = new H3("Manage Tiers");
@@ -159,6 +163,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final Grid<Tier> tierGrid = new Grid<>(Tier.class, false);
 
     private final VerticalLayout eventsLayout = new VerticalLayout();
+    private final VerticalLayout calendarLayout = new VerticalLayout();
     private final VerticalLayout standingsLayout = new VerticalLayout();
     private final VerticalLayout driverStandingsContent = new VerticalLayout();
     private final VerticalLayout teamStandingsContent = new VerticalLayout();
@@ -256,12 +261,14 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         mainTabs.addSelectedChangeListener(e -> {
             Tab selectedTab = e.getSelectedTab();
             eventsLayout.setVisible(raceWeekendsTab.equals(selectedTab));
+            calendarLayout.setVisible(calendarTab.equals(selectedTab));
             standingsLayout.setVisible(standingsTab.equals(selectedTab));
             driversLayout.setVisible(driversTab.equals(selectedTab));
             pointsLayout.setVisible(pointsTab.equals(selectedTab));
             tiersLayout.setVisible(tiersTab.equals(selectedTab));
             settingsLayout.setVisible(settingsTab.equals(selectedTab));
         });
+        calendarLayout.setVisible(false);
 
         eventsLayout.add(new HorizontalLayout(new H3("Race Weekends"), addManualWeekendBtn), eventGrid);
 
@@ -632,7 +639,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             }
         });
 
-        addManualWeekendBtn.addClickListener(e -> {
+         addManualWeekendBtn.addClickListener(e -> {
             if (selectedTier == null) return;
             
             com.vaadin.flow.component.dialog.Dialog dialog = new com.vaadin.flow.component.dialog.Dialog();
@@ -646,13 +653,16 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             TextField nameField = new TextField("Event Name (e.g. Belgian Grand Prix)");
             nameField.setWidthFull();
 
+            DatePicker plannedDatePicker = new DatePicker("Planned Date");
+            plannedDatePicker.setWidthFull();
+
             trackCombo.addValueChangeListener(ev -> {
                 if (ev.getValue() != null && (nameField.getValue() == null || nameField.getValue().isEmpty())) {
                     nameField.setValue(TelemetryProcessingService.TRACK_NAMES.getOrDefault(ev.getValue(), "") + " Grand Prix");
                 }
             });
 
-            VerticalLayout dialogLayout = new VerticalLayout(trackCombo, nameField);
+            VerticalLayout dialogLayout = new VerticalLayout(trackCombo, nameField, plannedDatePicker);
             dialog.add(dialogLayout);
 
             Button saveBtn = new Button("Add", ev -> {
@@ -664,6 +674,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 newEvent.setTier(selectedTier);
                 newEvent.setTrackId(String.valueOf(trackCombo.getValue()));
                 newEvent.setEventName(nameField.getValue());
+                newEvent.setPlannedDate(plannedDatePicker.getValue());
                 eventRepository.save(newEvent);
                 updateData();
                 dialog.close();
@@ -867,7 +878,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             dialog.open();
         });
 
-        add(nav, header, mainTabs, eventsLayout, standingsLayout, driversLayout, pointsLayout, tiersLayout, settingsLayout);
+        add(nav, header, mainTabs, eventsLayout, calendarLayout, standingsLayout, driversLayout, pointsLayout, tiersLayout, settingsLayout);
     }
 
     private void configureGrids() {
@@ -927,6 +938,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                 .setHeader("Event")
                 .setSortable(true)
                 .setComparator(Comparator.comparing(Event::getEventName));
+        eventGrid.addColumn(event -> event.getPlannedDate() != null ? event.getPlannedDate().toString() : "TBD")
+                .setHeader("Planned Date")
+                .setSortable(true)
+                .setComparator(Comparator.comparing(event -> event.getPlannedDate() != null ? event.getPlannedDate() : LocalDate.MIN));
         eventGrid.addColumn(event -> {
             java.util.Set<Integer> types = event.getSessionResults().stream()
                     .map(SessionResult::getSessionType)
@@ -1042,7 +1057,10 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
                     dialog.open();
                 });
                 deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
-                actions.add(deleteBtn);
+                
+                Button editBtn = new Button("Edit", e -> showEditEventDialog(event));
+                editBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+                actions.add(editBtn, deleteBtn);
             }
 
             actions.setAlignItems(FlexComponent.Alignment.CENTER);
@@ -1190,6 +1208,59 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         leagueChampTeamGrid.addColumn(ChampionshipTeamStanding::getPoints).setHeader("Points").setSortable(true);
 
         configureMappingGrid();
+    }
+
+    private void showEditEventDialog(Event event) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Edit Weekend");
+
+        ComboBox<Integer> trackCombo = new ComboBox<>("Track");
+        trackCombo.setItems(java.util.stream.IntStream.rangeClosed(0, 42).boxed().toList());
+        trackCombo.setItemLabelGenerator(id -> TelemetryProcessingService.TRACK_NAMES.getOrDefault(id, "Track " + id));
+        trackCombo.setWidthFull();
+        if (event.getTrackId() != null) {
+            try {
+                trackCombo.setValue(Integer.parseInt(event.getTrackId()));
+            } catch (NumberFormatException e) {
+                // Ignore
+            }
+        }
+
+        TextField nameField = new TextField("Event Name");
+        nameField.setWidthFull();
+        nameField.setValue(event.getEventName() != null ? event.getEventName() : "");
+
+        DatePicker plannedDatePicker = new DatePicker("Planned Date");
+        plannedDatePicker.setWidthFull();
+        plannedDatePicker.setValue(event.getPlannedDate());
+
+        trackCombo.addValueChangeListener(ev -> {
+            if (ev.getValue() != null && (nameField.getValue() == null || nameField.getValue().isEmpty())) {
+                nameField.setValue(TelemetryProcessingService.TRACK_NAMES.getOrDefault(ev.getValue(), "") + " Grand Prix");
+            }
+        });
+
+        VerticalLayout dialogLayout = new VerticalLayout(trackCombo, nameField, plannedDatePicker);
+        dialog.add(dialogLayout);
+
+        Button saveBtn = new Button("Save", ev -> {
+            if (trackCombo.getValue() == null || nameField.getValue().isEmpty()) {
+                Notification.show("Please fill in all fields", 3000, Notification.Position.TOP_CENTER);
+                return;
+            }
+            event.setTrackId(String.valueOf(trackCombo.getValue()));
+            event.setEventName(nameField.getValue());
+            event.setPlannedDate(plannedDatePicker.getValue());
+            eventRepository.save(event);
+            updateData();
+            dialog.close();
+            Notification.show("Weekend updated", 3000, Notification.Position.TOP_CENTER);
+        });
+        saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+
+        Button cancelBtn = new Button("Cancel", ev -> dialog.close());
+        dialog.getFooter().add(cancelBtn, saveBtn);
+        dialog.open();
     }
 
     private void configureMappingGrid() {
@@ -1647,6 +1718,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         }
 
         refreshPointsTabs();
+        updateCalendarView();
     }
 
     private void refreshPointsTabs() {
@@ -2512,5 +2584,206 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         private long incidentCount;
         private long totalPointsDeducted;
         private long totalGivenSeconds;
+    }
+
+    private void updateCalendarView() {
+        calendarLayout.removeAll();
+        calendarLayout.setPadding(true);
+        calendarLayout.setSpacing(true);
+        calendarLayout.setAlignItems(Alignment.STRETCH);
+
+        if (selectedTier == null) return;
+
+        com.vaadin.flow.component.html.H3 title = new com.vaadin.flow.component.html.H3("Season Schedule & Calendar - " + selectedTier.getName());
+        calendarLayout.add(title);
+
+        if (this.currentEvents == null || this.currentEvents.isEmpty()) {
+            Div emptyMessage = new Div();
+            emptyMessage.setText("No race weekends scheduled yet.");
+            emptyMessage.getStyle().set("color", "var(--lumo-secondary-text-color)");
+            emptyMessage.getStyle().set("font-style", "italic");
+            calendarLayout.add(emptyMessage);
+            return;
+        }
+
+        Div container = new Div();
+        container.addClassName("calendar-container");
+
+        for (int i = 0; i < this.currentEvents.size(); i++) {
+            Event event = this.currentEvents.get(i);
+            boolean hasResults = event.getSessionResults() != null && !event.getSessionResults().isEmpty();
+
+            Div card = new Div();
+            card.addClassName("calendar-card");
+
+            String statusText;
+            String statusBadgeClass;
+            if (Boolean.TRUE.equals(event.getFinalized())) {
+                statusText = "Final";
+                statusBadgeClass = "badge-final";
+                card.addClassName("finalized");
+            } else if (hasResults) {
+                statusText = "Provisional";
+                statusBadgeClass = "badge-provisional";
+                card.addClassName("provisional");
+            } else {
+                statusText = "Upcoming";
+                statusBadgeClass = "badge-upcoming";
+                card.addClassName("upcoming");
+            }
+
+            // Month / Day Badge
+            Div dateBadge = new Div();
+            dateBadge.addClassName("calendar-badge");
+
+            Div monthDiv = new Div();
+            monthDiv.addClassName("badge-month");
+
+            Div dayDiv = new Div();
+            dayDiv.addClassName("badge-day");
+
+            if (event.getPlannedDate() != null) {
+                LocalDate date = event.getPlannedDate();
+                monthDiv.setText(date.getMonth().getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH).toUpperCase());
+                dayDiv.setText(String.valueOf(date.getDayOfMonth()));
+            } else {
+                monthDiv.setText("TBD");
+                dayDiv.setText("--");
+            }
+
+            if (league != null && league.getAccentColor() != null && !league.getAccentColor().isEmpty()) {
+                monthDiv.getStyle().set("background-color", league.getAccentColor());
+                String textCol = isDarkColor(league.getAccentColor()) ? "#ffffff" : "#000000";
+                monthDiv.getStyle().set("color", textCol);
+            }
+
+            dateBadge.add(monthDiv, dayDiv);
+
+            // Round & Flag
+            Div roundInfo = new Div();
+            roundInfo.addClassName("card-round");
+            String flag = getTrackCountryFlag(event.getTrackId());
+            roundInfo.setText("ROUND " + (i + 1) + " " + flag);
+
+            // Right content (Title, Track, Status Badge)
+            Div eventTitle = new Div();
+            eventTitle.addClassName("card-title");
+            if (hasResults) {
+                RouterLink link = new RouterLink(event.getEventName(), EventResultsView.class, event.getId());
+                link.getStyle().set("color", "inherit");
+                link.getStyle().set("text-decoration", "none");
+                eventTitle.add(link);
+            } else {
+                eventTitle.setText(event.getEventName());
+            }
+
+            Div trackName = new Div();
+            trackName.addClassName("card-track");
+            try {
+                int trackIdInt = Integer.parseInt(event.getTrackId());
+                trackName.setText(TelemetryProcessingService.TRACK_NAMES.getOrDefault(trackIdInt, "Track " + event.getTrackId()));
+            } catch (Exception ex) {
+                trackName.setText("Track " + event.getTrackId());
+            }
+
+            Span statusSpan = new Span(statusText);
+            statusSpan.addClassName("status-pill");
+            statusSpan.addClassName(statusBadgeClass);
+
+            VerticalLayout rightContent = new VerticalLayout(eventTitle, trackName, statusSpan);
+            rightContent.setSpacing(false);
+            rightContent.setPadding(false);
+            rightContent.getStyle().set("margin", "0");
+            rightContent.setAlignItems(Alignment.START);
+
+            HorizontalLayout contentRow = new HorizontalLayout(dateBadge, rightContent);
+            contentRow.setAlignItems(Alignment.CENTER);
+            contentRow.setWidthFull();
+            contentRow.setSpacing(true);
+
+            // Sessions Info
+            Div sessionsDiv = new Div();
+            sessionsDiv.addClassName("card-sessions");
+            if (hasResults) {
+                java.util.Set<Integer> types = event.getSessionResults().stream()
+                        .map(SessionResult::getSessionType)
+                        .collect(Collectors.toSet());
+                Map<Integer, Integer> sortOrder = Map.ofEntries(
+                        Map.entry(1, 1), Map.entry(2, 2), Map.entry(3, 3), Map.entry(4, 4),
+                        Map.entry(5, 5), Map.entry(6, 6), Map.entry(7, 7), Map.entry(8, 8), Map.entry(9, 9),
+                        Map.entry(10, 10), Map.entry(11, 11), Map.entry(12, 12), Map.entry(13, 13), Map.entry(14, 14),
+                        Map.entry(15, 15), Map.entry(16, 16), Map.entry(17, 17),
+                        Map.entry(18, 18), Map.entry(19, 19)
+                );
+                String sessions = event.getSessionResults().stream()
+                        .map(SessionResult::getSessionType)
+                        .distinct()
+                        .sorted(Comparator.comparingInt(type -> sortOrder.getOrDefault(type, 99)))
+                        .map(type -> EventResultsView.getDynamicSessionName(type, types))
+                        .collect(Collectors.joining(", "));
+                sessionsDiv.setText("Completed: " + sessions);
+            } else {
+                sessionsDiv.setText("Upcoming race weekend");
+            }
+
+            card.add(roundInfo, contentRow, sessionsDiv);
+            container.add(card);
+        }
+
+        calendarLayout.add(container);
+    }
+
+    private boolean isDarkColor(String hexColor) {
+        if (hexColor == null || !hexColor.startsWith("#") || hexColor.length() < 7) {
+            return true;
+        }
+        try {
+            int r = Integer.parseInt(hexColor.substring(1, 3), 16);
+            int g = Integer.parseInt(hexColor.substring(3, 5), 16);
+            int b = Integer.parseInt(hexColor.substring(5, 7), 16);
+            double yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000.0;
+            return yiq < 128;
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    public static String getTrackCountryFlag(String trackId) {
+        if (trackId == null) return "❓";
+        try {
+            int id = Integer.parseInt(trackId);
+            return switch(id) {
+                case 0, 36 -> "🇦🇺";
+                case 1 -> "🇫🇷";
+                case 2 -> "🇨🇳";
+                case 3, 21 -> "🇧🇭";
+                case 4, 35, 42 -> "🇪🇸";
+                case 5 -> "🇲🇨";
+                case 6 -> "🇨🇦";
+                case 7, 22, 38, 39 -> "🇬🇧";
+                case 8 -> "🇩🇪";
+                case 9 -> "🇭🇺";
+                case 10 -> "🇧🇪";
+                case 11, 27, 33 -> "🇮🇹";
+                case 12 -> "🇸🇬";
+                case 13, 24 -> "🇯🇵";
+                case 14 -> "🇦🇪";
+                case 15, 23, 30, 31 -> "🇺🇸";
+                case 16, 41 -> "🇧🇷";
+                case 17, 40 -> "🇦🇹";
+                case 18 -> "🇷🇺";
+                case 19 -> "🇲🇽";
+                case 20 -> "🇦🇿";
+                case 25 -> "🇻🇳";
+                case 26 -> "🇳🇱";
+                case 28, 34 -> "🇵🇹";
+                case 29 -> "🇸🇦";
+                case 32 -> "🇶🇦";
+                case 37 -> "🇿🇦";
+                default -> "❓";
+            };
+        } catch (NumberFormatException e) {
+            return "❓";
+        }
     }
 }
