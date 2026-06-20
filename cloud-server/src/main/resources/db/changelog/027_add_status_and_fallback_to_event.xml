@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="027_add_status_and_fallback_to_event" author="antigravity">
+        <addColumn tableName="event">
+            <column name="status" type="VARCHAR(50)" defaultValue="PROVISIONAL">
+                <constraints nullable="false"/>
+            </column>
+            <column name="fallback" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <update tableName="event">
+            <column name="status" value="FINAL"/>
+            <where>finalized = true</where>
+        </update>
+    </changeSet>
+</databaseChangeLog>

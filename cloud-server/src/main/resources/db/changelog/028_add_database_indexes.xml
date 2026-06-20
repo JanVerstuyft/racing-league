@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="028_add_database_indexes" author="antigravity">
+        <createIndex indexName="idx_lap_result_driver_result" tableName="lap_result">
+            <column name="driver_result_id"/>
+        </createIndex>
+        <createIndex indexName="idx_tyre_stint_driver_result" tableName="tyre_stint">
+            <column name="driver_result_id"/>
+        </createIndex>
+        <createIndex indexName="idx_driver_result_session_result" tableName="driver_result">
+            <column name="session_result_id"/>
+        </createIndex>
+        <createIndex indexName="idx_session_result_event" tableName="session_result">
+            <column name="event_id"/>
+        </createIndex>
+        <createIndex indexName="idx_session_result_tier" tableName="session_result">
+            <column name="tier_id"/>
+        </createIndex>
+        <createIndex indexName="idx_event_tier" tableName="event">
+            <column name="tier_id"/>
+        </createIndex>
+        <createIndex indexName="idx_driver_mapping_tier" tableName="driver_mapping">
+            <column name="tier_id"/>
+        </createIndex>
+        <createIndex indexName="idx_driver_mapping_league" tableName="driver_mapping">
+            <column name="league_id"/>
+        </createIndex>
+        <createIndex indexName="idx_driver_standing_tier" tableName="driver_standing">
+            <column name="tier_id"/>
+        </createIndex>
+        <createIndex indexName="idx_team_standing_tier" tableName="team_standing">
+            <column name="tier_id"/>
+        </createIndex>
+        <createIndex indexName="idx_championship_team_standing_tier" tableName="championship_team_standing">
+            <column name="tier_id"/>
+        </createIndex>
+        <createIndex indexName="idx_manual_penalty_session_result" tableName="manual_penalty">
+            <column name="session_result_id"/>
+        </createIndex>
+        <createIndex indexName="idx_event_lineup_driver" tableName="event_lineup">
+            <column name="driver_id"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

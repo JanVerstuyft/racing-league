@@ -65,6 +65,14 @@ public class TelemetryPacketProcessor {
                 state.getLeagueId(),
                 packetSessionUID, state.getCurrentSessionUID(), (now - state.getLastPacketTime()));
             
+            if (timeout && state.getCurrentSessionUID() != -1) {
+                try {
+                    checkAndTriggerFallbackSave(state);
+                } catch (Exception e) {
+                    log.error("Error during fallback save check: {}", e.getMessage(), e);
+                }
+            }
+
             if (state.getCurrentSessionUID() != -1) {
                 telemetryLiveRecordingService.clearSessionBuffers(state.getCurrentSessionUID());
             }
@@ -341,6 +349,42 @@ public class TelemetryPacketProcessor {
                     state.setSessionBestS3(time);
                 }
             }
+        }
+    }
+
+    private void checkAndTriggerFallbackSave(LeagueSessionState state) {
+        if (state.getCurrentSession() == null || state.getCurrentLapData() == null) {
+            return;
+        }
+
+        int sessionType = state.getCurrentSession().getSessionType();
+        boolean isRace = (sessionType >= 15 && sessionType <= 17) || sessionType == 19;
+        if (!isRace) {
+            return;
+        }
+
+        int totalLaps = state.getCurrentSession().getTotalLaps();
+        if (totalLaps <= 0) {
+            return;
+        }
+
+        boolean raceFullyDriven = false;
+        for (int i = 0; i < state.getCurrentLapData().getLapData().size(); i++) {
+            LapData ld = state.getCurrentLapData().getLapData().get(i);
+            int completedLaps = ld.getCurrentLapNum() - 1;
+            if (ld.getResultStatus() == 3) {
+                completedLaps = ld.getCurrentLapNum();
+            }
+            if (completedLaps >= totalLaps) {
+                raceFullyDriven = true;
+                break;
+            }
+        }
+
+        if (raceFullyDriven) {
+            log.info("Timeout fallback save triggered: Race session UID {} appears fully driven ({} laps completed). Saving results.",
+                state.getCurrentSessionUID(), totalLaps);
+            telemetryResultsService.saveResultsFromLiveStateFallback(state, state.getCurrentSessionUID());
         }
     }
 }

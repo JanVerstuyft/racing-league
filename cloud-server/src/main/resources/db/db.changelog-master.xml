@@ -27,5 +27,7 @@
     <include file="changelog/024_add_lap_telemetry.xml" relativeToChangelogFile="true"/>
     <include file="changelog/025_add_override_position_and_override_time_to_manual_penalty.xml" relativeToChangelogFile="true"/>
     <include file="changelog/026_add_planned_date_to_event.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/027_add_status_and_fallback_to_event.xml" relativeToChangelogFile="true"/>
+    <include file="changelog/028_add_database_indexes.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>
 

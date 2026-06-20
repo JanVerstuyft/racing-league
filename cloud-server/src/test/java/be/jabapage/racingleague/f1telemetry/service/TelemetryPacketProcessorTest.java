@@ -127,6 +127,33 @@ public class TelemetryPacketProcessorTest {
     }
 
     @Test
+    public void testProcessPacketTimeoutTriggersFallbackSave() {
+        when(telemetryStateService.getOrCreateState("test-token")).thenReturn(state);
+        state.setLastPacketTime(System.currentTimeMillis() - 1000000); // 1000s ago
+        header.setSessionUID(12345L);
+
+        // Setup session data (isRace = true)
+        PacketSessionData sessionData = new PacketSessionData();
+        sessionData.setSessionType((byte) 15); // Race
+        sessionData.setTotalLaps((byte) 10);
+        state.setCurrentSession(sessionData);
+
+        // Setup lap data (leader completed all laps)
+        PacketLapData lapData = new PacketLapData();
+        LapData ld = new LapData();
+        ld.setCurrentLapNum((byte) 11);
+        ld.setResultStatus((byte) 3); // Finished
+        lapData.getLapData().add(ld);
+        state.setCurrentLapData(lapData);
+
+        telemetryPacketProcessor.processPacket("test-token", header, buffer);
+
+        verify(telemetryResultsService).saveResultsFromLiveStateFallback(state, 12345L);
+        verify(broadcaster).broadcastLeaderboard(eq(10L), eq(Collections.emptyList()));
+        verify(telemetryStateService).clearState(10L);
+    }
+
+    @Test
     public void testProcessPacketSessionData() {
         when(telemetryStateService.getOrCreateState("test-token")).thenReturn(state);
         header.setPacketId((byte) 1);

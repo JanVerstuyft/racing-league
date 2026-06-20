@@ -2657,10 +2657,14 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
 
             String statusText;
             String statusBadgeClass;
-            if (Boolean.TRUE.equals(event.getFinalized())) {
+            if ("FINAL".equalsIgnoreCase(event.getStatus())) {
                 statusText = "Final";
                 statusBadgeClass = "badge-final";
                 card.addClassName("finalized");
+            } else if ("PROVISIONAL_WARNING".equalsIgnoreCase(event.getStatus())) {
+                statusText = "Provisional (Warning)";
+                statusBadgeClass = "badge-provisional-warning";
+                card.addClassName("provisional-warning");
             } else if (hasResults) {
                 statusText = "Provisional";
                 statusBadgeClass = "badge-provisional";

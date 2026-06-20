@@ -449,6 +449,24 @@ public class TelemetryResultsService {
                 isRace ? "Race" : "Qualifying", sessionUID, event.getEventName());
     }
 
+    @Transactional
+    public void saveResultsFromLiveStateFallback(LeagueSessionState state, long sessionUID) {
+        saveResultsFromLiveState(state, sessionUID);
+        
+        if (state.getCurrentSession() == null) return;
+        int sessionType = state.getCurrentSession().getSessionType();
+        Optional<SessionResult> existing = sessionResultRepository.findBySessionUIDAndSessionType(sessionUID, sessionType);
+        if (existing.isPresent()) {
+            Event event = existing.get().getEvent();
+            if (event != null) {
+                event.setFallback(true);
+                event.setStatus("PROVISIONAL_WARNING");
+                eventRepository.save(event);
+                log.info("Marked Event ID {} status as PROVISIONAL_WARNING (fallback save).", event.getId());
+            }
+        }
+    }
+
     private void pruneLapTelemetryToBestLap(LeagueSessionState state, SessionResult sessionResult) {
         if (sessionResult.getSessionType() == null || sessionResult.getSessionType() < 5 || sessionResult.getSessionType() > 14) {
             return;

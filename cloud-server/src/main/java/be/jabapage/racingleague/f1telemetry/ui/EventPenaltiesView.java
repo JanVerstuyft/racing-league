@@ -317,9 +317,14 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
                     .collect(Collectors.toList()));
 
             statusBadge.getElement().getThemeList().clear();
-            if (Boolean.TRUE.equals(currentEvent.getFinalized())) {
+            statusBadge.getElement().removeAttribute("title");
+            if ("FINAL".equalsIgnoreCase(currentEvent.getStatus())) {
                 statusBadge.setText("Final");
                 statusBadge.getElement().getThemeList().add("badge success");
+            } else if ("PROVISIONAL_WARNING".equalsIgnoreCase(currentEvent.getStatus())) {
+                statusBadge.setText("Provisional (Warning)");
+                statusBadge.getElement().getThemeList().add("badge warning");
+                statusBadge.getElement().setAttribute("title", "Saved via fallback: didn't receive final classification packages.");
             } else {
                 statusBadge.setText("Provisional");
                 statusBadge.getElement().getThemeList().add("badge error");

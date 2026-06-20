@@ -28,6 +28,28 @@ public class Event {
     @Column(name = "finalized", nullable = false)
     private Boolean finalized = false;
 
+    @Column(name = "status", nullable = false)
+    private String status = "PROVISIONAL";
+
+    @Column(name = "fallback", nullable = false)
+    private Boolean fallback = false;
+
+    public void setFinalized(Boolean finalized) {
+        this.finalized = finalized;
+        if (Boolean.TRUE.equals(finalized)) {
+            this.status = "FINAL";
+        } else {
+            this.status = Boolean.TRUE.equals(this.fallback) ? "PROVISIONAL_WARNING" : "PROVISIONAL";
+        }
+    }
+
+    public void setFallback(Boolean fallback) {
+        this.fallback = fallback;
+        if (!"FINAL".equals(this.status)) {
+            this.status = Boolean.TRUE.equals(fallback) ? "PROVISIONAL_WARNING" : "PROVISIONAL";
+        }
+    }
+
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder = 0;
 

@@ -921,6 +921,10 @@ vaadin-grid::part(highlighted-driver) {
     border-left: 5px solid var(--lumo-error-color);
 }
 
+.calendar-card.provisional-warning {
+    border-left: 5px solid var(--lumo-warning-color);
+}
+
 .calendar-card.upcoming {
     border-left: 5px solid var(--lumo-primary-color);
 }
@@ -1006,6 +1010,12 @@ vaadin-grid::part(highlighted-driver) {
     background-color: var(--lumo-error-color-10pct);
     color: var(--lumo-error-text-color);
     border: 1px solid var(--lumo-error-color-50pct);
+}
+
+.badge-provisional-warning {
+    background-color: var(--lumo-warning-color-10pct);
+    color: var(--lumo-warning-text-color);
+    border: 1px solid var(--lumo-warning-color-50pct);
 }
 
 .badge-upcoming {
