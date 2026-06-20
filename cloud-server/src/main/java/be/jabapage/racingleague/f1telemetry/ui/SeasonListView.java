@@ -11,6 +11,7 @@ import be.jabapage.racingleague.f1telemetry.service.TelemetryProcessingService;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
@@ -91,6 +92,35 @@ public class SeasonListView extends VerticalLayout {
         }).setHeader("Details");
 
         grid.addComponentColumn(league -> {
+            HorizontalLayout actions = new HorizontalLayout();
+            
+            Button editBtn = new Button("Rename", e -> {
+                Dialog dialog = new Dialog();
+                dialog.setHeaderTitle("Rename Season");
+                
+                TextField renameField = new TextField("New Name");
+                renameField.setValue(league.getName());
+                renameField.setWidthFull();
+                
+                Button saveBtn = new Button("Save", ev -> {
+                    if (!renameField.getValue().isEmpty()) {
+                        league.setName(renameField.getValue());
+                        leagueRepository.save(league);
+                        updateList();
+                        dialog.close();
+                        Notification.show("Season renamed", 3000, Notification.Position.TOP_CENTER);
+                    }
+                });
+                saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+                
+                Button cancelBtn = new Button("Cancel", ev -> dialog.close());
+                
+                dialog.add(renameField);
+                dialog.getFooter().add(cancelBtn, saveBtn);
+                dialog.open();
+            });
+            editBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+
             Button deleteBtn = new Button("Delete", e -> {
                 ConfirmDialog dialog = new ConfirmDialog();
                 dialog.setHeader("Delete Season?");
@@ -116,7 +146,9 @@ public class SeasonListView extends VerticalLayout {
                 dialog.open();
             });
             deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
-            return deleteBtn;
+            
+            actions.add(editBtn, deleteBtn);
+            return actions;
         }).setHeader("Actions");
     }
 

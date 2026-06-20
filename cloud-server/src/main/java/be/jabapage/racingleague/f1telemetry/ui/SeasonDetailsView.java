@@ -109,6 +109,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     private final HorizontalLayout logoContainer = new HorizontalLayout();
     private final HorizontalLayout logoUploadLayout = new HorizontalLayout();
     private final H2 seasonName = new H2();
+    private final TextField seasonNameField = new TextField("Season Name");
     private final ComboBox<Tier> tierSelector = new ComboBox<>("Active Tier");
     private final Checkbox hideAiCheckbox = new Checkbox("Hide AI Drivers");
     private final Checkbox showTyreWearCheckbox = new Checkbox("Show Tyre Wear on Live Leaderboard");
@@ -402,6 +403,16 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             }
         });
         
+        seasonNameField.setWidth("300px");
+        seasonNameField.addValueChangeListener(e -> {
+            if (league != null && !isInitializing && e.getValue() != null && !e.getValue().isEmpty()) {
+                league.setName(e.getValue());
+                leagueRepository.save(league);
+                seasonName.setText("Season: " + e.getValue());
+                Notification.show("Season name updated", 3000, Notification.Position.TOP_CENTER);
+            }
+        });
+
         minLapsPctField.setMin(0);
         minLapsPctField.setMax(100);
         minLapsPctField.setStepButtonsVisible(true);
@@ -598,6 +609,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         HorizontalLayout teamNamesLayout = new HorizontalLayout(teamANameField, teamBNameField);
         teamNamesLayout.setSpacing(true);
         generalSettingsContent.add(
+            seasonNameField,
             hideAiCheckbox,
             minLapsPctField,
             carTypeCombo,
@@ -1512,6 +1524,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         try {
             league = leagueRepository.findByIdWithUser(parameter).orElseThrow();
             seasonName.setText("Season: " + league.getName());
+            seasonNameField.setValue(league.getName() != null ? league.getName() : "");
             hideAiCheckbox.setValue(league.isHideAi());
             showTyreWearCheckbox.setValue(league.isShowTyreWear());
             showErsCheckbox.setValue(league.isShowErs());
@@ -1571,6 +1584,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             if (extraRulesExpressionColumn != null) {
                 extraRulesExpressionColumn.setVisible(loggedIn);
             }
+            seasonNameField.setVisible(loggedIn);
             hideAiCheckbox.setVisible(loggedIn);
             showTyreWearCheckbox.setVisible(loggedIn);
             showErsCheckbox.setVisible(loggedIn);
