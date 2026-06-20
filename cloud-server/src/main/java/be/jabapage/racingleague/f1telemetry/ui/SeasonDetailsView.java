@@ -2580,6 +2580,7 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
     protected void onAttach(com.vaadin.flow.component.AttachEvent attachEvent) {
         super.onAttach(attachEvent);
         updateLogo();
+        attachEvent.getUI().getPage().executeJs(EventResultsView.getDownloadInfographicJs());
     }
 
     @Override
@@ -2630,26 +2631,9 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
         String tierNameSafe = selectedTier.getName().toLowerCase().replace(" ", "_");
         downloadCalendarBtn.addClickListener(e -> {
             getElement().executeJs(
-                "if (!window.html2canvas) {" +
-                "  const script = document.createElement('script');" +
-                "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
-                "  script.onload = () => { downloadCalendarPoster(); };" +
-                "  document.head.appendChild(script);" +
-                "} else {" +
-                "  downloadCalendarPoster();" +
-                "}" +
-                "function downloadCalendarPoster() {" +
-                "  const el = document.querySelector('.calendar-poster');" +
-                "  if (el) {" +
-                "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
-                "      const link = document.createElement('a');" +
-                "      link.download = 'calendar_' + $0 + '.png';" +
-                "      link.href = canvas.toDataURL('image/png');" +
-                "      link.click();" +
-                "    });" +
-                "  }" +
-                "}",
-                tierNameSafe
+                "window.downloadInfographic('.calendar-poster', 'calendar_' + $0 + '.png', $1)",
+                tierNameSafe,
+                e.getSource().getElement()
             );
         });
 

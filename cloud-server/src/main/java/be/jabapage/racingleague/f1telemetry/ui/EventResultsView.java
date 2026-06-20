@@ -590,6 +590,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         warningsField.setStepButtonsVisible(true);
         warningsField.setMin(0);
         warningsField.setValue(dr.getWarnings() != null ? dr.getWarnings() : 0);
+        warningsField.setHelperText("Shown in yellow when one warning away from a penalty (e.g. 2, 5, 8...)");
 
         com.vaadin.flow.component.textfield.IntegerField lapsField = new com.vaadin.flow.component.textfield.IntegerField("Laps Completed");
         lapsField.setStepButtonsVisible(true);
@@ -855,26 +856,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         downloadResultsBtn.getStyle().set("margin-bottom", "15px");
         downloadResultsBtn.addClickListener(e -> {
             getElement().executeJs(
-                "if (!window.html2canvas) {" +
-                "  const script = document.createElement('script');" +
-                "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
-                "  script.onload = () => { downloadResultsPoster(); };" +
-                "  document.head.appendChild(script);" +
-                "} else {" +
-                "  downloadResultsPoster();" +
-                "}" +
-                "function downloadResultsPoster() {" +
-                "  const el = document.querySelector('.results-poster');" +
-                "  if (el) {" +
-                "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
-                "      const link = document.createElement('a');" +
-                "      link.download = 'results_' + $0 + '.png';" +
-                "      link.href = canvas.toDataURL('image/png');" +
-                "      link.click();" +
-                "    });" +
-                "  }" +
-                "}",
-                eventNameSafe + "_" + sessNameSafe
+                "window.downloadInfographic('.results-poster', 'results_' + $0 + '.png', $1)",
+                eventNameSafe + "_" + sessNameSafe,
+                e.getSource().getElement()
             );
         });
         Div resultsPoster = createResultsPoster(session, driverResults);
@@ -890,26 +874,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             downloadPitStopsBtn.getStyle().set("margin-bottom", "15px");
             downloadPitStopsBtn.addClickListener(e -> {
                 getElement().executeJs(
-                    "if (!window.html2canvas) {" +
-                    "  const script = document.createElement('script');" +
-                    "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
-                    "  script.onload = () => { downloadPitStopsPoster(); };" +
-                    "  document.head.appendChild(script);" +
-                    "} else {" +
-                    "  downloadPitStopsPoster();" +
-                    "}" +
-                    "function downloadPitStopsPoster() {" +
-                    "  const el = document.querySelector('.pitstops-poster');" +
-                    "  if (el) {" +
-                    "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
-                    "      const link = document.createElement('a');" +
-                    "      link.download = 'pitstops_' + $0 + '.png';" +
-                    "      link.href = canvas.toDataURL('image/png');" +
-                    "      link.click();" +
-                    "    });" +
-                    "  }" +
-                    "}",
-                    eventNameSafe + "_" + sessNameSafe
+                    "window.downloadInfographic('.pitstops-poster', 'pitstops_' + $0 + '.png', $1)",
+                    eventNameSafe + "_" + sessNameSafe,
+                    e.getSource().getElement()
                 );
             });
             Div pitstopsPoster = createPitStopsPoster(session, driverResults);
@@ -928,26 +895,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 downloadPaceBtn.getStyle().set("margin-bottom", "15px");
                 downloadPaceBtn.addClickListener(e -> {
                     getElement().executeJs(
-                        "if (!window.html2canvas) {" +
-                        "  const script = document.createElement('script');" +
-                        "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
-                        "  script.onload = () => { downloadPacePoster(); };" +
-                        "  document.head.appendChild(script);" +
-                        "} else {" +
-                        "  downloadPacePoster();" +
-                        "}" +
-                        "function downloadPacePoster() {" +
-                        "  const el = document.querySelector('.pace-poster');" +
-                        "  if (el) {" +
-                        "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
-                        "      const link = document.createElement('a');" +
-                        "      link.download = 'pace_' + $0 + '.png';" +
-                        "      link.href = canvas.toDataURL('image/png');" +
-                        "      link.click();" +
-                        "    });" +
-                        "  }" +
-                        "}",
-                        eventNameSafe + "_" + sessNameSafe
+                        "window.downloadInfographic('.pace-poster', 'pace_' + $0 + '.png', $1)",
+                        eventNameSafe + "_" + sessNameSafe,
+                        e.getSource().getElement()
                     );
                 });
                 Div pacePoster = createPacePoster(session, paceStats);
@@ -967,26 +917,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 downloadStintsBtn.getStyle().set("margin-bottom", "15px");
                 downloadStintsBtn.addClickListener(e -> {
                     getElement().executeJs(
-                        "if (!window.html2canvas) {" +
-                        "  const script = document.createElement('script');" +
-                        "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
-                        "  script.onload = () => { downloadStintsPoster(); };" +
-                        "  document.head.appendChild(script);" +
-                        "} else {" +
-                        "  downloadStintsPoster();" +
-                        "}" +
-                        "function downloadStintsPoster() {" +
-                        "  const el = document.querySelector('.stints-poster');" +
-                        "  if (el) {" +
-                        "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
-                        "      const link = document.createElement('a');" +
-                        "      link.download = 'stints_' + $0 + '.png';" +
-                        "      link.href = canvas.toDataURL('image/png');" +
-                        "      link.click();" +
-                        "    });" +
-                        "  }" +
-                        "}",
-                        eventNameSafe + "_" + sessNameSafe
+                        "window.downloadInfographic('.stints-poster', 'stints_' + $0 + '.png', $1)",
+                        eventNameSafe + "_" + sessNameSafe,
+                        e.getSource().getElement()
                     );
                 });
                 Div stintsPoster = createStintsPoster(session, stintStats);
@@ -1006,26 +939,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 downloadConsistencyBtn.getStyle().set("margin-bottom", "15px");
                 downloadConsistencyBtn.addClickListener(e -> {
                     getElement().executeJs(
-                        "if (!window.html2canvas) {" +
-                        "  const script = document.createElement('script');" +
-                        "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
-                        "  script.onload = () => { downloadConsistencyPoster(); };" +
-                        "  document.head.appendChild(script);" +
-                        "} else {" +
-                        "  downloadConsistencyPoster();" +
-                        "}" +
-                        "function downloadConsistencyPoster() {" +
-                        "  const el = document.querySelector('.consistency-poster');" +
-                        "  if (el) {" +
-                        "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
-                        "      const link = document.createElement('a');" +
-                        "      link.download = 'consistency_' + $0 + '.png';" +
-                        "      link.href = canvas.toDataURL('image/png');" +
-                        "      link.click();" +
-                        "    });" +
-                        "  }" +
-                        "}",
-                        eventNameSafe + "_" + sessNameSafe
+                        "window.downloadInfographic('.consistency-poster', 'consistency_' + $0 + '.png', $1)",
+                        eventNameSafe + "_" + sessNameSafe,
+                        e.getSource().getElement()
                     );
                 });
                 Div consistencyPoster = createConsistencyPoster(session, consistencyStats);
@@ -1256,9 +1172,16 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 int totalPen = gamePen + stewardPen;
                 return totalPen != 0 ? totalPen + "s" : "-";
             }).setHeader("Penalties");
-            grid.addColumn(dr -> dr.getWarnings() != null ? dr.getWarnings() : 0)
-                    .setHeader("Warn")
-                    .setPartNameGenerator(dr -> (dr.getWarnings() != null && dr.getWarnings() == 2) ? "warning-danger" : null);
+            grid.addComponentColumn(dr -> {
+                int warnings = dr.getWarnings() != null ? dr.getWarnings() : 0;
+                Span span = new Span(String.valueOf(warnings));
+                if (warnings > 0 && warnings % 3 == 2) {
+                    span.getElement().setAttribute("title", "One warning away from a penalty");
+                }
+                return span;
+            })
+            .setHeader("Warn")
+            .setPartNameGenerator(dr -> (dr.getWarnings() != null && dr.getWarnings() % 3 == 2) ? "warning-danger" : null);
         }
         
         if (loggedIn) {
@@ -1356,26 +1279,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             downloadResultsBtn.getStyle().set("margin-bottom", "15px");
             downloadResultsBtn.addClickListener(e -> {
                 getElement().executeJs(
-                    "if (!window.html2canvas) {" +
-                    "  const script = document.createElement('script');" +
-                    "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
-                    "  script.onload = () => { downloadResultsPoster(); };" +
-                    "  document.head.appendChild(script);" +
-                    "} else {" +
-                    "  downloadResultsPoster();" +
-                    "}" +
-                    "function downloadResultsPoster() {" +
-                    "  const el = document.querySelector('.results-poster');" +
-                    "  if (el) {" +
-                    "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
-                    "      const link = document.createElement('a');" +
-                    "      link.download = 'results_' + $0 + '.png';" +
-                    "      link.href = canvas.toDataURL('image/png');" +
-                    "      link.click();" +
-                    "    });" +
-                    "  }" +
-                    "}",
-                    currentEvent.getEventName().toLowerCase().replace(" ", "_") + "_" + sessName.toLowerCase().replace(" ", "_")
+                    "window.downloadInfographic('.results-poster', 'results_' + $0 + '.png', $1)",
+                    currentEvent.getEventName().toLowerCase().replace(" ", "_") + "_" + sessName.toLowerCase().replace(" ", "_"),
+                    e.getSource().getElement()
                 );
             });
 
@@ -1393,26 +1299,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
                 downloadPitStopsBtn.getStyle().set("margin-bottom", "15px");
                 downloadPitStopsBtn.addClickListener(e -> {
                     getElement().executeJs(
-                        "if (!window.html2canvas) {" +
-                        "  const script = document.createElement('script');" +
-                        "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
-                        "  script.onload = () => { downloadPitStopsPoster(); };" +
-                        "  document.head.appendChild(script);" +
-                        "} else {" +
-                        "  downloadPitStopsPoster();" +
-                        "}" +
-                        "function downloadPitStopsPoster() {" +
-                        "  const el = document.querySelector('.pitstops-poster');" +
-                        "  if (el) {" +
-                        "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
-                        "      const link = document.createElement('a');" +
-                        "      link.download = 'pitstops_' + $0 + '.png';" +
-                        "      link.href = canvas.toDataURL('image/png');" +
-                        "      link.click();" +
-                        "    });" +
-                        "  }" +
-                        "}",
-                        currentEvent.getEventName().toLowerCase().replace(" ", "_") + "_" + sessName.toLowerCase().replace(" ", "_")
+                        "window.downloadInfographic('.pitstops-poster', 'pitstops_' + $0 + '.png', $1)",
+                        currentEvent.getEventName().toLowerCase().replace(" ", "_") + "_" + sessName.toLowerCase().replace(" ", "_"),
+                        e.getSource().getElement()
                     );
                 });
 
@@ -1498,24 +1387,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             String sessNameSafe = getDynamicSessionName(selectedSession.getSessionType(), getOrderedSessions().stream().map(SessionResult::getSessionType).toList()).toLowerCase().replace(" ", "_");
             downloadBtn.addClickListener(ev -> {
                 getElement().executeJs(
-                    "if (!window.html2canvas) {" +
-                    "  const script = document.createElement('script');" +
-                    "  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';" +
-                    "  document.head.appendChild(script);" +
-                    "  script.onload = () => { downloadConsistencyPoster(); };" +
-                    "} else {" +
-                    "  downloadConsistencyPoster();" +
-                    "}" +
-                    "function downloadConsistencyPoster() {" +
-                    "  const el = document.querySelector('.consistency-poster');" +
-                    "  if (!el) return;" +
-                    "  html2canvas(el, { backgroundColor: null, scale: 2 }).then(canvas => {" +
-                    "    const link = document.createElement('a');" +
-                    "    link.download = '" + eventNameSafe + "_" + sessNameSafe + "_consistency.png';" +
-                    "    link.href = canvas.toDataURL('image/png');" +
-                    "    link.click();" +
-                    "  });" +
-                    "}"
+                    "window.downloadInfographic('.consistency-poster', $0 + '_consistency.png', $1)",
+                    eventNameSafe + "_" + sessNameSafe,
+                    ev.getSource().getElement()
                 );
             });
 
@@ -1590,24 +1464,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             String sessNameSafe = getDynamicSessionName(selectedSession.getSessionType(), getOrderedSessions().stream().map(SessionResult::getSessionType).toList()).toLowerCase().replace(" ", "_");
             downloadBtn.addClickListener(ev -> {
                 getElement().executeJs(
-                    "if (!window.html2canvas) {" +
-                    "  const script = document.createElement('script');" +
-                    "  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';" +
-                    "  document.head.appendChild(script);" +
-                    "  script.onload = () => { downloadStintsPoster(); };" +
-                    "} else {" +
-                    "  downloadStintsPoster();" +
-                    "}" +
-                    "function downloadStintsPoster() {" +
-                    "  const el = document.querySelector('.stints-poster');" +
-                    "  if (!el) return;" +
-                    "  html2canvas(el, { backgroundColor: null, scale: 2 }).then(canvas => {" +
-                    "    const link = document.createElement('a');" +
-                    "    link.download = '" + eventNameSafe + "_" + sessNameSafe + "_stints.png';" +
-                    "    link.href = canvas.toDataURL('image/png');" +
-                    "    link.click();" +
-                    "  });" +
-                    "}"
+                    "window.downloadInfographic('.stints-poster', $0 + '_stints.png', $1)",
+                    eventNameSafe + "_" + sessNameSafe,
+                    ev.getSource().getElement()
                 );
             });
 
@@ -1718,24 +1577,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             String sessNameSafe = getDynamicSessionName(selectedSession.getSessionType(), getOrderedSessions().stream().map(SessionResult::getSessionType).toList()).toLowerCase().replace(" ", "_");
             downloadBtn.addClickListener(ev -> {
                 getElement().executeJs(
-                    "if (!window.html2canvas) {" +
-                    "  const script = document.createElement('script');" +
-                    "  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';" +
-                    "  document.head.appendChild(script);" +
-                    "  script.onload = () => { downloadPacePoster(); };" +
-                    "} else {" +
-                    "  downloadPacePoster();" +
-                    "}" +
-                    "function downloadPacePoster() {" +
-                    "  const el = document.querySelector('.pace-poster');" +
-                    "  if (!el) return;" +
-                    "  html2canvas(el, { backgroundColor: null, scale: 2 }).then(canvas => {" +
-                    "    const link = document.createElement('a');" +
-                    "    link.download = '" + eventNameSafe + "_" + sessNameSafe + "_pace.png';" +
-                    "    link.href = canvas.toDataURL('image/png');" +
-                    "    link.click();" +
-                    "  });" +
-                    "}"
+                    "window.downloadInfographic('.pace-poster', $0 + '_pace.png', $1)",
+                    eventNameSafe + "_" + sessNameSafe,
+                    ev.getSource().getElement()
                 );
             });
 
@@ -1823,6 +1667,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     protected void onAttach(com.vaadin.flow.component.AttachEvent attachEvent) {
         super.onAttach(attachEvent);
         updateLogo();
+        attachEvent.getUI().getPage().executeJs(getDownloadInfographicJs());
     }
 
     @Override
@@ -2136,26 +1981,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         downloadBtn.getStyle().set("margin-bottom", "15px");
         downloadBtn.addClickListener(e -> {
             getElement().executeJs(
-                "if (!window.html2canvas) {" +
-                "  const script = document.createElement('script');" +
-                "  script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';" +
-                "  script.onload = () => { downloadLineupPoster(); };" +
-                "  document.head.appendChild(script);" +
-                "} else {" +
-                "  downloadLineupPoster();" +
-                "}" +
-                "function downloadLineupPoster() {" +
-                "  const el = document.querySelector('.lineup-poster');" +
-                "  if (el) {" +
-                "    html2canvas(el, { useCORS: true, backgroundColor: null }).then(canvas => {" +
-                "      const link = document.createElement('a');" +
-                "      link.download = 'lineup_' + $0 + '.png';" +
-                "      link.href = canvas.toDataURL('image/png');" +
-                "      link.click();" +
-                "    });" +
-                "  }" +
-                "}",
-                currentEvent.getEventName().toLowerCase().replace(" ", "_")
+                "window.downloadInfographic('.lineup-poster', 'lineup_' + $0 + '.png', $1)",
+                currentEvent.getEventName().toLowerCase().replace(" ", "_"),
+                e.getSource().getElement()
             );
         });
 
@@ -3503,5 +3331,154 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
 
         row.add(posSpan, colorBar, nameSpan, teamSpan, timeSpan);
         return row;
+    }
+
+    public static String getDownloadInfographicJs() {
+        return "window.downloadInfographic = function(selector, filename, buttonEl) {\n" +
+                "    if (!selector || !filename) return;\n" +
+                "    const originalText = buttonEl ? buttonEl.innerHTML : '';\n" +
+                "    const originalDisabled = buttonEl ? buttonEl.disabled : false;\n" +
+                "    if (buttonEl) {\n" +
+                "        buttonEl.disabled = true;\n" +
+                "        buttonEl.classList.add('infographic-loading-btn');\n" +
+                "        const spinnerSvg = `<svg class=\"btn-spinner\" viewBox=\"0 0 50 50\" style=\"width: 16px; height: 16px; margin-right: 8px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle;\"><circle cx=\"25\" cy=\"25\" r=\"20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"5\" stroke-dasharray=\"80, 200\" stroke-linecap=\"round\"></circle></svg>`;\n" +
+                "        buttonEl.innerHTML = spinnerSvg + ' Generating...';\n" +
+                "    }\n" +
+                "    let container = document.getElementById('infographic-toast-container');\n" +
+                "    if (!container) {\n" +
+                "        container = document.createElement('div');\n" +
+                "        container.id = 'infographic-toast-container';\n" +
+                "        Object.assign(container.style, {\n" +
+                "            position: 'fixed',\n" +
+                "            top: '20px',\n" +
+                "            right: '20px',\n" +
+                "            zIndex: '99999',\n" +
+                "            display: 'flex',\n" +
+                "            flexDirection: 'column',\n" +
+                "            gap: '10px',\n" +
+                "            pointerEvents: 'none'\n" +
+                "        });\n" +
+                "        document.body.appendChild(container);\n" +
+                "    }\n" +
+                "    const toastId = 'toast-' + Math.random().toString(36).substr(2, 9);\n" +
+                "    const toast = document.createElement('div');\n" +
+                "    toast.id = toastId;\n" +
+                "    toast.className = 'infographic-toast infographic-toast-loading';\n" +
+                "    Object.assign(toast.style, {\n" +
+                "        background: 'rgba(18, 19, 24, 0.85)',\n" +
+                "        backdropFilter: 'blur(12px)',\n" +
+                "        borderLeft: '4px solid #ffd700',\n" +
+                "        borderTop: '1px solid rgba(255,255,255,0.08)',\n" +
+                "        borderRight: '1px solid rgba(255,255,255,0.04)',\n" +
+                "        borderBottom: '1px solid rgba(255,255,255,0.04)',\n" +
+                "        padding: '16px 20px',\n" +
+                "        borderRadius: '8px',\n" +
+                "        boxShadow: '0 10px 30px rgba(0,0,0,0.5)',\n" +
+                "        color: 'white',\n" +
+                "        fontFamily: 'system-ui, -apple-system, sans-serif',\n" +
+                "        minWidth: '280px',\n" +
+                "        display: 'flex',\n" +
+                "        alignItems: 'center',\n" +
+                "        gap: '15px',\n" +
+                "        opacity: '0',\n" +
+                "        transform: 'translateX(50px)',\n" +
+                "        transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',\n" +
+                "        pointerEvents: 'auto'\n" +
+                "    });\n" +
+                "    toast.innerHTML = `\n" +
+                "        <div class=\"toast-spinner-wrapper\" style=\"position: relative; width: 28px; height: 28px; flex-shrink: 0;\">\n" +
+                "            <svg viewBox=\"0 0 50 50\" style=\"width: 100%; height: 100%; animation: spin 1s linear infinite;\">\n" +
+                "                <circle cx=\"25\" cy=\"25\" r=\"20\" fill=\"none\" stroke=\"#ffd700\" stroke-width=\"4\" stroke-dasharray=\"80, 200\" stroke-linecap=\"round\"></circle>\n" +
+                "            </svg>\n" +
+                "        </div>\n" +
+                "        <div class=\"toast-text-wrapper\" style=\"flex-grow: 1;\">\n" +
+                "            <div style=\"font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;\">Generating Image</div>\n" +
+                "            <div style=\"font-size: 12px; color: #a0a5b5; margin-top: 2px;\">Converting telemetry info...</div>\n" +
+                "        </div>\n" +
+                "    `;\n" +
+                "    container.appendChild(toast);\n" +
+                "    toast.offsetHeight;\n" +
+                "    toast.style.opacity = '1';\n" +
+                "    toast.style.transform = 'translateX(0)';\n" +
+                "    const generate = () => {\n" +
+                "        const el = document.querySelector(selector);\n" +
+                "        if (!el) {\n" +
+                "            updateToast(toast, 'Error', 'Infographic element not found.', '#ff3333');\n" +
+                "            restoreButton();\n" +
+                "            return;\n" +
+                "        }\n" +
+                "        const scale = (selector.includes('consistency') || selector.includes('stints') || selector.includes('pace')) ? 2 : 1.5;\n" +
+                "        setTimeout(() => {\n" +
+                "            html2canvas(el, { useCORS: true, backgroundColor: null, scale: scale }).then(canvas => {\n" +
+                "                try {\n" +
+                "                    const link = document.createElement('a');\n" +
+                "                    link.download = filename;\n" +
+                "                    link.href = canvas.toDataURL('image/png');\n" +
+                "                    link.click();\n" +
+                "                    updateToast(toast, 'Success', 'Infographic downloaded!', '#33ff33');\n" +
+                "                    setTimeout(() => { dismissToast(toast); }, 2500);\n" +
+                "                } catch (err) {\n" +
+                "                    updateToast(toast, 'Error', 'Failed to save image.', '#ff3333');\n" +
+                "                    setTimeout(() => { dismissToast(toast); }, 4000);\n" +
+                "                }\n" +
+                "                restoreButton();\n" +
+                "            }).catch(err => {\n" +
+                "                updateToast(toast, 'Error', 'Render failed: ' + err.message, '#ff3333');\n" +
+                "                setTimeout(() => { dismissToast(toast); }, 4000);\n" +
+                "                restoreButton();\n" +
+                "            });\n" +
+                "        }, 100);\n" +
+                "    };\n" +
+                "    const restoreButton = () => {\n" +
+                "        if (buttonEl) {\n" +
+                "            buttonEl.disabled = originalDisabled;\n" +
+                "            buttonEl.innerHTML = originalText;\n" +
+                "            buttonEl.classList.remove('infographic-loading-btn');\n" +
+                "        }\n" +
+                "    };\n" +
+                "    const updateToast = (toastElement, title, message, color) => {\n" +
+                "        toastElement.style.borderLeftColor = color;\n" +
+                "        const iconSvg = title === 'Success'\n" +
+                "            ? `<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"${color}\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"width: 28px; height: 28px;\"><polyline points=\"20 6 9 17 4 12\"></polyline></svg>`\n" +
+                "            : `<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"${color}\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"width: 28px; height: 28px;\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"12\" y1=\"8\" x2=\"12\" y2=\"12\"></line><line x1=\"12\" y1=\"16\" x2=\"12.01\" y2=\"16\"></line></svg>`;\n" +
+                "        toastElement.innerHTML = `\n" +
+                "            <div style=\"flex-shrink: 0; display: flex; align-items: center; justify-content: center;\">\n" +
+                "                ${iconSvg}\n" +
+                "            </div>\n" +
+                "            <div class=\"toast-text-wrapper\" style=\"flex-grow: 1;\">\n" +
+                "                <div style=\"font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: ${color};\">${title}</div>\n" +
+                "                <div style=\"font-size: 12px; color: #a0a5b5; margin-top: 2px;\">${message}</div>\n" +
+                "            </div>\n" +
+                "        `;\n" +
+                "    };\n" +
+                "    const dismissToast = (toastElement) => {\n" +
+                "        toastElement.style.opacity = '0';\n" +
+                "        toastElement.style.transform = 'translateY(-20px) scale(0.9)';\n" +
+                "        setTimeout(() => {\n" +
+                "            if (toastElement.parentNode) {\n" +
+                "                toastElement.parentNode.removeChild(toastElement);\n" +
+                "            }\n" +
+                "        }, 300);\n" +
+                "    };\n" +
+                "    if (!window.html2canvas) {\n" +
+                "        const script = document.createElement('script');\n" +
+                "        script.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';\n" +
+                "        script.onload = generate;\n" +
+                "        script.onerror = () => {\n" +
+                "            updateToast(toast, 'Error', 'Failed to load rendering engine.', '#ff3333');\n" +
+                "            restoreButton();\n" +
+                "            setTimeout(() => { dismissToast(toast); }, 4000);\n" +
+                "        };\n" +
+                "        document.head.appendChild(script);\n" +
+                "    } else {\n" +
+                "        generate();\n" +
+                "    }\n" +
+                "};\n" +
+                "if (!document.getElementById('infographic-toast-animation')) {\n" +
+                "    const style = document.createElement('style');\n" +
+                "    style.id = 'infographic-toast-animation';\n" +
+                "    style.innerHTML = `@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;\n" +
+                "    document.head.appendChild(style);\n" +
+                "}";
     }
 }

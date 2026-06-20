@@ -197,7 +197,14 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         Grid.Column<DriverBoardState> ageCol = grid.addColumn(DriverBoardState::getTyreAge).setHeader("Age");
         Grid.Column<DriverBoardState> pitsCol = grid.addColumn(DriverBoardState::getPitStops).setHeader("Pits");
         Grid.Column<DriverBoardState> penCol = grid.addColumn(state -> state.getPenalties() > 0 ? state.getPenalties() + "s" : "-").setHeader("Pen");
-        Grid.Column<DriverBoardState> warnCol = grid.addColumn(DriverBoardState::getWarnings).setHeader("Warn").setWidth("70px").setFlexGrow(0);
+        Grid.Column<DriverBoardState> warnCol = grid.addComponentColumn(state -> {
+            int warnings = state.getWarnings();
+            Span span = new Span(String.valueOf(warnings));
+            if (warnings > 0 && warnings % 3 == 2) {
+                span.getElement().setAttribute("title", "One warning away from a penalty");
+            }
+            return span;
+        }).setHeader("Warn").setWidth("70px").setFlexGrow(0);
         
         Grid.Column<DriverBoardState> wearCol = grid.addColumn(state -> state.getTyreWear() + "%").setHeader("Wear").setWidth("80px").setFlexGrow(0);
         
@@ -222,7 +229,7 @@ public class LeaderboardView extends VerticalLayout implements HasUrlParameter<L
         Grid.Column<DriverBoardState> s2Col = grid.addColumn(DriverBoardState::getS2Time).setHeader("S2");
         Grid.Column<DriverBoardState> s3Col = grid.addColumn(DriverBoardState::getS3Time).setHeader("S3");
 
-        warnCol.setPartNameGenerator(state -> state.getWarnings() == 2 ? "warning-danger" : null);
+        warnCol.setPartNameGenerator(state -> state.getWarnings() % 3 == 2 ? "warning-danger" : null);
         bestLapCol.setPartNameGenerator(state -> state.isBestLap() ? "fastest-lap" : null);
         s1Col.setPartNameGenerator(state -> state.isBestS1() ? "best-sector" : null);
         s2Col.setPartNameGenerator(state -> state.isBestS2() ? "best-sector" : null);
