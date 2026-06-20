@@ -1301,8 +1301,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         grid.setItems(driverResults);
         grid.setAllRowsVisible(true);
         
-        boolean telemetryAvailable = session.getDriverResults().stream()
-                .anyMatch(dr -> dr.getLapResults().stream().anyMatch(lr -> lapTelemetryRepository.findByLapResultId(lr.getId()).isPresent()));
+        boolean telemetryAvailable = lapTelemetryRepository.existsBySessionResultId(session.getId());
         if (telemetryAvailable) {
             Button compareBtn = new Button("Compare Lap Telemetry", com.vaadin.flow.component.icon.VaadinIcon.CHART.create());
             compareBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);

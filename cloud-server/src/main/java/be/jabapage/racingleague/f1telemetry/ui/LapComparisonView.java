@@ -123,9 +123,7 @@ public class LapComparisonView extends VerticalLayout implements HasUrlParameter
         sessionSub.setText(trackName + " — " + sessionName + " (" + currentSession.getCarType() + ")");
 
         // Fetch all driver results in this session that have at least one lap with telemetry
-        List<DriverResult> driversWithTelemetry = currentSession.getDriverResults().stream()
-                .filter(dr -> lapResultRepository.findByDriverResult(dr).stream()
-                        .anyMatch(lr -> lapTelemetryRepository.findByLapResultId(lr.getId()).isPresent()))
+        List<DriverResult> driversWithTelemetry = driverResultRepository.findDriversWithTelemetryBySessionResultId(currentSession.getId()).stream()
                 .sorted(Comparator.comparing(DriverResult::getDriverName))
                 .collect(Collectors.toList());
 
@@ -824,9 +822,8 @@ window.setupTelemetryLoop = function(dataA, dataB) {
 
     private LapResult getFastestLapWithTelemetry(DriverResult dr) {
         if (dr == null) return null;
-        return lapResultRepository.findByDriverResult(dr).stream()
-                .filter(lr -> lapTelemetryRepository.findByLapResultId(lr.getId()).isPresent())
-                .min(Comparator.comparingLong(LapResult::getLapTimeInMS))
+        return lapResultRepository.findLapsWithTelemetryOrderedByTime(dr).stream()
+                .findFirst()
                 .orElse(null);
     }
 }
