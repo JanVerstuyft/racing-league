@@ -112,3 +112,23 @@ erDiagram
 - **Framework**: Spring Boot 4.0, Vaadin 25
 - **Database**: PostgreSQL 16 (Managed via Liquibase)
 - **Containerization**: Docker Compose for local database, Jib for cloud deployment
+
+## Testing
+
+### Running Tests
+To run all tests (including unit, integration, and UI tests) using Java 21:
+```bash
+JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64 mvn test
+```
+
+### UI Testing with Playwright
+The UI integration tests use **Playwright Java** and run in a live Spring Boot web environment backed by a PostgreSQL Testcontainer.
+
+- **Headless Mode (Default)**: By default, running tests via Maven CLI runs the browser headlessly (no browser window opens). This is ideal for CI/CD:
+  ```bash
+  JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64 mvn test -Dtest=EventUiPlaywrightTest
+  ```
+- **Headed Mode**: To watch the browser interact with the UI, you can run the test class directly from **IntelliJ IDEA** (which automatically runs headed), or explicitly pass the system property from the command line:
+  ```bash
+  JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64 mvn test -Dtest=EventUiPlaywrightTest -Dplaywright.headless=false
+  ```
