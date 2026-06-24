@@ -157,6 +157,8 @@ public class EventUiPlaywrightTest {
         session.setSessionType(15); // Race
         session.setSessionUID(99991111L);
         session.setEvent(event);
+        session.setTier(tier);
+        event.getSessionResults().add(session);
         session = sessionResultRepository.saveAndFlush(session);
 
         DriverResult dr = new DriverResult();
@@ -166,6 +168,31 @@ public class EventUiPlaywrightTest {
         dr.setResultStatus(3);
         dr.setPenalties(0);
         dr.setWarnings(0);
+        dr.setBestLapTime(85.0f);
+        dr.setTotalTime(1020.0);
+        dr.setNumLaps(12);
+        session.getDriverResults().add(dr);
+
+        TyreStint stint = new TyreStint();
+        stint.setDriverResult(dr);
+        stint.setStintOrder(0);
+        stint.setTyreCompound(16); // Soft
+        stint.setLaps(12);
+        stint.setEndLap(12);
+        dr.getTyreStints().add(stint);
+
+        for (int i = 1; i <= 12; i++) {
+            LapResult lap = new LapResult();
+            lap.setDriverResult(dr);
+            lap.setLapNumber(i);
+            lap.setLapTimeInMS(85000L);
+            lap.setS1InMS(28000L);
+            lap.setS2InMS(32000L);
+            lap.setS3InMS(25000L);
+            lap.setIsValid(true);
+            lap.setTyreCompound(16);
+            dr.getLapResults().add(lap);
+        }
         dr = driverResultRepository.saveAndFlush(dr);
 
         // Navigate to the event results page
@@ -183,14 +210,37 @@ public class EventUiPlaywrightTest {
         assertTrue(page.locator("vaadin-tab:has-text('Lineup')").isVisible());
         assertTrue(page.locator("vaadin-tab:has-text('Infographics')").isVisible());
 
+        // Verify results tab content loads: check results grid and posters
+        page.waitForSelector("vaadin-grid:visible");
+        page.locator("vaadin-grid:visible").first().locator("text=Playwright Driver").waitFor();
+        assertTrue(page.locator(".results-poster:visible").first().isVisible());
+        assertTrue(page.locator(".pitstops-poster:visible").isVisible());
+
         // Click the Stats tab and verify its content loads
         page.click("vaadin-tab:has-text('Stats')");
-        page.waitForSelector("vaadin-tab:has-text('Pure Race Pace')");
-        assertTrue(page.locator("vaadin-tab:has-text('Pure Race Pace')").isVisible());
+        page.waitForSelector("h2:has-text('PURE RACE PACE'):visible");
+        page.locator("vaadin-grid:visible").first().locator("text=Playwright Driver").waitFor();
+        assertTrue(page.locator(".pace-poster:visible").isVisible());
 
-        // Click the Infographics tab and verify its content loads
+        // Click the Longest Stints sub-tab and verify content loads
+        page.click("vaadin-tab:has-text('Longest Stints')");
+        page.waitForSelector("h2:has-text('Tyre Stints Poster'):visible");
+        page.locator("vaadin-grid:visible").first().locator("text=Playwright Driver").waitFor();
+        assertTrue(page.locator(".stints-poster:visible").isVisible());
+
+        // Click the Consistency sub-tab and verify content loads
+        page.click("vaadin-tab:has-text('Consistency')");
+        page.waitForSelector("h2:has-text('Consistency Poster'):visible");
+        page.locator("vaadin-grid:visible").first().locator("text=Playwright Driver").waitFor();
+        assertTrue(page.locator(".consistency-poster:visible").isVisible());
+
+        // Click the Infographics tab and verify all posters load
         page.click("vaadin-tab:has-text('Infographics')");
         page.waitForSelector("h2:has-text('Results Poster'):visible");
-        assertTrue(page.locator("h2:has-text('Results Poster'):visible").isVisible());
+        assertTrue(page.locator(".results-poster:visible").first().isVisible());
+        assertTrue(page.locator(".pitstops-poster:visible").isVisible());
+        assertTrue(page.locator(".pace-poster:visible").isVisible());
+        assertTrue(page.locator(".stints-poster:visible").isVisible());
+        assertTrue(page.locator(".consistency-poster:visible").isVisible());
     }
 }

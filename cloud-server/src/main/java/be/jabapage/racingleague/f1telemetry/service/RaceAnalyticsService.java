@@ -4,6 +4,7 @@ import be.jabapage.racingleague.f1telemetry.entity.DriverResult;
 import be.jabapage.racingleague.f1telemetry.entity.LapResult;
 import be.jabapage.racingleague.f1telemetry.entity.League;
 import be.jabapage.racingleague.f1telemetry.entity.SessionResult;
+import be.jabapage.racingleague.f1telemetry.entity.Tier;
 import be.jabapage.racingleague.f1telemetry.entity.TyreStint;
 import be.jabapage.racingleague.f1telemetry.model.ConsistencyStats;
 import be.jabapage.racingleague.f1telemetry.model.LongestStintStats;
@@ -62,7 +63,12 @@ public class RaceAnalyticsService {
         int seg1End = maxLaps / 3;
         int seg2End = 2 * maxLaps / 3;
 
-        League league = raceSession.getTier().getLeague();
+        Tier tier = raceSession.getTier();
+        if (tier == null && raceSession.getEvent() != null) {
+            tier = raceSession.getEvent().getTier();
+        }
+        if (tier == null) return Collections.emptyList();
+        League league = tier.getLeague();
         double thresholdPct = (league.getMinLapsPct() != null ? league.getMinLapsPct() : 60) / 100.0;
 
         for (DriverResult dr : raceSession.getDriverResults()) {
@@ -215,7 +221,12 @@ public class RaceAnalyticsService {
                 .mapToInt(LapResult::getLapNumber)
                 .max().orElse(0);
 
-        League league = raceSession.getTier().getLeague();
+        Tier tier = raceSession.getTier();
+        if (tier == null && raceSession.getEvent() != null) {
+            tier = raceSession.getEvent().getTier();
+        }
+        if (tier == null) return Collections.emptyList();
+        League league = tier.getLeague();
         double thresholdPct = (league.getMinLapsPct() != null ? league.getMinLapsPct() : 60) / 100.0;
 
         List<ConsistencyStats> statsList = new ArrayList<>();
