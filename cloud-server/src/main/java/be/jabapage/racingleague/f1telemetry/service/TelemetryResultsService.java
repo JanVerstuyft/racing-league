@@ -1033,7 +1033,8 @@ public class TelemetryResultsService {
         List<DriverResult> finishedToPlace = results.stream()
                 .filter(dr -> !fixedPositions.containsKey(dr))
                 .filter(dr -> dr.getResultStatus() != null && dr.getResultStatus() == 3)
-                .sorted(Comparator.comparingDouble(dr -> dr.getTotalTime() != null ? dr.getTotalTime() : Double.MAX_VALUE))
+                .sorted(Comparator.<DriverResult, Integer>comparing(dr -> dr.getNumLaps() != null ? dr.getNumLaps() : 0).reversed()
+                        .thenComparingDouble(dr -> dr.getTotalTime() != null ? dr.getTotalTime() : Double.MAX_VALUE))
                 .collect(Collectors.toList());
 
         List<DriverResult> nonFinishedToPlace = results.stream()

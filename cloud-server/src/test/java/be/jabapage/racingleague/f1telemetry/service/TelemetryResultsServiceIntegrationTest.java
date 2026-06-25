@@ -1632,4 +1632,150 @@ public class TelemetryResultsServiceIntegrationTest {
         assertEquals("+2.000s", updatedD2.getGapToLeader());
         assertEquals(15, updatedD2.getPointsAwarded());
     }
+
+    @Test
+    public void testRecalculateStandingsCorrectlySortsFinishedDriversByLapsThenTime() {
+        // 1. Setup League & Tier
+        League league = new League();
+        league.setName("League Laps Sorting Test");
+        league.setMinLapsPct(50);
+        league = leagueRepository.saveAndFlush(league);
+
+        Tier tier = new Tier();
+        tier.setName("Tier 1");
+        tier.setToken("tier1-token-laps-sorting");
+        tier.setLeague(league);
+        tier = tierRepository.saveAndFlush(tier);
+
+        // 2. Setup Driver Mappings
+        DriverMapping m1 = new DriverMapping();
+        m1.setLeague(league);
+        m1.setTelemetryName("Telemetry Driver 1");
+        m1.setOverriddenName("Driver 1");
+        m1.setRaceNumber(10);
+        m1.setDriverId(1);
+        m1.setCountry("United Kingdom");
+        m1 = driverMappingRepository.saveAndFlush(m1);
+
+        DriverMapping m2 = new DriverMapping();
+        m2.setLeague(league);
+        m2.setTelemetryName("Telemetry Driver 2");
+        m2.setOverriddenName("Driver 2");
+        m2.setRaceNumber(20);
+        m2.setDriverId(2);
+        m2.setCountry("Germany");
+        m2 = driverMappingRepository.saveAndFlush(m2);
+
+        DriverMapping m3 = new DriverMapping();
+        m3.setLeague(league);
+        m3.setTelemetryName("Telemetry Driver 3");
+        m3.setOverriddenName("Driver 3");
+        m3.setRaceNumber(30);
+        m3.setDriverId(3);
+        m3.setCountry("Belgium");
+        m3 = driverMappingRepository.saveAndFlush(m3);
+
+        // 3. Create Event & Session
+        Event event = new Event();
+        event.setEventName("Laps GP");
+        event.setTrackId("17");
+        event.setTier(tier);
+        event.setFinalized(true);
+        event = eventRepository.saveAndFlush(event);
+
+        SessionResult session = new SessionResult();
+        session.setSessionType(15); // Race
+        session.setSessionUID(99998888L);
+        session.setEvent(event);
+        session = sessionResultRepository.saveAndFlush(session);
+
+        // Driver 1: 36 laps, 2500.0s total time
+        DriverResult d1 = new DriverResult();
+        d1.setDriverName("Driver 1");
+        d1.setTelemetryName("Telemetry Driver 1");
+        d1.setRaceNumber(10);
+        d1.setDriverId(1);
+        d1.setCountry("United Kingdom");
+        d1.setPosition(1);
+        d1.setRawPosition(1);
+        d1.setTotalTime(2500.0);
+        d1.setRawTotalTime(2500.0);
+        d1.setNumLaps(36);
+        d1.setSessionResult(session);
+        d1.setResultStatus(3);
+        d1.setPenalties(0);
+        d1.setWarnings(0);
+        d1 = driverResultRepository.saveAndFlush(d1);
+
+        // Driver 2: 36 laps, 2520.0s total time (gets a -10s steward penalty, time becomes 2510.0s)
+        DriverResult d2 = new DriverResult();
+        d2.setDriverName("Driver 2");
+        d2.setTelemetryName("Telemetry Driver 2");
+        d2.setRaceNumber(20);
+        d2.setDriverId(2);
+        d2.setCountry("Germany");
+        d2.setPosition(2);
+        d2.setRawPosition(2);
+        d2.setTotalTime(2520.0);
+        d2.setRawTotalTime(2520.0);
+        d2.setNumLaps(36);
+        d2.setSessionResult(session);
+        d2.setResultStatus(3);
+        d2.setPenalties(0);
+        d2.setWarnings(0);
+        d2 = driverResultRepository.saveAndFlush(d2);
+
+        // Driver 3: 35 laps, 2480.0s total time (less total time, but fewer laps completed!)
+        DriverResult d3 = new DriverResult();
+        d3.setDriverName("Driver 3");
+        d3.setTelemetryName("Telemetry Driver 3");
+        d3.setRaceNumber(30);
+        d3.setDriverId(3);
+        d3.setCountry("Belgium");
+        d3.setPosition(3);
+        d3.setRawPosition(3);
+        d3.setTotalTime(2480.0);
+        d3.setRawTotalTime(2480.0);
+        d3.setNumLaps(35);
+        d3.setSessionResult(session);
+        d3.setResultStatus(3);
+        d3.setPenalties(0);
+        d3.setWarnings(0);
+        d3 = driverResultRepository.saveAndFlush(d3);
+
+        session.getDriverResults().add(d1);
+        session.getDriverResults().add(d2);
+        session.getDriverResults().add(d3);
+        session = sessionResultRepository.saveAndFlush(session);
+        event.getSessionResults().add(session);
+        event = eventRepository.saveAndFlush(event);
+
+        // Add a -10s steward penalty to Driver 2 to trigger reclassification
+        ManualPenalty penalty = new ManualPenalty();
+        penalty.setSessionResult(session);
+        penalty.setDriverMapping(m2);
+        penalty.setSeconds(-10);
+        penalty.setComment("Bonus");
+        manualPenaltyRepository.saveAndFlush(penalty);
+
+        // 4. Recalculate standings
+        telemetryResultsService.recalculateStandings(tier.getId());
+
+        // 5. Verify positions
+        final Long sessionId = session.getId();
+        List<DriverResult> updatedResults = driverResultRepository.findAll().stream()
+                .filter(dr -> dr.getSessionResult().getId().equals(sessionId))
+                .collect(Collectors.toList());
+
+        DriverResult updatedD1 = updatedResults.stream().filter(dr -> dr.getDriverName().equals("Driver 1")).findFirst().orElseThrow();
+        DriverResult updatedD2 = updatedResults.stream().filter(dr -> dr.getDriverName().equals("Driver 2")).findFirst().orElseThrow();
+        DriverResult updatedD3 = updatedResults.stream().filter(dr -> dr.getDriverName().equals("Driver 3")).findFirst().orElseThrow();
+
+        // Driver 1: 36 laps, 2500s -> should be 1st
+        assertEquals(1, updatedD1.getPosition());
+        // Driver 2: 36 laps, 2510s (post-penalty) -> should be 2nd
+        assertEquals(2, updatedD2.getPosition());
+        // Driver 3: 35 laps, 2480s -> should be 3rd (even though totalTime is smaller, they did fewer laps!)
+        assertEquals(3, updatedD3.getPosition());
+    }
 }
