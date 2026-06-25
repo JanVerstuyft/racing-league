@@ -48,6 +48,12 @@ public class PointsTab extends VerticalLayout {
     private final List<SessionPointConfig> currentEditingConfigs = new ArrayList<>();
     private boolean pointsChanged = false;
 
+    private boolean isOwner() {
+        return league != null && securityService.getAuthenticatedUserEntity()
+                .map(user -> league.getUser() != null && league.getUser().getId().equals(user.getId()))
+                .orElse(false);
+    }
+
     private final Grid<SessionPointConfig> pointsGrid = new Grid<>(SessionPointConfig.class, false);
     private final Tabs sessionTypeTabs = new Tabs();
     private final Button addSessionTypeBtn = new Button("Add Session Type");
@@ -97,7 +103,10 @@ public class PointsTab extends VerticalLayout {
         bonusSidebar.add(extraPointRulesGrid, addExtraRuleBtn);
 
         addExtraRuleBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-        addExtraRuleBtn.addClickListener(e -> showAddExtraPointRuleDialog());
+        addExtraRuleBtn.addClickListener(e -> {
+            if (!isOwner()) return;
+            showAddExtraPointRuleDialog();
+        });
 
         HorizontalLayout gridAndBonus = new HorizontalLayout(pointsGrid, bonusSidebar);
         gridAndBonus.setWidthFull();
@@ -116,12 +125,21 @@ public class PointsTab extends VerticalLayout {
         });
 
         savePointsBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-        savePointsBtn.addClickListener(e -> saveCurrentPoints());
+        savePointsBtn.addClickListener(e -> {
+            if (!isOwner()) return;
+            saveCurrentPoints();
+        });
 
         deleteSessionBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_TERTIARY);
-        deleteSessionBtn.addClickListener(e -> deleteCurrentSessionPoints());
+        deleteSessionBtn.addClickListener(e -> {
+            if (!isOwner()) return;
+            deleteCurrentSessionPoints();
+        });
 
-        addSessionTypeBtn.addClickListener(e -> showAddSessionTypeDialog());
+        addSessionTypeBtn.addClickListener(e -> {
+            if (!isOwner()) return;
+            showAddSessionTypeDialog();
+        });
 
         configureGrids();
     }
@@ -132,10 +150,10 @@ public class PointsTab extends VerticalLayout {
             com.vaadin.flow.component.textfield.IntegerField field = new com.vaadin.flow.component.textfield.IntegerField();
             field.setValue(config.getPoints());
             field.setStepButtonsVisible(true);
-            boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
-            field.setReadOnly(!loggedIn);
+            boolean isOwner = isOwner();
+            field.setReadOnly(!isOwner);
             field.addValueChangeListener(e -> {
-                if (loggedIn) {
+                if (isOwner) {
                     config.setPoints(e.getValue() != null ? e.getValue() : 0);
                     pointsChanged = true;
                 }
@@ -166,6 +184,7 @@ public class PointsTab extends VerticalLayout {
         extraPointRulesGrid.addColumn(r -> r.getPoints() + " pt" + (r.getPoints() == 1 ? "" : "s")).setHeader("Points").setWidth("80px").setFlexGrow(0);
         extraRulesActionColumn = extraPointRulesGrid.addComponentColumn(r -> {
             Button delBtn = new Button("Delete", ev -> {
+                if (!isOwner()) return;
                 extraPointRuleRepository.delete(r);
                 List<Tier> tiers = tierRepository.findByLeague(league);
                 for (Tier t : tiers) {
@@ -265,6 +284,7 @@ public class PointsTab extends VerticalLayout {
     }
 
     private void saveCurrentPoints() {
+        if (!isOwner()) return;
         if (selectedSessionType == null) return;
 
         List<SessionPointConfig> currentInDb = sessionPointConfigRepository.findByLeague(league).stream()
@@ -296,6 +316,7 @@ public class PointsTab extends VerticalLayout {
     }
 
     private void deleteCurrentSessionPoints() {
+        if (!isOwner()) return;
         if (selectedSessionType == null) return;
 
         ConfirmDialog dialog = new ConfirmDialog();
@@ -406,6 +427,7 @@ public class PointsTab extends VerticalLayout {
         dialog.add(dialogLayout);
 
         Button saveBtn = new Button("Add", ev -> {
+            if (!isOwner()) return;
             if (nameField.getValue().isEmpty() || metricCombo.getValue() == null || metricExpressionField.getValue().isEmpty() || ruleTypeCombo.getValue() == null) {
                 Notification.show("Please fill in all required fields", 3000, Notification.Position.TOP_CENTER);
                 return;
@@ -530,16 +552,16 @@ public class PointsTab extends VerticalLayout {
 
         if (league == null) return;
 
-        boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
-        addSessionTypeBtn.setVisible(loggedIn);
-        savePointsBtn.setVisible(loggedIn);
-        deleteSessionBtn.setVisible(loggedIn);
-        addExtraRuleBtn.setVisible(loggedIn);
+        boolean isOwner = isOwner();
+        addSessionTypeBtn.setVisible(isOwner);
+        savePointsBtn.setVisible(isOwner);
+        deleteSessionBtn.setVisible(isOwner);
+        addExtraRuleBtn.setVisible(isOwner);
         if (extraRulesActionColumn != null) {
-            extraRulesActionColumn.setVisible(loggedIn);
+            extraRulesActionColumn.setVisible(isOwner);
         }
         if (extraRulesExpressionColumn != null) {
-            extraRulesExpressionColumn.setVisible(loggedIn);
+            extraRulesExpressionColumn.setVisible(isOwner);
         }
 
         refreshPointsTabs();

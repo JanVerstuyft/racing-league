@@ -37,6 +37,12 @@ public class TiersTab extends VerticalLayout {
     private Grid.Column<Tier> tokenColumn;
     private Grid.Column<Tier> tierActionsColumn;
 
+    private boolean isOwner() {
+        return league != null && securityService.getAuthenticatedUserEntity()
+                .map(user -> league.getUser() != null && league.getUser().getId().equals(user.getId()))
+                .orElse(false);
+    }
+
     public TiersTab(TierRepository tierRepository,
                     SecurityService securityService,
                     Runnable onDataChanged,
@@ -50,6 +56,7 @@ public class TiersTab extends VerticalLayout {
 
         addTierBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         addTierBtn.addClickListener(ev -> {
+            if (!isOwner()) return;
             if (league == null || addTierNameField.getValue().isEmpty()) return;
             Tier t = new Tier();
             t.setName(addTierNameField.getValue());
@@ -77,6 +84,7 @@ public class TiersTab extends VerticalLayout {
             tokenSpan.getStyle().set("font-family", "monospace");
             tokenSpan.getStyle().set("font-size", "0.8em");
             Button copyBtn = new Button("Copy", e -> {
+                if (!isOwner()) return;
                 getElement().executeJs("navigator.clipboard.writeText($0)", t.getToken());
                 Notification.show("Token copied to clipboard", 3000, Notification.Position.TOP_CENTER);
             });
@@ -88,7 +96,7 @@ public class TiersTab extends VerticalLayout {
         }).setHeader("Telemetry Token").setAutoWidth(true);
         
         tierGrid.addComponentColumn(t -> new RouterLink("Live Dashboard", LeaderboardView.class, t.getId())).setHeader("Live");
-
+        
         tierActionsColumn = tierGrid.addComponentColumn(t -> {
             HorizontalLayout actions = new HorizontalLayout();
             
@@ -104,12 +112,14 @@ public class TiersTab extends VerticalLayout {
             saveBtn.setVisible(false);
             
             renameBtn.addClickListener(e -> {
+                if (!isOwner()) return;
                 renameField.setVisible(true);
                 saveBtn.setVisible(true);
                 renameBtn.setVisible(false);
             });
             
             saveBtn.addClickListener(e -> {
+                if (!isOwner()) return;
                 if (!renameField.getValue().isEmpty()) {
                     t.setName(renameField.getValue());
                     tierRepository.save(t);
@@ -123,6 +133,7 @@ public class TiersTab extends VerticalLayout {
             });
             
             Button deleteBtn = new Button("Delete", e -> {
+                if (!isOwner()) return;
                 ConfirmDialog cd = new ConfirmDialog();
                 cd.setHeader("Delete Tier?");
                 cd.setText("Are you sure you want to delete '" + t.getName() + "'? All race weekends and standings in this tier will be lost.");
@@ -130,6 +141,7 @@ public class TiersTab extends VerticalLayout {
                 cd.setConfirmText("Delete");
                 cd.setConfirmButtonTheme("error primary");
                 cd.addConfirmListener(event -> {
+                    if (!isOwner()) return;
                     tierRepository.delete(t);
                     onTiersListRefreshed.run();
                     onDataChanged.run();
@@ -141,7 +153,7 @@ public class TiersTab extends VerticalLayout {
             
             actions.add(renameField, renameBtn, saveBtn, deleteBtn);
             actions.setAlignItems(Alignment.CENTER);
-            actions.setVisible(securityService.getAuthenticatedUser().isPresent());
+            actions.setVisible(isOwner());
             return actions;
         }).setHeader("Actions");
     }
@@ -151,15 +163,15 @@ public class TiersTab extends VerticalLayout {
 
         if (league == null) return;
 
-        boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
-        tiersToolbar.setVisible(loggedIn);
+        boolean isOwner = isOwner();
+        tiersToolbar.setVisible(isOwner);
         if (tokenColumn != null) {
-            tokenColumn.setVisible(loggedIn);
+            tokenColumn.setVisible(isOwner);
         }
         if (tierActionsColumn != null) {
-            tierActionsColumn.setVisible(loggedIn);
+            tierActionsColumn.setVisible(isOwner);
         }
-        tiersTitle.setText(loggedIn ? "Manage Tiers" : "Tiers");
+        tiersTitle.setText(isOwner ? "Manage Tiers" : "Tiers");
 
         tierGrid.setItems(tierRepository.findByLeagueOrderByNameAsc(league));
     }

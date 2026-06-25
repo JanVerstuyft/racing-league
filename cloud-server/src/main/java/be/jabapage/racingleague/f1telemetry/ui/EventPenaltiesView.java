@@ -74,6 +74,14 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
     private Long currentEventId;
     private Event currentEvent;
     private final LeagueLogoRepository leagueLogoRepository;
+    private Grid.Column<ManualPenalty> actionColumn;
+
+    private boolean isOwner() {
+        return currentEvent != null && currentEvent.getTier() != null && currentEvent.getTier().getLeague() != null
+                && securityService.getAuthenticatedUserEntity()
+                .map(user -> currentEvent.getTier().getLeague().getUser() != null && currentEvent.getTier().getLeague().getUser().getId().equals(user.getId()))
+                .orElse(false);
+    }
 
     public EventPenaltiesView(EventRepository eventRepository,
                               ManualPenaltyRepository manualPenaltyRepository,
@@ -205,8 +213,9 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
                 .setHeader("Comment").setFlexGrow(1);
 
         if (allowDelete) {
-            penaltyGrid.addComponentColumn(p -> {
+            actionColumn = penaltyGrid.addComponentColumn(p -> {
                 Button deleteBtn = new Button("Delete", e -> {
+                    if (!isOwner()) return;
                     ConfirmDialog dialog = new ConfirmDialog();
                     dialog.setHeader("Delete Penalty?");
                     dialog.setText("Are you sure you want to delete this penalty?");
@@ -214,6 +223,7 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
                     dialog.setConfirmText("Delete");
                     dialog.setConfirmButtonTheme("error primary");
                     dialog.addConfirmListener(ev -> {
+                        if (!isOwner()) return;
                         manualPenaltyRepository.delete(p);
                         telemetryProcessingService.recalculateStandings(currentEvent.getTier().getId());
                         refreshPenalties();
@@ -222,13 +232,14 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
                     dialog.open();
                 });
                 deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
-                deleteBtn.setVisible(currentEvent == null || !Boolean.TRUE.equals(currentEvent.getFinalized()));
+                deleteBtn.setVisible(isOwner() && (currentEvent == null || !Boolean.TRUE.equals(currentEvent.getFinalized())));
                 return deleteBtn;
             }).setHeader("Actions").setAutoWidth(true);
         }
     }
 
     private void addPenalty() {
+        if (!isOwner()) return;
         if (sessionCombo.getValue() == null) {
             Notification.show("Please select a session/race", 3000, Notification.Position.TOP_CENTER);
             return;
@@ -330,8 +341,11 @@ public class EventPenaltiesView extends VerticalLayout implements HasUrlParamete
                 statusBadge.getElement().getThemeList().add("badge error");
             }
 
-            boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
-            formContainer.setVisible(loggedIn && !Boolean.TRUE.equals(currentEvent.getFinalized()));
+            boolean isOwner = isOwner();
+            formContainer.setVisible(isOwner && !Boolean.TRUE.equals(currentEvent.getFinalized()));
+            if (actionColumn != null) {
+                actionColumn.setVisible(isOwner);
+            }
             
             refreshPenalties();
         }, () -> {

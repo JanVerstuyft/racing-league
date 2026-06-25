@@ -49,6 +49,12 @@ public class DriversTab extends VerticalLayout {
     private League league;
     private Tier selectedTier;
 
+    private boolean isOwner() {
+        return league != null && securityService.getAuthenticatedUserEntity()
+                .map(user -> league.getUser() != null && league.getUser().getId().equals(user.getId()))
+                .orElse(false);
+    }
+
     private final Grid<DriverMapping> mappingGrid = new Grid<>(DriverMapping.class, false);
     private final Button addManualDriverBtn = new Button("Add Manual Driver");
     private final Button deleteSelectedMappingsBtn = new Button("Delete Selected");
@@ -79,6 +85,7 @@ public class DriversTab extends VerticalLayout {
         mappingGrid.addSelectionListener(e -> deleteSelectedMappingsBtn.setEnabled(!e.getAllSelectedItems().isEmpty()));
 
         deleteSelectedMappingsBtn.addClickListener(e -> {
+            if (!isOwner()) return;
             var selected = mappingGrid.getSelectedItems();
             ConfirmDialog dialog = new ConfirmDialog();
             dialog.setHeader("Delete " + selected.size() + " Mappings?");
@@ -87,6 +94,7 @@ public class DriversTab extends VerticalLayout {
             dialog.setConfirmText("Delete");
             dialog.setConfirmButtonTheme("error primary");
             dialog.addConfirmListener(ev -> {
+                if (!isOwner()) return;
                 Notification deletingNote = new Notification("Deleting mappings...");
                 deletingNote.setPosition(Notification.Position.TOP_CENTER);
                 deletingNote.setDuration(0);
@@ -105,6 +113,7 @@ public class DriversTab extends VerticalLayout {
         });
 
         addManualDriverBtn.addClickListener(e -> {
+            if (!isOwner()) return;
             if (league == null) return;
             com.vaadin.flow.component.dialog.Dialog dialog = new com.vaadin.flow.component.dialog.Dialog();
             dialog.setHeaderTitle("Add Manual Driver");
@@ -190,6 +199,7 @@ public class DriversTab extends VerticalLayout {
                 }
 
                 checkTeamCapacityAndSave(mapping, () -> {
+                    if (!isOwner()) return;
                     if (!validateChampionshipTeamConstraints(mapping)) {
                         onDataChanged.run();
                         return;
@@ -369,6 +379,7 @@ public class DriversTab extends VerticalLayout {
         tiersColumn.setEditorComponent(tierEditorField);
 
         Button saveButton = new Button("Save", e -> {
+            if (!isOwner()) return;
             try {
                 DriverMapping item = editor.getItem();
                 editor.save();
@@ -378,6 +389,7 @@ public class DriversTab extends VerticalLayout {
                 }
                 
                 checkTeamCapacityAndSave(item, () -> {
+                    if (!isOwner()) return;
                     if (!validateChampionshipTeamConstraints(item)) {
                         editor.cancel();
                         onDataChanged.run();
@@ -414,6 +426,7 @@ public class DriversTab extends VerticalLayout {
             Button editButton = new Button("Edit");
             editButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_SMALL);
             editButton.addClickListener(e -> {
+                if (!isOwner()) return;
                 if (editor.isOpen()) editor.cancel();
                 mappingGrid.getEditor().editItem(item);
             });
@@ -421,11 +434,13 @@ public class DriversTab extends VerticalLayout {
             Button copyBtn = new Button("Copy");
             copyBtn.addThemeVariants(ButtonVariant.LUMO_SUCCESS, ButtonVariant.LUMO_SMALL);
             copyBtn.addClickListener(e -> {
+                if (!isOwner()) return;
                 if (editor.isOpen()) editor.cancel();
                 showCopyDriverDialog(item);
             });
             
             Button deleteBtn = new Button("Delete", e -> {
+                if (!isOwner()) return;
                 ConfirmDialog dialog = new ConfirmDialog();
                 dialog.setHeader("Delete Driver Mapping?");
                 dialog.setText("Are you sure you want to delete the mapping for '" + item.getTelemetryName() + "'?");
@@ -433,6 +448,7 @@ public class DriversTab extends VerticalLayout {
                 dialog.setConfirmText("Delete");
                 dialog.setConfirmButtonTheme("error primary");
                 dialog.addConfirmListener(ev -> {
+                    if (!isOwner()) return;
                     Notification deletingNote = new Notification("Deleting...");
                     deletingNote.setPosition(Notification.Position.TOP_CENTER);
                     deletingNote.setDuration(0);
@@ -452,7 +468,7 @@ public class DriversTab extends VerticalLayout {
             deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
 
             actions.add(editButton, copyBtn, deleteBtn);
-            actions.setVisible(securityService.getAuthenticatedUser().isPresent());
+            actions.setVisible(isOwner());
             return actions;
         }).setEditorComponent(new HorizontalLayout(saveButton, cancelButton));
 
@@ -518,6 +534,7 @@ public class DriversTab extends VerticalLayout {
         dialog.add(layout);
 
         Button saveBtn = new Button("Copy", ev -> {
+            if (!isOwner()) return;
             if (targetTierField.getValue() == null) {
                 Notification.show("Please select a target tier", 3000, Notification.Position.TOP_CENTER);
                 return;
@@ -553,6 +570,7 @@ public class DriversTab extends VerticalLayout {
             }
 
             checkTeamCapacityAndSave(copy, () -> {
+                if (!isOwner()) return;
                 if (!validateChampionshipTeamConstraints(copy)) {
                     onDataChanged.run();
                     return;
@@ -737,9 +755,9 @@ public class DriversTab extends VerticalLayout {
 
         if (league == null || selectedTier == null) return;
 
-        boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
-        addManualDriverBtn.setVisible(loggedIn);
-        deleteSelectedMappingsBtn.setVisible(loggedIn);
+        boolean isOwner = isOwner();
+        addManualDriverBtn.setVisible(isOwner);
+        deleteSelectedMappingsBtn.setVisible(isOwner);
 
         mappingGrid.setItems(driverMappingRepository.findByTier(selectedTier).stream()
                 .sorted(Comparator.comparing(m -> m.getOverriddenName() != null ? m.getOverriddenName() : m.getTelemetryName()))

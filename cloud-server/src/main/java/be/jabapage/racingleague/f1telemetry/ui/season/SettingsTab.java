@@ -38,6 +38,12 @@ public class SettingsTab extends VerticalLayout {
     private League league;
     private boolean isInitializing = false;
 
+    private boolean isOwner() {
+        return league != null && securityService.getAuthenticatedUserEntity()
+                .map(user -> league.getUser() != null && league.getUser().getId().equals(user.getId()))
+                .orElse(false);
+    }
+
     private final TextField seasonNameField = new TextField("Season Name");
     private final Checkbox hideAiCheckbox = new Checkbox("Hide AI Drivers");
     private final Checkbox showTyreWearCheckbox = new Checkbox("Show Tyre Wear on Live Leaderboard");
@@ -77,7 +83,7 @@ public class SettingsTab extends VerticalLayout {
         setPadding(false);
 
         useChampionshipTeamsCheckbox.addValueChangeListener(e -> {
-            if (league != null && !isInitializing) {
+            if (league != null && !isInitializing && isOwner()) {
                 league.setUseChampionshipTeams(e.getValue());
                 league = leagueRepository.save(league);
                 teamANameField.setEnabled(e.getValue());
@@ -88,7 +94,7 @@ public class SettingsTab extends VerticalLayout {
         });
 
         teamANameField.addValueChangeListener(e -> {
-            if (league != null && !isInitializing) {
+            if (league != null && !isInitializing && isOwner()) {
                 league.setTeamAName(e.getValue());
                 league = leagueRepository.save(league);
                 onDataChanged.run();
@@ -96,7 +102,7 @@ public class SettingsTab extends VerticalLayout {
         });
 
         teamBNameField.addValueChangeListener(e -> {
-            if (league != null && !isInitializing) {
+            if (league != null && !isInitializing && isOwner()) {
                 league.setTeamBName(e.getValue());
                 league = leagueRepository.save(league);
                 onDataChanged.run();
@@ -104,7 +110,7 @@ public class SettingsTab extends VerticalLayout {
         });
 
         hideAiCheckbox.addValueChangeListener(e -> {
-            if (league != null && !isInitializing) {
+            if (league != null && !isInitializing && isOwner()) {
                 league.setHideAi(e.getValue());
                 league = leagueRepository.save(league);
                 telemetryProcessingService.refreshHideAiSetting(league.getId());
@@ -114,7 +120,7 @@ public class SettingsTab extends VerticalLayout {
         });
 
         showTyreWearCheckbox.addValueChangeListener(e -> {
-            if (league != null && !isInitializing) {
+            if (league != null && !isInitializing && isOwner()) {
                 league.setShowTyreWear(e.getValue());
                 league = leagueRepository.save(league);
                 Notification.show("Tyre wear visibility updated", 3000, Notification.Position.TOP_CENTER);
@@ -122,7 +128,7 @@ public class SettingsTab extends VerticalLayout {
         });
 
         showErsCheckbox.addValueChangeListener(e -> {
-            if (league != null && !isInitializing) {
+            if (league != null && !isInitializing && isOwner()) {
                 league.setShowErs(e.getValue());
                 league = leagueRepository.save(league);
                 Notification.show("ERS visibility updated", 3000, Notification.Position.TOP_CENTER);
@@ -131,7 +137,7 @@ public class SettingsTab extends VerticalLayout {
         
         seasonNameField.setWidth("300px");
         seasonNameField.addValueChangeListener(e -> {
-            if (league != null && !isInitializing && e.getValue() != null && !e.getValue().isEmpty()) {
+            if (league != null && !isInitializing && isOwner() && e.getValue() != null && !e.getValue().isEmpty()) {
                 league.setName(e.getValue());
                 league = leagueRepository.save(league);
                 onDataChanged.run();
@@ -144,7 +150,7 @@ public class SettingsTab extends VerticalLayout {
         minLapsPctField.setStepButtonsVisible(true);
         minLapsPctField.setWidth("300px");
         minLapsPctField.addValueChangeListener(e -> {
-            if (league != null && !isInitializing && e.getValue() != null) {
+            if (league != null && !isInitializing && isOwner() && e.getValue() != null) {
                 league.setMinLapsPct(e.getValue());
                 league = leagueRepository.save(league);
                 Notification.show("Minimum laps percentage updated", 3000, Notification.Position.TOP_CENTER);
@@ -154,7 +160,7 @@ public class SettingsTab extends VerticalLayout {
         carTypeCombo.setItems(java.util.List.of("F1 25", "F1 26"));
         carTypeCombo.setWidth("300px");
         carTypeCombo.addValueChangeListener(e -> {
-            if (league != null && !isInitializing && e.getValue() != null) {
+            if (league != null && !isInitializing && isOwner() && e.getValue() != null) {
                 league.setCarType(e.getValue());
                 league = leagueRepository.save(league);
                 onDataChanged.run();
@@ -172,6 +178,7 @@ public class SettingsTab extends VerticalLayout {
         upload.setUploadButton(new Button("Upload Logo"));
         
         upload.addSucceededListener(ev -> {
+            if (!isOwner()) return;
             try {
                 byte[] bytes = buffer.getInputStream().readAllBytes();
                 LeagueLogo logo = leagueLogoRepository.findById(league.getId())
@@ -211,7 +218,7 @@ public class SettingsTab extends VerticalLayout {
         });
 
         Button removeLogoBtn = new Button("Remove Logo", ev -> {
-            if (league != null) {
+            if (league != null && isOwner()) {
                 leagueLogoRepository.deleteById(league.getId());
                 league.setHasLogo(false);
                 league.setLogoBackgroundColor(null);
@@ -243,6 +250,7 @@ public class SettingsTab extends VerticalLayout {
         colorPicker.getStyle().set("cursor", "pointer");
 
         colorPicker.addValueChangeListener(e -> {
+            if (!isOwner()) return;
             String color = e.getValue();
             if (color != null && !color.isEmpty() && !color.equalsIgnoreCase(hexColorField.getValue())) {
                 hexColorField.setValue(color);
@@ -251,6 +259,7 @@ public class SettingsTab extends VerticalLayout {
         });
 
         hexColorField.addValueChangeListener(e -> {
+            if (!isOwner()) return;
             String val = e.getValue();
             if (val != null && val.matches("^#[0-9a-fA-F]{6}$")) {
                 if (!val.equalsIgnoreCase(colorPicker.getValue())) {
@@ -272,6 +281,7 @@ public class SettingsTab extends VerticalLayout {
         accentColorPicker.getStyle().set("cursor", "pointer");
 
         accentColorPicker.addValueChangeListener(e -> {
+            if (!isOwner()) return;
             String color = e.getValue();
             if (color != null && !color.isEmpty() && !color.equalsIgnoreCase(hexAccentColorField.getValue())) {
                 hexAccentColorField.setValue(color);
@@ -280,6 +290,7 @@ public class SettingsTab extends VerticalLayout {
         });
 
         hexAccentColorField.addValueChangeListener(e -> {
+            if (!isOwner()) return;
             String val = e.getValue();
             if (val != null && val.matches("^#[0-9a-fA-F]{6}$")) {
                 if (!val.equalsIgnoreCase(accentColorPicker.getValue())) {
@@ -293,31 +304,31 @@ public class SettingsTab extends VerticalLayout {
 
         // Social Handles Listeners
         youtubeField.addValueChangeListener(e -> {
-            if (league != null && !isInitializing) {
+            if (league != null && !isInitializing && isOwner()) {
                 league.setYoutubeHandle(e.getValue());
                 league = leagueRepository.save(league);
             }
         });
         tiktokField.addValueChangeListener(e -> {
-            if (league != null && !isInitializing) {
+            if (league != null && !isInitializing && isOwner()) {
                 league.setTiktokHandle(e.getValue());
                 league = leagueRepository.save(league);
             }
         });
         xField.addValueChangeListener(e -> {
-            if (league != null && !isInitializing) {
+            if (league != null && !isInitializing && isOwner()) {
                 league.setXHandle(e.getValue());
                 league = leagueRepository.save(league);
             }
         });
         instagramField.addValueChangeListener(e -> {
-            if (league != null && !isInitializing) {
+            if (league != null && !isInitializing && isOwner()) {
                 league.setInstagramHandle(e.getValue());
                 league = leagueRepository.save(league);
             }
         });
         twitchField.addValueChangeListener(e -> {
-            if (league != null && !isInitializing) {
+            if (league != null && !isInitializing && isOwner()) {
                 league.setTwitchHandle(e.getValue());
                 league = leagueRepository.save(league);
             }
@@ -372,7 +383,7 @@ public class SettingsTab extends VerticalLayout {
     }
 
     private void saveBackgroundColor(String color) {
-        if (league != null && !isInitializing) {
+        if (league != null && !isInitializing && isOwner()) {
             league.setLogoBackgroundColor(color);
             league = leagueRepository.save(league);
             onLogoChanged.run();
@@ -380,7 +391,7 @@ public class SettingsTab extends VerticalLayout {
     }
 
     private void saveAccentColor(String color) {
-        if (league != null && !isInitializing) {
+        if (league != null && !isInitializing && isOwner()) {
             league.setAccentColor(color);
             league = leagueRepository.save(league);
         }
@@ -402,8 +413,8 @@ public class SettingsTab extends VerticalLayout {
             useChampionshipTeamsCheckbox.setValue(Boolean.TRUE.equals(league.getUseChampionshipTeams()));
             teamANameField.setValue(league.getTeamAName() != null ? league.getTeamAName() : "");
             teamBNameField.setValue(league.getTeamBName() != null ? league.getTeamBName() : "");
-            teamANameField.setEnabled(Boolean.TRUE.equals(league.getUseChampionshipTeams()));
-            teamBNameField.setEnabled(Boolean.TRUE.equals(league.getUseChampionshipTeams()));
+            teamANameField.setEnabled(isOwner && Boolean.TRUE.equals(league.getUseChampionshipTeams()));
+            teamBNameField.setEnabled(isOwner && Boolean.TRUE.equals(league.getUseChampionshipTeams()));
             
             if (league.getLogoBackgroundColor() != null) {
                 hexColorField.setValue(league.getLogoBackgroundColor());
@@ -428,6 +439,25 @@ public class SettingsTab extends VerticalLayout {
             twitchField.setValue(league.getTwitchHandle() != null ? league.getTwitchHandle() : "");
             
             logoUploadLayout.setVisible(isOwner);
+
+            seasonNameField.setReadOnly(!isOwner);
+            hideAiCheckbox.setReadOnly(!isOwner);
+            showTyreWearCheckbox.setReadOnly(!isOwner);
+            showErsCheckbox.setReadOnly(!isOwner);
+            minLapsPctField.setReadOnly(!isOwner);
+            carTypeCombo.setReadOnly(!isOwner);
+            useChampionshipTeamsCheckbox.setReadOnly(!isOwner);
+            teamANameField.setReadOnly(!isOwner);
+            teamBNameField.setReadOnly(!isOwner);
+            hexColorField.setReadOnly(!isOwner);
+            colorPicker.getElement().setAttribute("disabled", !isOwner);
+            hexAccentColorField.setReadOnly(!isOwner);
+            accentColorPicker.getElement().setAttribute("disabled", !isOwner);
+            youtubeField.setReadOnly(!isOwner);
+            tiktokField.setReadOnly(!isOwner);
+            xField.setReadOnly(!isOwner);
+            instagramField.setReadOnly(!isOwner);
+            twitchField.setReadOnly(!isOwner);
         } finally {
             isInitializing = false;
         }

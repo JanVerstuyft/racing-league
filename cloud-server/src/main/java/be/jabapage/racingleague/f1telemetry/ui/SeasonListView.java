@@ -94,7 +94,12 @@ public class SeasonListView extends VerticalLayout {
         grid.addComponentColumn(league -> {
             HorizontalLayout actions = new HorizontalLayout();
             
+            boolean isOwner = securityService.getAuthenticatedUserEntity()
+                    .map(user -> league.getUser() != null && league.getUser().getId().equals(user.getId()))
+                    .orElse(false);
+
             Button editBtn = new Button("Rename", e -> {
+                if (!isOwner) return;
                 Dialog dialog = new Dialog();
                 dialog.setHeaderTitle("Rename Season");
                 
@@ -103,6 +108,7 @@ public class SeasonListView extends VerticalLayout {
                 renameField.setWidthFull();
                 
                 Button saveBtn = new Button("Save", ev -> {
+                    if (!isOwner) return;
                     if (!renameField.getValue().isEmpty()) {
                         league.setName(renameField.getValue());
                         leagueRepository.save(league);
@@ -120,8 +126,10 @@ public class SeasonListView extends VerticalLayout {
                 dialog.open();
             });
             editBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+            editBtn.setEnabled(isOwner);
 
             Button deleteBtn = new Button("Delete", e -> {
+                if (!isOwner) return;
                 ConfirmDialog dialog = new ConfirmDialog();
                 dialog.setHeader("Delete Season?");
                 dialog.setText("Are you sure you want to delete '" + league.getName() + "'? All results and standings will be lost.");
@@ -129,6 +137,7 @@ public class SeasonListView extends VerticalLayout {
                 dialog.setConfirmText("Delete");
                 dialog.setConfirmButtonTheme("error primary");
                 dialog.addConfirmListener(event -> {
+                    if (!isOwner) return;
                     Notification deletingNote = new Notification("Deleting season...");
                     deletingNote.setPosition(Notification.Position.TOP_CENTER);
                     deletingNote.setDuration(0);
@@ -146,6 +155,7 @@ public class SeasonListView extends VerticalLayout {
                 dialog.open();
             });
             deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
+            deleteBtn.setEnabled(isOwner);
             
             actions.add(editBtn, deleteBtn);
             return actions;

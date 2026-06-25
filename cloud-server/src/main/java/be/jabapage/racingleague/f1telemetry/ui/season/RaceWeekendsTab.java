@@ -43,6 +43,12 @@ public class RaceWeekendsTab extends VerticalLayout {
     private final Button addManualWeekendBtn = new Button("Add Manual Weekend");
     private Grid.Column<Event> actionsColumn;
 
+    private boolean isOwner() {
+        return selectedTier != null && selectedTier.getLeague() != null && securityService.getAuthenticatedUserEntity()
+                .map(user -> selectedTier.getLeague().getUser() != null && selectedTier.getLeague().getUser().getId().equals(user.getId()))
+                .orElse(false);
+    }
+
     public RaceWeekendsTab(EventRepository eventRepository,
                             TelemetryProcessingService telemetryProcessingService,
                             SecurityService securityService,
@@ -56,6 +62,7 @@ public class RaceWeekendsTab extends VerticalLayout {
         configureGrid();
 
         addManualWeekendBtn.addClickListener(e -> {
+            if (!isOwner()) return;
             if (selectedTier == null) return;
 
             com.vaadin.flow.component.dialog.Dialog dialog = new com.vaadin.flow.component.dialog.Dialog();
@@ -82,6 +89,7 @@ public class RaceWeekendsTab extends VerticalLayout {
             dialog.add(dialogLayout);
 
             Button saveBtn = new Button("Add", ev -> {
+                if (!isOwner()) return;
                 if (trackCombo.getValue() == null || nameField.getValue().isEmpty()) {
                     Notification.show("Please fill in all fields", 3000, Notification.Position.TOP_CENTER);
                     return;
@@ -162,14 +170,20 @@ public class RaceWeekendsTab extends VerticalLayout {
                 moveUpBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
                 moveUpBtn.setEnabled(index > 0);
                 moveUpBtn.setTooltipText("Move Up");
-                moveUpBtn.addClickListener(e -> moveEventUp(event));
+                moveUpBtn.addClickListener(e -> {
+                    if (!isOwner()) return;
+                    moveEventUp(event);
+                });
 
                 Button moveDownBtn = new Button();
                 moveDownBtn.setIcon(com.vaadin.flow.component.icon.VaadinIcon.ARROW_DOWN.create());
                 moveDownBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
                 moveDownBtn.setEnabled(index >= 0 && index < currentEvents.size() - 1);
                 moveDownBtn.setTooltipText("Move Down");
-                moveDownBtn.addClickListener(e -> moveEventDown(event));
+                moveDownBtn.addClickListener(e -> {
+                    if (!isOwner()) return;
+                    moveEventDown(event);
+                });
 
                 actions.add(moveUpBtn, moveDownBtn);
 
@@ -186,6 +200,7 @@ public class RaceWeekendsTab extends VerticalLayout {
                 }
 
                 toggleFinalizedBtn.addClickListener(e -> {
+                    if (!isOwner()) return;
                     boolean newStatus = !Boolean.TRUE.equals(event.getFinalized());
                     String statusWord = newStatus ? "final" : "provisional";
                     ConfirmDialog dialog = new ConfirmDialog();
@@ -194,6 +209,7 @@ public class RaceWeekendsTab extends VerticalLayout {
                     dialog.setCancelable(true);
                     dialog.setConfirmText("Yes");
                     dialog.addConfirmListener(ev -> {
+                        if (!isOwner()) return;
                         event.setFinalized(newStatus);
                         eventRepository.save(event);
                         telemetryProcessingService.recalculateStandings(event.getTier().getId());
@@ -205,6 +221,7 @@ public class RaceWeekendsTab extends VerticalLayout {
                 actions.add(toggleFinalizedBtn);
 
                 Button deleteBtn = new Button("Delete", e -> {
+                    if (!isOwner()) return;
                     ConfirmDialog dialog = new ConfirmDialog();
                     dialog.setHeader("Delete Weekend?");
                     dialog.setText("Are you sure you want to delete the weekend '" + event.getEventName() + "'? Standings will be automatically recalculated.");
@@ -212,6 +229,7 @@ public class RaceWeekendsTab extends VerticalLayout {
                     dialog.setConfirmText("Delete");
                     dialog.setConfirmButtonTheme("error primary");
                     dialog.addConfirmListener(ev -> {
+                        if (!isOwner()) return;
                         Notification deletingNote = new Notification("Deleting weekend...");
                         deletingNote.setPosition(Notification.Position.TOP_CENTER);
                         deletingNote.setDuration(0);
@@ -230,7 +248,10 @@ public class RaceWeekendsTab extends VerticalLayout {
                 });
                 deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
 
-                Button editBtn = new Button("Edit", e -> showEditEventDialog(event));
+                Button editBtn = new Button("Edit", e -> {
+                    if (!isOwner()) return;
+                    showEditEventDialog(event);
+                });
                 editBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
                 actions.add(editBtn, deleteBtn);
             }
@@ -274,6 +295,7 @@ public class RaceWeekendsTab extends VerticalLayout {
         dialog.add(dialogLayout);
 
         Button saveBtn = new Button("Save", ev -> {
+            if (!isOwner()) return;
             if (trackCombo.getValue() == null || nameField.getValue().isEmpty()) {
                 Notification.show("Please fill in all fields", 3000, Notification.Position.TOP_CENTER);
                 return;
@@ -294,6 +316,7 @@ public class RaceWeekendsTab extends VerticalLayout {
     }
 
     private void moveEventUp(Event event) {
+        if (!isOwner()) return;
         if (selectedTier == null) return;
         List<Event> events = eventRepository.findByTier(selectedTier);
         int index = events.indexOf(event);
@@ -310,6 +333,7 @@ public class RaceWeekendsTab extends VerticalLayout {
     }
 
     private void moveEventDown(Event event) {
+        if (!isOwner()) return;
         if (selectedTier == null) return;
         List<Event> events = eventRepository.findByTier(selectedTier);
         int index = events.indexOf(event);
@@ -330,10 +354,10 @@ public class RaceWeekendsTab extends VerticalLayout {
         this.currentEvents = currentEvents;
         eventGrid.setItems(currentEvents);
 
-        boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
-        addManualWeekendBtn.setVisible(loggedIn);
+        boolean isOwner = isOwner();
+        addManualWeekendBtn.setVisible(isOwner);
         if (actionsColumn != null) {
-            actionsColumn.setVisible(loggedIn);
+            actionsColumn.setVisible(isOwner);
         }
     }
 }

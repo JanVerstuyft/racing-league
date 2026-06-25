@@ -170,10 +170,12 @@ public class SeasonDetailsView extends VerticalLayout implements HasUrlParameter
             updateLogo();
             updateTierSelector();
             
-            boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
-            settingsTab.setVisible(loggedIn);
+            boolean isOwner = securityService.getAuthenticatedUserEntity()
+                    .map(user -> league.getUser() != null && league.getUser().getId().equals(user.getId()))
+                    .orElse(false);
+            settingsTab.setVisible(isOwner);
             
-            if (!loggedIn && mainTabs.getSelectedTab() == settingsTab) {
+            if (!isOwner && mainTabs.getSelectedTab() == settingsTab) {
                 mainTabs.setSelectedTab(raceWeekendsTab);
             }
             

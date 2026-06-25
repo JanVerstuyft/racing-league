@@ -48,6 +48,12 @@ public class StandingsTab extends VerticalLayout {
     private Tier selectedTier;
     private List<Tier> leagueTiers = Collections.emptyList();
 
+    private boolean isOwner() {
+        return league != null && securityService.getAuthenticatedUserEntity()
+                .map(user -> league.getUser() != null && league.getUser().getId().equals(user.getId()))
+                .orElse(false);
+    }
+
     private final Grid<DriverStanding> driverGrid = new Grid<>(DriverStanding.class, false);
     private final Grid<TeamStanding> teamGrid = new Grid<>(TeamStanding.class, false);
     private final Grid<TeamStanding> leagueTeamGrid = new Grid<>(TeamStanding.class, false);
@@ -89,6 +95,7 @@ public class StandingsTab extends VerticalLayout {
         setPadding(false);
 
         recalculateBtn.addClickListener(e -> {
+            if (!isOwner()) return;
             if (selectedTier != null) {
                 telemetryProcessingService.recalculateStandings(selectedTier.getId());
                 onDataChanged.run();
@@ -349,8 +356,8 @@ public class StandingsTab extends VerticalLayout {
 
         if (league == null || selectedTier == null) return;
 
-        boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
-        recalculateBtn.setVisible(loggedIn);
+        boolean isOwner = isOwner();
+        recalculateBtn.setVisible(isOwner);
 
         List<DriverStanding> standings = driverStandingRepository.findByTier(selectedTier);
         if (league.isHideAi()) {

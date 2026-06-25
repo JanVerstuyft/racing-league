@@ -44,6 +44,13 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
     private final SecurityService securityService;
     private final LeagueLogoRepository leagueLogoRepository;
 
+    private boolean isOwner() {
+        return currentEvent != null && currentEvent.getTier() != null && currentEvent.getTier().getLeague() != null
+                && securityService.getAuthenticatedUserEntity()
+                .map(user -> currentEvent.getTier().getLeague().getUser() != null && currentEvent.getTier().getLeague().getUser().getId().equals(user.getId()))
+                .orElse(false);
+    }
+
     private final HorizontalLayout logoContainer = new HorizontalLayout();
     private final H2 eventHeader = new H2();
     private final Span statusBadge = new Span();
@@ -163,6 +170,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
         titleLayout.setSpacing(true);
 
         toggleFinalizedBtn.addClickListener(ev -> {
+            if (!isOwner()) return;
             if (currentEvent == null) return;
             boolean newStatus = !Boolean.TRUE.equals(currentEvent.getFinalized());
             String statusWord = newStatus ? "final" : "provisional";
@@ -172,6 +180,7 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             dialog.setCancelable(true);
             dialog.setConfirmText("Yes");
             dialog.addConfirmListener(confirmEv -> {
+                if (!isOwner()) return;
                 currentEvent.setFinalized(newStatus);
                 eventRepository.save(currentEvent);
                 telemetryProcessingService.recalculateStandings(currentEvent.getTier().getId());
@@ -244,9 +253,9 @@ public class EventResultsView extends VerticalLayout implements HasUrlParameter<
             statusBadge.getElement().getThemeList().add("badge error");
         }
 
-        boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
-        toggleFinalizedBtn.setVisible(loggedIn);
-        if (loggedIn) {
+        boolean isOwner = isOwner();
+        toggleFinalizedBtn.setVisible(isOwner);
+        if (isOwner) {
             toggleFinalizedBtn.getElement().getThemeList().clear();
             toggleFinalizedBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
             if (Boolean.TRUE.equals(currentEvent.getFinalized())) {

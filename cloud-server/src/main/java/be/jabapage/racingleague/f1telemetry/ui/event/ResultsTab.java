@@ -46,6 +46,13 @@ public class ResultsTab extends VerticalLayout {
 
     private Event currentEvent;
 
+    private boolean isOwner() {
+        return currentEvent != null && currentEvent.getTier() != null && currentEvent.getTier().getLeague() != null
+                && securityService.getAuthenticatedUserEntity()
+                .map(user -> currentEvent.getTier().getLeague().getUser() != null && currentEvent.getTier().getLeague().getUser().getId().equals(user.getId()))
+                .orElse(false);
+    }
+
     private final Tabs sessionTabs = new Tabs();
     private final VerticalLayout sessionContent = new VerticalLayout();
     private final Button addSessionBtn = new Button("Add Manual Session");
@@ -92,6 +99,7 @@ public class ResultsTab extends VerticalLayout {
 
     public void update(Event event) {
         this.currentEvent = event;
+        addSessionBtn.setVisible(isOwner());
         if (event == null) return;
 
         int currentIdx = sessionTabs.getSelectedIndex();
@@ -118,8 +126,8 @@ public class ResultsTab extends VerticalLayout {
         sessionContent.removeAll();
         int selectedIndex = sessionTabs.getSelectedIndex();
         
-        boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
-        addResultBtn.setVisible(loggedIn && selectedIndex >= 0);
+        boolean isOwner = isOwner();
+        addResultBtn.setVisible(isOwner && selectedIndex >= 0);
 
         if (selectedIndex < 0) return;
 
@@ -283,12 +291,16 @@ public class ResultsTab extends VerticalLayout {
             .setPartNameGenerator(dr -> (dr.getWarnings() != null && dr.getWarnings() % 3 == 2) ? "warning-danger" : null);
         }
         
-        if (loggedIn) {
+        if (isOwner) {
             grid.addComponentColumn(dr -> {
-                Button editBtn = new Button("Edit", e -> showEditResultDialog(dr, session));
+                Button editBtn = new Button("Edit", e -> {
+                    if (!isOwner()) return;
+                    showEditResultDialog(dr, session);
+                });
                 editBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
 
                 Button deleteBtn = new Button("Delete", e -> {
+                    if (!isOwner()) return;
                     ConfirmDialog dialog = new ConfirmDialog();
                     dialog.setHeader("Delete Result?");
                     dialog.setText("Are you sure you want to delete this result for '" + dr.getDriverName() + "'?");
@@ -296,6 +308,7 @@ public class ResultsTab extends VerticalLayout {
                     dialog.setConfirmText("Delete");
                     dialog.setConfirmButtonTheme("error primary");
                     dialog.addConfirmListener(ev -> {
+                        if (!isOwner()) return;
                         Notification deletingNote = new Notification("Deleting...");
                         deletingNote.setPosition(Notification.Position.TOP_CENTER);
                         deletingNote.setDuration(0);
@@ -334,9 +347,10 @@ public class ResultsTab extends VerticalLayout {
         
         sessionContent.add(grid);
 
-        if (loggedIn) {
+        if (isOwner) {
             Button deleteSessionBtn = new Button("Delete This Session");
             deleteSessionBtn.addClickListener(e -> {
+                if (!isOwner()) return;
                 ConfirmDialog dialog = new ConfirmDialog();
                 dialog.setHeader("Delete Session?");
                 dialog.setText("Are you sure you want to delete this session and all its results?");
@@ -344,6 +358,7 @@ public class ResultsTab extends VerticalLayout {
                 dialog.setConfirmText("Delete");
                 dialog.setConfirmButtonTheme("error primary");
                 dialog.addConfirmListener(ev -> {
+                    if (!isOwner()) return;
                     Notification deletingNote = new Notification("Deleting session...");
                     deletingNote.setPosition(Notification.Position.TOP_CENTER);
                     deletingNote.setDuration(0);
@@ -411,11 +426,11 @@ public class ResultsTab extends VerticalLayout {
     }
 
     private void configureManualEntry() {
-        boolean loggedIn = securityService.getAuthenticatedUser().isPresent();
-        addSessionBtn.setVisible(loggedIn);
+        addSessionBtn.setVisible(isOwner());
         addResultBtn.setVisible(false);
 
         addSessionBtn.addClickListener(e -> {
+            if (!isOwner()) return;
             if (currentEvent == null) return;
             Dialog dialog = new Dialog();
             dialog.setHeaderTitle("Add Manual Session");
@@ -429,6 +444,7 @@ public class ResultsTab extends VerticalLayout {
             dialog.add(layout);
 
             Button saveBtn = new Button("Add", ev -> {
+                if (!isOwner()) return;
                 if (typeCombo.getValue() == null) return;
                 SessionResult sr = new SessionResult();
                 sr.setTier(currentEvent.getTier());
@@ -447,6 +463,7 @@ public class ResultsTab extends VerticalLayout {
         });
 
         addResultBtn.addClickListener(e -> {
+            if (!isOwner()) return;
             int selectedIndex = sessionTabs.getSelectedIndex();
             if (selectedIndex < 0) return;
             List<SessionResult> sessions = getOrderedSessions();
@@ -610,6 +627,7 @@ public class ResultsTab extends VerticalLayout {
             dialog.add(layout);
 
             Button saveBtn = new Button("Add", ev -> {
+                if (!isOwner()) return;
                 if (driverCombo.getValue() == null || teamCombo.getValue() == null || posField.getValue() == null) {
                     Notification.show("Please fill in Driver, Team and Position", 3000, Notification.Position.TOP_CENTER);
                     return;
@@ -799,6 +817,7 @@ public class ResultsTab extends VerticalLayout {
         dialog.add(layout);
 
         Button saveBtn = new Button("Save", ev -> {
+            if (!isOwner()) return;
             if (teamCombo.getValue() == null) {
                 Notification.show("Please select a Team", 3000, Notification.Position.TOP_CENTER);
                 return;
